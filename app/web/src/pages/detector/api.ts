@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { get, put } from '../../api/client'
+import { get, post, put } from '../../api/client'
 import type { DetectorStatus, Rule, RulesView } from './model'
 
 // The detector API (docs/api.md "Detector").
@@ -17,6 +17,19 @@ export function useSaveRules() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (rules: Rule[]) => put<RulesView>('/api/detector/rules', { rules }),
+    onSuccess: (v) => {
+      qc.setQueryData(['detector', 'rules'], v)
+      void qc.invalidateQueries({ queryKey: ['detector', 'status'] })
+    },
+  })
+}
+
+// useAddDefaults merges new built-in rules into the saved set ({ids} adds those, {} all of them)
+// or stops offering them ({dismiss}): POST /api/detector/rules/add-defaults.
+export function useAddDefaults() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { ids?: string[]; dismiss?: string[] }) => post<RulesView>('/api/detector/rules/add-defaults', body),
     onSuccess: (v) => {
       qc.setQueryData(['detector', 'rules'], v)
       void qc.invalidateQueries({ queryKey: ['detector', 'status'] })

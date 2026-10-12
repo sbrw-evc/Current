@@ -85,9 +85,7 @@ type openbaoProbe struct {
 
 // currentOpenBao is the connection of flow.json as the App knows it.
 func (a *App) currentOpenBao() config.OpenBao {
-	a.openbaoMoveLock().Lock()
-	defer a.openbaoMoveLock().Unlock()
-	return a.deps.Config.OpenBao
+	return a.config().OpenBao
 }
 
 func (a *App) probeTarget(ctx context.Context, o config.OpenBao) (*secrets.Client, openbaoProbe) {
@@ -157,7 +155,7 @@ func (a *App) migrateOpenBao(w http.ResponseWriter, r *http.Request, p *Principa
 		return
 	}
 	defer lock.Unlock()
-	cur := a.deps.Config.OpenBao
+	cur := a.config().OpenBao
 	target, err := in.Target.config(cur)
 	if err != nil {
 		httpx.Err(w, err)
@@ -217,7 +215,7 @@ func (a *App) moveSecrets(ctx context.Context, cur, target config.OpenBao, dst *
 		return res, fmt.Errorf("read %s: %w", config.FileName, err)
 	}
 	if !found {
-		file = a.deps.Config
+		file = a.config()
 	}
 	from, to := cur.Mount, target.Mount
 	next, fileRefs, err := moveFileRefs(file, from, to)
@@ -248,7 +246,7 @@ func (a *App) moveSecrets(ctx context.Context, cur, target config.OpenBao, dst *
 	if err := a.deps.Vault.Reconfigure(dst.Config()); err != nil {
 		return res, err // not expected: the same settings built dst
 	}
-	a.deps.Config = next
+	a.setConfig(next)
 	return res, nil
 }
 

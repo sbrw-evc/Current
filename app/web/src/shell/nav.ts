@@ -1,4 +1,4 @@
-import { Cable, Route, Activity, Network, Umbrella, BarChart3, Building2, KeyRound, BellRing, Cpu, Database, Home, LineChart, ListChecks, ListTree, LockKeyhole, Radar, Router, Settings, ShieldAlert, Tags, type LucideIcon } from 'lucide-react'
+import { AtSign, CloudUpload, Cable, Route, Activity, Network, Umbrella, BarChart3, Building2, KeyRound, BellRing, Cpu, Database, Home, LineChart, ListChecks, ListTree, LockKeyhole, Radar, Router, Settings, ShieldAlert, Tags, type LucideIcon } from 'lucide-react'
 
 // The menu: groups of pages in Umbrella's sidebar style. A page the role can't see is hidden
 // (the API enforces the permissions anyway).
@@ -40,6 +40,8 @@ export const NAV: NavGroup[] = [
       { id: 'tokens', path: '/settings/api-tokens', icon: KeyRound, perm: 'tokens:view' },
       { id: 'entra', path: '/settings/entra', icon: Building2, perm: 'users:view' },
       { id: 'threat', path: '/settings/threat', icon: ShieldAlert, perm: 'settings.threat:view' },
+      { id: 'rdns', path: '/settings/rdns', icon: AtSign, perm: 'settings.rdns:view' },
+      { id: 'flowlogs', path: '/settings/flowlogs', icon: CloudUpload, perm: 'settings.flowlogs:view' },
       { id: 'snmp', path: '/settings/snmp', icon: Cable, perm: 'settings.snmp:view' },
       { id: 'bmp', path: '/settings/bmp', icon: Route, perm: 'settings.bmp:view' },
     ],

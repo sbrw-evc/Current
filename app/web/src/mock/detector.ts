@@ -17,17 +17,20 @@ export const DEFAULT_RULES: Rule[] = [
   { id: 'traffic-anomaly', name: 'Traffic anomaly on external interfaces', enabled: true, kind: 'traffic_anomaly', filter: "InIfBoundary = 'external'", dimensions: ['ExporterName', 'InIfName'], thresholds: {}, window: '15m', for: '15m', interval: '5m', hysteresis: '15m', severity: 'warning', baseline: { weeks: 4, min_samples: 2, k: 3, ratio: 0.5, min_volume: 10e6, direction: 'up' } },
   { id: 'traffic-drop', name: 'Service traffic drop', enabled: true, kind: 'traffic_drop', filter: "DstCI != ''", dimensions: ['DstCI'], thresholds: { ratio: 0.1 }, window: '15m', for: '15m', interval: '5m', hysteresis: '15m', severity: 'error', baseline: { weeks: 4, min_samples: 2, min_volume: 1e6 } },
   { id: 'exporter-silent', name: 'Silent exporter', enabled: true, kind: 'exporter_silent', thresholds: { silence: '10m' }, interval: '1m', hysteresis: '1m', severity: 'low' },
+  { id: 'threat-contact', name: 'Contact with a threat list address', enabled: true, kind: 'threat_contact', thresholds: {}, window: '5m', interval: '1m', hysteresis: '30m', severity: 'error' },
 ]
 
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T
 
 const state = {
   rules: [
-    ...clone(DEFAULT_RULES),
+    // saved before threat-contact existed: the console offers it as a new built-in rule
+    ...clone(DEFAULT_RULES.filter((r) => r.id !== 'threat-contact')),
     { id: 'dns-amplification', name: 'DNS responses from outside', enabled: false, kind: 'custom', filter: "InIfBoundary = 'external' AND SrcPort = 53 AND Proto = udp", dimensions: ['DstAddr'], thresholds: { bps: 200e6 }, window: '1m', for: '2m', interval: '30s', severity: 'error', signal: 'red.traffic.dns', metric: 'bps', operator: '>' },
   ] as Rule[],
   saved: new Date(Date.now() - 3 * 86400e3).toISOString() as string | undefined,
   isDefault: false,
+  dismissed: [] as string[],
   umbrella: { enabled: true, ingest_url: 'https://umbrella.example.net/api/ingest/flow', token_set: true },
   sent: 1284,
   sampling: [
@@ -82,8 +85,14 @@ export function checkRule(r: Rule): string[] {
   return errs
 }
 
+function newDefaults(): Rule[] {
+  if (state.isDefault) return []
+  const have = new Set(state.rules.map((r) => r.id))
+  return DEFAULT_RULES.filter((r) => !have.has(r.id) && !state.dismissed.includes(r.id))
+}
+
 function rulesView(): RulesView {
-  return { rules: state.rules, default: state.isDefault, updated_at: state.isDefault ? undefined : state.saved }
+  return { rules: state.rules, default: state.isDefault, updated_at: state.isDefault ? undefined : state.saved, new_defaults: clone(newDefaults()) }
 }
 
 const ago = (ms: number) => new Date(Date.now() - ms).toISOString()
@@ -168,9 +177,22 @@ export function detectorMock(method: string, p: string, body: unknown): Reply | 
       if (seen.has(rules[i].id)) return fail(400, 'duplicate_rule', `rule id ${rules[i].id} is repeated`)
       seen.add(rules[i].id)
     }
+    // a built-in rule the saved set had and this one drops was deleted on purpose
+    const had = new Set(state.rules.map((r) => r.id))
+    for (const d of DEFAULT_RULES) if ((had.has(d.id) || state.isDefault) && !seen.has(d.id) && !state.dismissed.includes(d.id)) state.dismissed.push(d.id)
     state.rules = clone(rules)
     state.isDefault = false
     state.saved = new Date().toISOString()
+    return ok(rulesView())
+  }
+  if (p === '/api/detector/rules/add-defaults' && method === 'POST') {
+    const b = (body ?? {}) as { ids?: string[]; dismiss?: string[] }
+    const offered = newDefaults()
+    const dismiss = b.dismiss ?? []
+    const add = b.ids ?? (dismiss.length ? [] : offered.map((r) => r.id))
+    for (const id of [...add, ...dismiss]) if (!offered.some((r) => r.id === id)) return fail(400, 'unknown_default', 'not a new built-in rule: ' + id)
+    for (const id of add) if (!dismiss.includes(id)) state.rules.push(clone(offered.find((r) => r.id === id)!))
+    state.dismissed.push(...dismiss)
     return ok(rulesView())
   }
   if (p === '/api/detector/status') return ok(status())

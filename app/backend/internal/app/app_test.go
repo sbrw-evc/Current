@@ -36,8 +36,11 @@ func (fakeVisualizer) Visualize(_ context.Context, req json.RawMessage) (any, er
 // fakeDetector accepts rules with an id and kind; SendTest posts like the setup check.
 type fakeDetector struct{}
 
+// fakeLaterDefaults are built-in rules "added by a later version" (TestDetectorNewDefaults).
+var fakeLaterDefaults []json.RawMessage
+
 func (fakeDetector) DefaultRules() []json.RawMessage {
-	return []json.RawMessage{json.RawMessage(`{"id":"link-utilization","kind":"link_utilization","enabled":true}`)}
+	return append([]json.RawMessage{json.RawMessage(`{"id":"link-utilization","kind":"link_utilization","enabled":true}`)}, fakeLaterDefaults...)
 }
 
 func (fakeDetector) ValidateRule(raw json.RawMessage) (string, error) {
@@ -553,6 +556,59 @@ func TestDetectorRules(t *testing.T) {
 	viewer := e.client()
 	viewer.login("viewer", "viewer-password")
 	if code, _ := viewer.do("GET", "/api/detector/rules", nil); code != 403 {
+		t.Fatal(code)
+	}
+}
+
+func TestDetectorNewDefaults(t *testing.T) {
+	e := newEnv(t)
+	admin := e.client()
+	admin.login("admin", "admin-password")
+	ids := func(v any) []string {
+		var out []string
+		for _, r := range v.([]any) {
+			out = append(out, r.(map[string]any)["id"].(string))
+		}
+		return out
+	}
+	// Saved with the built-in rule and a custom one, before the new defaults existed.
+	t.Cleanup(func() { fakeLaterDefaults = nil })
+	rules := []map[string]any{{"id": "link-utilization", "kind": "link_utilization", "enabled": false}, {"id": "mine", "kind": "custom"}}
+	if code, out := admin.do("PUT", "/api/detector/rules", map[string]any{"rules": rules}); code != 200 || len(out["new_defaults"].([]any)) != 0 {
+		t.Fatal(code, out)
+	}
+	// A later version adds two built-in rules: offered, never merged silently.
+	fakeLaterDefaults = []json.RawMessage{json.RawMessage(`{"id":"threat-contact","kind":"threat_contact","enabled":true}`),
+		json.RawMessage(`{"id":"exporter-silent","kind":"exporter_silent","enabled":true}`)}
+	code, out := admin.do("GET", "/api/detector/rules", nil)
+	if code != 200 || !slices.Equal(ids(out["new_defaults"]), []string{"threat-contact", "exporter-silent"}) || len(out["rules"].([]any)) != 2 {
+		t.Fatal(code, out)
+	}
+	// Add one, dismiss the other; the saved rules are untouched.
+	if code, out := admin.do("POST", "/api/detector/rules/add-defaults", map[string]any{"ids": []string{"nope"}}); code != 400 || out["error"] != "unknown_default" {
+		t.Fatal(code, out)
+	}
+	code, out = admin.do("POST", "/api/detector/rules/add-defaults", map[string]any{"ids": []string{"threat-contact"}, "dismiss": []string{"exporter-silent"}})
+	if code != 200 || !slices.Equal(ids(out["rules"]), []string{"link-utilization", "mine", "threat-contact"}) || len(out["new_defaults"].([]any)) != 0 {
+		t.Fatal(code, out)
+	}
+	if out["rules"].([]any)[0].(map[string]any)["enabled"] != false {
+		t.Fatal("saved rule changed", out)
+	}
+	// A built-in rule deleted from the saved set is not offered again.
+	rules = []map[string]any{{"id": "mine", "kind": "custom"}, {"id": "threat-contact", "kind": "threat_contact"}}
+	if code, out := admin.do("PUT", "/api/detector/rules", map[string]any{"rules": rules}); code != 200 || len(out["new_defaults"].([]any)) != 0 {
+		t.Fatal(code, out)
+	}
+	// Without a body every new default is added.
+	fakeLaterDefaults = append(fakeLaterDefaults, json.RawMessage(`{"id":"ddos","kind":"ddos_volumetric"}`))
+	code, out = admin.do("POST", "/api/detector/rules/add-defaults", nil)
+	if code != 200 || !slices.Equal(ids(out["rules"]), []string{"mine", "threat-contact", "ddos"}) {
+		t.Fatal(code, out)
+	}
+	viewer := e.client()
+	viewer.login("viewer", "viewer-password")
+	if code, _ := viewer.do("POST", "/api/detector/rules/add-defaults", nil); code != 403 {
 		t.Fatal(code)
 	}
 }

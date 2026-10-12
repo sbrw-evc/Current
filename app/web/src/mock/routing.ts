@@ -1,0 +1,128 @@
+import type { BmpRoute, BmpView } from '../pages/settings/BmpModel'
+import type { SnmpView } from '../pages/settings/SnmpModel'
+
+// Mock handlers of Settings → SNMP and Settings → BMP (VITE_MOCK=1), shaped like
+// internal/app/routing.go. Secrets are write-only: only the *_set flags come back.
+
+type Reply = { status: number; body?: unknown }
+const ok = (body: unknown): Reply => ({ status: 200, body })
+const fail = (status: number, error: string, message?: string): Reply => ({ status, body: { error, message } })
+
+const ago = (min: number) => new Date(Date.now() - min * 60e3).toISOString()
+const isAddr = (s: string) => /^(\d{1,3}\.){3}\d{1,3}$/.test(s) || /^[0-9a-f:]+:[0-9a-f:]*$/i.test(s)
+const isPrefixOrAddr = (s: string) => isAddr(s) || (/^[0-9a-f:.]+\/\d{1,3}$/i.test(s) && isAddr(s.split('/')[0]))
+
+const snmp: Omit<SnmpView, 'auth_protocols' | 'priv_protocols' | 'status'> = {
+  enabled: true,
+  poll_exporters: true,
+  devices: ['10.0.9.20'],
+  interval_minutes: 30,
+  ttl_minutes: 180,
+  timeout_seconds: 5,
+  retries: 1,
+  concurrency: 8,
+  profiles: [
+    { id: 'p-core', name: 'Core v3', prefixes: ['10.0.0.0/16'], version: '3', port: 161, username: 'flow', security_level: 'authPriv', auth_protocol: 'SHA256', priv_protocol: 'AES', context_name: '', community_set: false, auth_password_set: true, priv_password_set: true },
+    { id: 'p-legacy', name: 'Legacy v2c', prefixes: [], version: '2c', port: 161, community_set: true, auth_password_set: false, priv_password_set: false },
+  ],
+}
+
+const snmpView = (): SnmpView => ({
+  ...snmp,
+  auth_protocols: ['MD5', 'SHA', 'SHA224', 'SHA256', 'SHA384', 'SHA512'],
+  priv_protocols: ['DES', 'AES', 'AES192', 'AES256', 'AES192C', 'AES256C'],
+  status: snmp.enabled
+    ? {
+        enabled: true,
+        failing: 1,
+        devices: [
+          { address: '10.0.0.1', profile: 'p-core', interfaces: 48, polled: ago(7), configured: false },
+          { address: '10.0.0.2', profile: 'p-core', interfaces: 52, polled: ago(7), configured: false },
+          { address: '10.0.9.20', profile: 'p-legacy', interfaces: 0, polled: ago(7), error: 'request timeout (after 1 retries)', configured: true },
+        ],
+      }
+    : null,
+})
+
+const bmp: Omit<BmpView, 'status'> = { enabled: true, policy: 'prefer-post', routers: ['10.0.0.0/24'], as_providers: ['routing', 'flow', 'geoip'] }
+
+const bmpView = (): BmpView => ({
+  ...bmp,
+  status: bmp.enabled
+    ? {
+        enabled: true,
+        listen: ':10179',
+        rib: { prefixes_v4: 1012345, prefixes_v6: 212345, routes: 2449380, attribute_sets: 412000, peers: 2, bytes: 318 << 20 },
+        sessions: [{ router: '10.0.0.1', sys_name: 'edge-msk-1', sys_descr: 'Cisco IOS XR', since: ago(3 * 1440), peers_up: 2, messages: 9_812_331, errors: 0 }],
+        peers: [
+          { router: '10.0.0.1', address: '203.0.113.1', as: 9002, post_policy: true, routes: 1224690, since: ago(3 * 1440), last_update: ago(0.2) },
+          { router: '10.0.0.1', address: '2001:db8::1', as: 9002, post_policy: true, routes: 1224690, since: ago(3 * 1440), last_update: ago(0.3) },
+        ],
+      }
+    : null,
+})
+
+type ProfileIn = SnmpView['profiles'][number] & { community?: string | null; auth_password?: string | null; priv_password?: string | null }
+
+export function routingMock(method: string, p: string, body: unknown, query?: URLSearchParams): Reply | null {
+  if (p === '/api/settings/snmp' && method === 'GET') return ok(snmpView())
+  if (p === '/api/settings/snmp' && method === 'PUT') {
+    const b = (body ?? {}) as Partial<Omit<typeof snmp, 'profiles'>> & { profiles?: ProfileIn[] }
+    for (const d of b.devices ?? []) if (!isPrefixOrAddr(d)) return fail(400, 'snmp_invalid', `device ${d}: not an address or CIDR`)
+    const profiles = (b.profiles ?? []).map((pr, i) => {
+      const old = snmp.profiles.find((o) => o.id === pr.id)
+      const set = (v: string | null | undefined, was: boolean | undefined) => (v === undefined || v === null ? !!was : v !== '')
+      return {
+        id: pr.id || `p-${Date.now().toString(36)}-${i}`,
+        name: pr.name,
+        prefixes: pr.prefixes ?? [],
+        version: pr.version,
+        port: pr.port || 161,
+        username: pr.username,
+        security_level: pr.security_level,
+        auth_protocol: pr.auth_protocol,
+        priv_protocol: pr.priv_protocol,
+        context_name: pr.context_name,
+        community_set: set(pr.community, old?.community_set),
+        auth_password_set: set(pr.auth_password, old?.auth_password_set),
+        priv_password_set: set(pr.priv_password, old?.priv_password_set),
+      }
+    })
+    if (profiles.some((pr) => !pr.name?.trim())) return fail(400, 'snmp_invalid', 'every profile needs a name')
+    Object.assign(snmp, { ...b, profiles })
+    return ok(snmpView())
+  }
+  if (p === '/api/settings/snmp/test') {
+    const b = (body ?? {}) as { address?: string }
+    if (!isAddr(b.address ?? '')) return fail(400, 'invalid_address', 'address must be an IP address')
+    if (b.address?.endsWith('.20')) return ok({ ok: false, error: 'request timeout (after 1 retries)' })
+    const sample = Array.from({ length: 6 }, (_, i) => ({ index: 501 + i, name: `Hu0/0/0/${i}`, descr: i === 3 ? 'Transit: RETN 100G' : '', speed: 100e9 }))
+    return ok({ ok: true, details: { interfaces: 48, sample } })
+  }
+  if (p === '/api/settings/bmp' && method === 'GET') return ok(bmpView())
+  if (p === '/api/settings/bmp' && method === 'PUT') {
+    const b = (body ?? {}) as Partial<typeof bmp>
+    for (const r of b.routers ?? []) if (!isPrefixOrAddr(r)) return fail(400, 'bmp_invalid', `router ${r}: not an address or CIDR`)
+    if (!b.as_providers?.length) return fail(400, 'bmp_invalid', 'at least one AS provider')
+    Object.assign(bmp, b)
+    return ok(bmpView())
+  }
+  if (p === '/api/bmp/lookup') {
+    const a = (query?.get('address') ?? '').trim()
+    if (!isAddr(a)) return fail(400, 'invalid_address', 'address must be an IP address')
+    if (!bmp.enabled) return fail(501, 'not_implemented', 'the BMP routing table (it runs with the enricher)')
+    if (a.startsWith('10.') || a.startsWith('192.168.')) return fail(404, 'no_route', 'no route covers ' + a)
+    const v6 = a.includes(':')
+    const route: BmpRoute = {
+      prefix: v6 ? '2a00:1450::/32' : `${a.split('.').slice(0, 2).join('.')}.0.0/16`,
+      origin_as: 15169,
+      as_path: [9002, 3356, 15169],
+      communities: ['9002:64601', '65000:100'],
+      large_communities: ['9002:1:2'],
+      next_hop: v6 ? '2001:db8::1' : '203.0.113.1',
+      peer: { router: '10.0.0.1', address: v6 ? '2001:db8::1' : '203.0.113.1', as: 9002, post_policy: true },
+    }
+    return ok(route)
+  }
+  return null
+}

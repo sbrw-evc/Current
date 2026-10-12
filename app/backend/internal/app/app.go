@@ -21,6 +21,7 @@ import (
 
 	"github.com/sbrw-evc/network/app/backend/internal/access"
 	"github.com/sbrw-evc/network/app/backend/internal/auth"
+	"github.com/sbrw-evc/network/app/backend/internal/config"
 	"github.com/sbrw-evc/network/app/backend/internal/httpx"
 	"github.com/sbrw-evc/network/app/backend/internal/secrets"
 	"github.com/sbrw-evc/network/app/backend/internal/store"
@@ -52,6 +53,7 @@ type App struct {
 	passwords *auth.Passwords
 	limiter   *auth.Limiter
 	syncMu    sync.Mutex
+	cfgMu     sync.RWMutex  // guards deps.Config (replaced by an OpenBao move)
 	umb       umbrellaState // Umbrella scopes and dependency discovery (umbrella_*.go)
 }
 
@@ -69,6 +71,21 @@ func New(opt Options, deps Deps) *App {
 	}
 	return &App{opt: opt, deps: deps, st: deps.Store, sessions: auth.NewSessions(deps.Store, auth.NewKeys(deps.Vault), opt.SecureCookies),
 		passwords: auth.NewPasswords(deps.Vault), limiter: auth.NewLimiter()}
+}
+
+// config returns flow.json as the App knows it. An OpenBao move replaces it
+// while requests run, so every read goes through cfgMu.
+func (a *App) config() config.File {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	return a.deps.Config
+}
+
+// setConfig replaces flow.json as the App knows it.
+func (a *App) setConfig(f config.File) {
+	a.cfgMu.Lock()
+	a.deps.Config = f
+	a.cfgMu.Unlock()
 }
 
 // Run does the background work until ctx ends: purging expired sessions and,
@@ -164,6 +181,7 @@ func (a *App) Handler() http.Handler {
 	// detector
 	h("GET /api/detector/rules", a.guard(perms(access.DetectorView), a.getDetectorRules))
 	h("PUT /api/detector/rules", a.guard(perms(access.DetectorEdit), a.putDetectorRules))
+	h("POST /api/detector/rules/add-defaults", a.guard(perms(access.DetectorEdit), a.addDetectorDefaults))
 	h("GET /api/detector/rules/defaults", a.guard(perms(access.DetectorView), a.getDetectorDefaults))
 	h("GET /api/detector/status", a.guard(perms(access.DetectorView), a.detectorStatus))
 

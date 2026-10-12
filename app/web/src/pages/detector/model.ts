@@ -41,7 +41,8 @@ export type Rule = {
   title?: string
 }
 
-export type RulesView = { rules: Rule[]; default: boolean; updated_at?: string }
+// new_defaults: built-in rules of a later version missing from the saved set (neither deleted nor dismissed).
+export type RulesView = { rules: Rule[]; default: boolean; updated_at?: string; new_defaults?: Rule[] }
 
 export type DetectorEvent = {
   id: string

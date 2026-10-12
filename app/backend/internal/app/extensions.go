@@ -10,6 +10,7 @@ import (
 	"github.com/sbrw-evc/network/app/backend/internal/flowlogs"
 	"github.com/sbrw-evc/network/app/backend/internal/httpx"
 	"github.com/sbrw-evc/network/app/backend/internal/rdns"
+	"github.com/sbrw-evc/network/app/backend/internal/setup"
 	"github.com/sbrw-evc/network/app/backend/internal/threat"
 )
 
@@ -177,11 +178,19 @@ func (a *App) getFlowLogs(w http.ResponseWriter, r *http.Request, p *Principal) 
 		httpx.Err(w, err)
 		return
 	}
-	out := map[string]any{"available": a.deps.FlowLogs != nil}
+	var general setup.General
+	_, _ = a.st.Setting(r.Context(), setup.SettingGeneral, &general)
+	base := strings.TrimRight(general.PublicURL, "/")
+	out := map[string]any{"available": a.deps.FlowLogs != nil, "public_url": base}
 	for _, name := range flowlogs.Providers {
 		ps := s.Provider(name)
+		// url: the absolute ingest URL for the cloud side ("" without a public URL in the general settings).
+		u := ""
+		if base != "" {
+			u = base + "/api/ingest/flowlogs/" + name
+		}
 		out[name] = map[string]any{"enabled": ps.Enabled, "token_set": ps.TokenRef != "",
-			"endpoint": "/api/ingest/flowlogs/" + name}
+			"endpoint": "/api/ingest/flowlogs/" + name, "url": u}
 	}
 	httpx.JSON(w, http.StatusOK, out)
 }

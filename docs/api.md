@@ -116,6 +116,11 @@ Time-series response:
 draws them below zero). `resolution`: the table the result was computed from (`raw`, `1m`, `5m`, `1h`). `sql` is for
 debugging (shown in the UI behind a button).
 
+AS labels (`AS65000 Example`) are named, in order, from the GeoIP lookups of the enricher in the same process, from
+the ClickHouse table `asn_names` (written by every enricher from its GeoIP lookups, `ReplacingMergeTree` keeping the
+latest name; read by any process, the `api` role included, cached and refreshed every 5 minutes), then from a built-in
+list of well-known ASes.
+
 `sankey` response:
 
 ```json
@@ -155,6 +160,21 @@ Filter language: `Column op value`, `AND`, `OR`, `NOT`, parentheses; strings in 
 From the raw flows of the last 5 minutes; in role `all` merged with the collector's registry (exporters silent in
 ClickHouse, sampling rates, last seen, flows/s, interface names and speeds learned from option data / sFlow
 counters).
+
+### Sampling overrides
+
+| Method | Path | Body / answer |
+|---|---|---|
+| GET | `/api/sampling-overrides` (`exporters:view`) | `{results: [{exporter, if_index, rate, comment}]}` — `exporter` is a prefix (a single address is a `/32` or `/128`), `if_index` 0 = every interface of the exporter |
+| PUT | `/api/sampling-overrides` (`exporters:edit`) | `{results: [...]}` replaces the whole list → as GET; 400 `invalid_exporter` (not an address or CIDR), `invalid_rate` (0 or above 2³¹) |
+
+The collector forces the sampling rate of the matching flows: a per-interface override (`if_index` ≠ 0) applies to
+the flows whose input interface (else output interface) is that one and wins over an exporter-wide override; among
+exporter-wide overrides the longest prefix wins. A collector in the same process applies changes at once, a standalone
+`collector` role re-reads them every minute (PostgreSQL from the shared `flow.json`). `FLOW_SAMPLING_OVERRIDES`
+(`CIDR[@ifindex|@ifname]=rate`, e.g. `192.0.2.0/24=1000, 192.0.2.1@17=4000`) adds overrides from the environment that
+win over stored ones with the same exporter and interface. The Exporters page edits the list (per exporter and per
+interface).
 
 ## Home (widgets)
 
@@ -257,8 +277,15 @@ what it set (`output`) or its runtime `error`; `exporter` / `interface` is the c
 
 | Method | Path | |
 |---|---|---|
-| GET | `/api/detector/rules` (`detector:view`) | `{rules: [Rule…], default: bool, updated_at?}` — `default: true` while the rules were never saved (the built-in set is returned) |
+| GET | `/api/detector/rules` (`detector:view`) | `{rules: [Rule…], default: bool, updated_at?, new_defaults: [Rule…]}` — `default: true` while the rules were never saved (the built-in set is returned); `new_defaults`: built-in rules added by a later Flow version that the saved set lacks (never merged silently; see below) |
+| GET | `/api/detector/rules/defaults` (`detector:view`) | `{rules: [Rule…], default: true}` — the built-in set (the console's "restore defaults" for one rule or all) |
 | PUT | `/api/detector/rules` (`detector:edit`) | `{rules: [Rule…]}` → as GET; each rule is checked (400 `invalid_rule` / `duplicate_rule`); the detector applies them at once (same process) or within a minute |
+| POST | `/api/detector/rules/add-defaults` (`detector:edit`) | `{ids?: [id…], dismiss?: [id…]}` → as GET: appends the named `new_defaults` (all of them when the body is empty) to the saved set, `dismiss` stops offering them; saved rules are never changed; 400 `unknown_default` for an id that is not offered |
+
+New built-in rules (for example `threat-contact`) reach installations that saved their rules only through this merge:
+the console shows "new default rules available" from `new_defaults`. A built-in rule deleted from the saved set (or
+dismissed) is remembered in the settings key `detector_defaults_dismissed` and not offered again; an installation
+that deleted a built-in rule before this mechanism existed sees it offered once.
 | GET | `/api/detector/status` (`detector:view`) | `{rules: [{rule, last_eval, next_eval, duration_ms, error, groups, pending, firing}], alerts: [{rule_id, key, state, since, value, group, event…}], queued, sender: {url, outbox, sent, dropped, last_success, last_error, configured}}`; in the `api` role (detector in another process) the alerts and queue come from the state the detector saves in PostgreSQL and `remote: true` is added |
 
 A rule (`internal/detector.Rule`):
@@ -434,8 +461,8 @@ that is not listed; flows with both sides listed are ignored) over `window` (def
 thresholds.bps` (default 0: any contact). CI: the host's Inventory DB name and `source_ref`, else its PTR name, else
 the address; labels `host_ip`, `host`, `host_ci`, `host_ptr`, `threat_list`, `threat_lists`, `threat_ip`, `threat_ips`,
 `direction` (`outbound` / `inbound` / `both`), `bps`, `pps`, `flows`, `exporter`. Built-in rule `threat-contact`:
-enabled, severity `error`, interval 1m, hysteresis 30m (installations that saved their rules before add it from the
-rule editor).
+enabled, severity `error`, interval 1m, hysteresis 30m (installations that saved their rules before get it offered in
+`new_defaults` and add it with `POST /api/detector/rules/add-defaults`).
 
 ## Cloud flow logs
 
@@ -458,11 +485,11 @@ process only), `0.0.0.0` when the record names no source. `ExporterName`: `vpc-�
 |---|---|---|
 | `aws` | `aws-vpc` | VPC Flow Logs text lines: default version 2 format, or a custom format given by a header line (`version vpc-id … srcaddr …`, as in S3 files) or by `?fields=${version} ${srcaddr} …`; CloudWatch Logs subscription JSON (`logEvents[].message`, gzip accepted); Kinesis Data Firehose HTTP endpoint delivery (`{requestId, timestamp, records: [{data: base64}]}` with `X-Amz-Firehose-Request-Id`, answered `{requestId, timestamp, errorMessage?}`). `NODATA` / `SKIPDATA` records are skipped |
 | `azure` | `azure-vnet` | `{records: [...]}` or an array of records: NSG flow logs (`properties.flows[].flows[].flowTuples`, version 2 counts; version 1 tuples and flow-begin tuples carry no volume and are skipped) and VNet flow logs (`flowLogVersion` 4, `flowRecords.flows[].flowGroups[].flowTuples`, state `D` = denied); both directions of a tuple become two flows |
-| `gcp` | `gcp-vpc` | Pub/Sub push `{message: {data: base64(LogEntry)}, subscription}`, a LogEntry or an array of LogEntries; `jsonPayload.connection`, `bytes_sent`, `packets_sent`, `start_time`, `end_time`, `reporter`, `src_instance` / `dest_instance`, `src_vpc` / `dest_vpc` |
+| `gcp` | `gcp-vpc` | Pub/Sub push `{message: {data: base64(LogEntry)}, subscription}`, a LogEntry or an array of LogEntries; `jsonPayload.connection`, `bytes_sent`, `packets_sent`, `start_time`, `end_time`, `reporter` (`SRC` / `DEST`, `SRC_GATEWAY` / `DEST_GATEWAY`: the reporting side is the exporter), `src_instance` / `dest_instance`, `src_vpc` / `dest_vpc`. GCP samples packets but reports `bytes_sent` / `packets_sent` as totals estimated from the sampled packets and has no sampling-rate field, so they are stored as is (`SamplingRate` 1); `bytes_sent` is payload bytes. A flow between two logged VMs is reported by both ends: filter on one `ExporterName` side when summing |
 
 | Method | Path | |
 |---|---|---|
-| GET | `/api/settings/flowlogs` (`settings.flowlogs:view`) | `{available, aws: {enabled, token_set, endpoint}, azure: {…}, gcp: {…}}` — `available`: this process can accept flow logs |
+| GET | `/api/settings/flowlogs` (`settings.flowlogs:view`) | `{available, public_url, aws: {enabled, token_set, endpoint, url}, azure: {…}, gcp: {…}}` — `available`: this process can accept flow logs; `url`: `<public_url><endpoint>` (`""` without a public URL in the general settings). Console: Settings → Cloud flow logs (write-only tokens, ingest URLs and setup snippets for AWS Firehose, Azure and GCP Pub/Sub push) |
 | PUT | `/api/settings/flowlogs` (`settings.flowlogs:edit`) | `{aws?: {enabled, token?}, azure?: …, gcp?: …}` — `token` (≥ 16 characters) goes to OpenBao, `""` removes it, omitted keeps it; enabling needs a token (400 `flowlogs_invalid`) |
 
 ## SNMP

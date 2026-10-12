@@ -203,7 +203,7 @@ func (a *App) getOpenBao(w http.ResponseWriter, r *http.Request, p *Principal) {
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 	st := a.deps.Vault.Status(ctx)
-	ob := a.deps.Config.OpenBao
+	ob := a.config().OpenBao
 	out := map[string]any{
 		"addr": st.Addr, "mount": st.Mount, "auth": st.Auth,
 		// status.ok: reachable, unsealed, the token works and the mount is readable.

@@ -260,6 +260,19 @@ func TestGCPPubSubPush(t *testing.T) {
 	if n, _ := ExporterName(f.ExporterAddress); n != "demo-project/bastion-1" {
 		t.Fatalf("name %q", n)
 	}
+	if f.SamplingRate != 1 {
+		t.Fatalf("GCP volumes are estimated totals, not to be scaled: rate %d", f.SamplingRate)
+	}
+	// A destination gateway reporter names the destination side.
+	gw := strings.Replace(strings.Replace(string(entry), `"reporter":"SRC"`, `"reporter":"DEST_GATEWAY"`, 1),
+		`"src_vpc":`, `"dest_vpc":{"project_id":"net-project","vpc_name":"core","subnetwork_name":"edge"},"src_vpc":`, 1)
+	resp, out = post(t, srv.URL+"/api/ingest/flowlogs/gcp", []byte(gw), bearer(GCP))
+	if resp.StatusCode != 200 || out["accepted"] != 1.0 {
+		t.Fatalf("gateway %d %v", resp.StatusCode, out)
+	}
+	if n, _ := ExporterName(s.flows[len(s.flows)-1].ExporterAddress); n != "net-project/core/edge" {
+		t.Fatalf("gateway reporter name %q", n)
+	}
 	// Raw LogEntry array with a Bearer token.
 	arr := append(append([]byte("["), entry...), ']')
 	resp, out = post(t, srv.URL+"/api/ingest/flowlogs/gcp", arr, bearer(GCP))

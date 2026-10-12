@@ -95,3 +95,19 @@ Probes use `/healthz` on the HTTP port for every role.
 | `dev.enabled` | `false` | bundled dev services (see above) |
 
 Pods run as the distroless `nonroot` user (65532) with a read-only root filesystem; `/data` and `/tmp` are volumes.
+
+## Examples and checks
+
+`ci/all-values.yaml` (all-in-one, external services) and `ci/split-values.yaml` (one Deployment per role, NATS, a
+ReadWriteMany data volume, ingress with TLS) are example value files; both render cleanly:
+
+```sh
+helm lint deploy/helm/umbrella-flow
+helm lint deploy/helm/umbrella-flow -f deploy/helm/umbrella-flow/ci/split-values.yaml
+helm template flow deploy/helm/umbrella-flow -f deploy/helm/umbrella-flow/ci/split-values.yaml
+helm template flow deploy/helm/umbrella-flow --set dev.enabled=true
+```
+
+The chart refuses to render inconsistent layouts: `roles.mode: split` without `nats.url` (or `dev.enabled`), and
+`split` without a way for every role to read `flow.json` (`config.flowJson`, a ReadWriteMany volume or
+`persistence.existingClaim`).

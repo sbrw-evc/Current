@@ -95,6 +95,14 @@ func TestExtensionSettings(t *testing.T) {
 	if out["gcp"].(map[string]any)["token_set"] != false || out["aws"].(map[string]any)["token_set"] != true {
 		t.Fatal(out)
 	}
+	// With a public URL the absolute ingest URL is given for the cloud side.
+	if code, out := admin.do("GET", "/api/settings/flowlogs", nil); code != 200 || out["aws"].(map[string]any)["url"] != "" {
+		t.Fatal(code, out)
+	}
+	_ = e.st.PutSetting(t.Context(), "general", map[string]any{"language": "en", "theme": "system", "timezone": "UTC", "public_url": "https://flow.example/"})
+	if _, out := admin.do("GET", "/api/settings/flowlogs", nil); out["azure"].(map[string]any)["url"] != "https://flow.example/api/ingest/flowlogs/azure" {
+		t.Fatal(out)
+	}
 
 	// Ingest without a bus in this process: 501, no session needed.
 	if code, out := e.client().do("POST", "/api/ingest/flowlogs/aws", map[string]any{}); code != 501 {

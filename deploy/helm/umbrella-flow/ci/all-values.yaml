@@ -1,0 +1,8 @@
+# Example: all-in-one with external services (the default layout).
+openbao:
+  addr: http://openbao.vault.svc:8200
+  existingSecret: flow-openbao
+postgres:
+  host: postgres.db.svc
+clickhouse:
+  addr: clickhouse.db.svc:9000

@@ -136,6 +136,11 @@ func gcpFlow(b *batch, e *gcpEntry) {
 		b.skip()
 		return
 	}
+	// Sampling: GCP samples packets but reports bytes_sent / packets_sent as
+	// estimated totals extrapolated from the sampled packets, and the record
+	// has no sampling-rate field. The values are therefore stored as they are
+	// (SamplingRate 1): scaling them again would overcount. bytes_sent counts
+	// user payload bytes (no IP / TCP headers).
 	f := &flow.Flow{FlowType: FlowTypeGCP, SrcAddr: src, DstAddr: dst,
 		SrcPort: uint16(p.Connection.SrcPort), DstPort: uint16(p.Connection.DestPort), Proto: uint8(p.Connection.Protocol),
 		Bytes: uint64(p.BytesSent), Packets: uint64(p.PacketsSent), EType: etype(src), ForwardingStatus: fwdForwarded}
@@ -147,7 +152,9 @@ func gcpFlow(b *batch, e *gcpEntry) {
 	}
 	// The exporter is the VM (or subnet) that reported the flow.
 	inst, vpc := p.SrcInstance, p.SrcVPC
-	if p.Reporter == "DEST" {
+	// reporter: SRC / DEST (VMs, serverless) or SRC_GATEWAY / DEST_GATEWAY
+	// (VLAN attachments, Cloud VPN tunnels).
+	if strings.HasPrefix(p.Reporter, "DEST") {
 		inst, vpc = p.DestInstance, p.DestVPC
 	}
 	var name string

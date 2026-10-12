@@ -8,7 +8,7 @@ import { Page } from '../../shell/Page'
 import { useSession } from '../../shell/session'
 import { notify } from '../../ui/notify'
 import { Banner, Button, Chip, Loading } from '../../ui/ui'
-import { useDetectorStatus, useRules, useSaveRules } from './api'
+import { useAddDefaults, useDetectorStatus, useRules, useSaveRules } from './api'
 import { Confirm, rateFormat, SeverityChip } from './common'
 import { thresholdSummary, type Rule, type RulesView } from './model'
 import { detStrings } from './strings'
@@ -24,6 +24,7 @@ export default function RulesPage() {
   const q = useRules()
   const status = useDetectorStatus(30e3)
   const save = useSaveRules()
+  const addDefaults = useAddDefaults()
   const [search, setSearch] = useState('')
   const [deleting, setDeleting] = useState<Rule | null>(null)
   const [restoring, setRestoring] = useState(false)
@@ -57,6 +58,13 @@ export default function RulesPage() {
     }
   }
 
+  const fresh = q.data?.new_defaults ?? []
+  const offer = (body: { ids?: string[]; dismiss?: string[] }, ok: string) =>
+    addDefaults.mutateAsync(body).then(
+      () => notify('ok', ok),
+      (e) => notify('error', errorText(t, e).message, errorText(t, e).detail),
+    )
+
   return (
     <Page
       id="detector-rules"
@@ -76,6 +84,21 @@ export default function RulesPage() {
       }
     >
       {q.data?.default && <Banner kind="info" title={t('rules.default')}>{t('rules.default.text')}</Banner>}
+      {edit && fresh.length > 0 && (
+        <Banner kind="info" title={t('rules.newdefaults')}>
+          <div className="stack" style={{ gap: 8 }}>
+            <span>{t('rules.newdefaults.text', { names: fresh.map((r) => r.name || r.id).join(', ') })}</span>
+            <div className="row" style={{ gap: 8 }}>
+              <Button variant="primary" disabled={addDefaults.isPending} onClick={() => void offer({ ids: fresh.map((r) => r.id) }, t('rules.newdefaults.added'))}>
+                <Plus size={15} /> {t('rules.newdefaults.add')}
+              </Button>
+              <Button disabled={addDefaults.isPending} onClick={() => void offer({ dismiss: fresh.map((r) => r.id) }, t('rules.newdefaults.dismissed'))}>
+                {t('rules.newdefaults.dismiss')}
+              </Button>
+            </div>
+          </div>
+        </Banner>
+      )}
       {q.error && <Banner kind="error" title={errorText(t, q.error).message}>{errorText(t, q.error).detail}</Banner>}
       <section className="card toolbar-card det-toolbar">
         <label className="search-field">

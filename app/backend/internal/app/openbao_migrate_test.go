@@ -64,7 +64,29 @@ func TestOpenBaoMigrate(t *testing.T) {
 	if code, out := c.do("POST", "/api/settings/openbao/migrate", map[string]any{"target": target}); code != 409 || out["error"] != "openbao_target_not_empty" {
 		t.Fatal(code, out)
 	}
+	// Readers of the configuration run during the move (go test -race: no data race on flow.json).
+	stop, readers, ready := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	rc := e.client()
+	rc.login("admin", "admin-password")
+	go func() {
+		defer close(readers)
+		for i := 0; ; i++ {
+			if i == 1 {
+				close(ready)
+			}
+			select {
+			case <-stop:
+				return
+			default:
+				rc.do("GET", "/api/settings/openbao", nil)
+				rc.do("POST", "/api/settings/openbao/probe", map[string]any{"addr": dstFake.Server.URL, "mount": "flow-new"})
+			}
+		}
+	}()
+	<-ready
 	code, out := c.do("POST", "/api/settings/openbao/migrate", map[string]any{"target": target, "overwrite": true})
+	close(stop)
+	<-readers
 	if code != 200 || out["mount"] != "flow-new" || out["copied"] != float64(3) {
 		t.Fatal(code, out)
 	}
