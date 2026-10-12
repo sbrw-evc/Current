@@ -1,0 +1,765 @@
+/* Copied from Umbrella Monitoring (app/web/src/controls.css, branch dev). */
+/* Controls: one look for every button, field, check box, radio button, switch,
+   slider, stepper, segmented control, choice card, chip and file picker.
+   Colors come from the --btn-*, --input-*, --check-*, --switch-*, --range-*,
+   --segment-* and --chip-* tokens of the theme (styles.css), sizes from
+   --control-height and --control-radius. */
+
+.btn:focus-visible,
+.input:focus-visible,
+.icon-btn:focus-visible,
+.switch:focus-visible,
+.segmented button:focus-visible,
+.step:focus-visible,
+.chip:focus-visible,
+.choice:focus-visible,
+.stepper-btn:focus-visible,
+input[type='checkbox']:focus-visible,
+input[type='radio']:focus-visible,
+.file-drop:focus-within {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+/* Buttons */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--control-height);
+  padding: 0 16px;
+  border-radius: var(--control-radius);
+  border: 1px solid transparent;
+  font: inherit;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    color 0.15s,
+    box-shadow 0.15s,
+    filter 0.15s,
+    opacity 0.15s;
+}
+
+.btn > svg {
+  flex: none;
+}
+
+.btn-primary {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  box-shadow: var(--btn-primary-shadow);
+}
+
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+  box-shadow:
+    var(--btn-primary-shadow),
+    0 4px 14px color-mix(in srgb, var(--btn-primary-bg) 32%, transparent);
+}
+
+.btn-secondary {
+  background: var(--btn-secondary-bg);
+  border-color: var(--btn-secondary-border);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--btn-secondary-hover);
+  border-color: var(--input-border-hover);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--muted);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+.btn-danger {
+  background: var(--btn-danger-bg);
+  color: var(--btn-danger-text);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--btn-danger-bg) 35%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+.btn-danger:hover:not(:disabled) {
+  filter: brightness(1.08);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--btn-danger-bg) 32%, transparent);
+}
+
+.btn-danger-soft {
+  background: transparent;
+  color: var(--error);
+}
+
+.btn-danger-soft:hover:not(:disabled) {
+  background: var(--error-soft);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+  filter: saturate(0.6);
+}
+
+.icon-btn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    color 0.15s,
+    transform 0.1s;
+}
+
+.icon-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+.icon-btn:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Text fields and the drop-down button (select.tsx) */
+
+.input {
+  width: 100%;
+  min-height: var(--control-height);
+  padding: 8px 12px;
+  border-radius: var(--control-radius);
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--text);
+  font: inherit;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s,
+    background-color 0.15s;
+}
+
+.textarea {
+  min-height: 96px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+}
+
+.input:hover:not(:disabled):not(:focus):not([data-open]) {
+  border-color: var(--input-border-hover);
+}
+
+.input:focus,
+.input:focus-visible,
+.input[data-open] {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.input[aria-invalid='true'] {
+  border-color: var(--error);
+}
+
+.input[aria-invalid='true']:focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--error) 22%, transparent);
+}
+
+.input::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+.input:disabled,
+.input:read-only:not(button) {
+  background: var(--input-disabled-bg);
+  color: var(--muted);
+  cursor: default;
+}
+
+/* Numbers: no browser spin buttons (arrow keys still step); use Stepper for +/-. */
+.input[type='number'] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.input[type='number']::-webkit-inner-spin-button,
+.input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Date and time fields: the calendar icon reads as part of the field. */
+.input::-webkit-calendar-picker-indicator {
+  padding: 3px;
+  border-radius: 6px;
+  opacity: 0.55;
+  cursor: pointer;
+  transition:
+    opacity 0.15s,
+    background-color 0.15s;
+}
+
+.input::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+  background-color: var(--surface-2);
+}
+
+/* Check boxes and radio buttons: native inputs, drawn by the theme. */
+
+input[type='checkbox'],
+input[type='radio'] {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  display: inline-grid;
+  place-content: center;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  border: 1.5px solid var(--check-border);
+  border-radius: 5px;
+  background: var(--check-bg);
+  color: var(--check-mark);
+  vertical-align: middle;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+input[type='radio'] {
+  border-radius: 50%;
+}
+
+input[type='checkbox']::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  transform: scale(0);
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+input[type='checkbox']:indeterminate::before {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.5' stroke-linecap='round'%3E%3Cpath d='M6 12h12'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.5' stroke-linecap='round'%3E%3Cpath d='M6 12h12'/%3E%3C/svg%3E");
+}
+
+input[type='radio']::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  transform: scale(0);
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+input[type='checkbox']:checked,
+input[type='checkbox']:indeterminate,
+input[type='radio']:checked {
+  background: var(--check-on);
+  border-color: var(--check-on);
+}
+
+input[type='checkbox']:checked::before,
+input[type='checkbox']:indeterminate::before,
+input[type='radio']:checked::before {
+  transform: scale(1);
+}
+
+input[type='checkbox']:hover:not(:disabled):not(:checked):not(:indeterminate),
+input[type='radio']:hover:not(:disabled):not(:checked) {
+  border-color: var(--check-on);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--check-on) 12%, transparent);
+}
+
+input[type='checkbox']:disabled,
+input[type='radio']:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* The radio dot of choice cards (Choice.tsx), the same as a checked radio button. */
+.radio-mark {
+  flex: none;
+  display: inline-grid;
+  place-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid var(--check-border);
+  border-radius: 50%;
+  background: var(--check-bg);
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+}
+
+.radio-mark::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--check-mark);
+  transform: scale(0);
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.radio-mark.on {
+  background: var(--check-on);
+  border-color: var(--check-on);
+}
+
+.radio-mark.on::before {
+  transform: scale(1);
+}
+
+/* Switch */
+
+.switch {
+  flex: none;
+  position: relative;
+  width: 40px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--switch-track);
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.switch span {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--switch-knob);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.3);
+  transition:
+    transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1),
+    box-shadow 0.15s;
+}
+
+.switch:hover:not(:disabled) span {
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--switch-track-on) 16%, transparent),
+    0 1px 3px rgba(15, 23, 42, 0.3);
+}
+
+.switch.on {
+  background: var(--switch-track-on);
+}
+
+.switch.on span {
+  transform: translateX(16px);
+}
+
+.switch:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Slider: --fill is the share of the track left of the thumb, set by the page. */
+
+input[type='range'] {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 20px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  --fill: 50%;
+}
+
+input[type='range']:focus {
+  outline: none;
+}
+
+input[type='range']::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background:
+    linear-gradient(var(--range-fill), var(--range-fill)) 0 / var(--fill) 100% no-repeat,
+    var(--range-track);
+}
+
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -6px;
+  border: 2px solid var(--range-fill);
+  border-radius: 50%;
+  background: var(--range-thumb);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.3);
+  transition:
+    transform 0.12s,
+    box-shadow 0.15s;
+}
+
+input[type='range']::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--range-track);
+}
+
+input[type='range']::-moz-range-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--range-fill);
+}
+
+input[type='range']::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--range-fill);
+  border-radius: 50%;
+  background: var(--range-thumb);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.3);
+}
+
+input[type='range']:hover::-webkit-slider-thumb {
+  transform: scale(1.12);
+}
+
+input[type='range']:active::-webkit-slider-thumb {
+  transform: scale(1.18);
+}
+
+input[type='range']:focus-visible::-webkit-slider-thumb {
+  box-shadow: var(--focus);
+}
+
+input[type='range']:focus-visible::-moz-range-thumb {
+  box-shadow: var(--focus);
+}
+
+.range-row input[type='range'] {
+  flex: 1;
+}
+
+/* Stepper (number with - and +) */
+
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  height: var(--control-height);
+  padding: 3px;
+  gap: 2px;
+  border: 1px solid var(--input-border);
+  border-radius: var(--control-radius);
+  background: var(--input-bg);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.stepper:hover:not(:focus-within) {
+  border-color: var(--input-border-hover);
+}
+
+.stepper:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.stepper-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    color 0.15s,
+    transform 0.1s;
+}
+
+.stepper-btn:hover:not(:disabled) {
+  background: var(--chip-on-bg);
+  color: var(--accent);
+}
+
+.stepper-btn:active:not(:disabled) {
+  transform: scale(0.9);
+}
+
+.stepper-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.stepper-input {
+  width: auto;
+  min-width: 3ch;
+  padding: 0 4px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.stepper-suffix {
+  color: var(--muted);
+  padding-right: 4px;
+}
+
+/* Segmented control */
+
+.segmented {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border: 1px solid var(--input-border);
+  border-radius: var(--control-radius);
+  background: var(--segment-bg);
+}
+
+.segmented button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.segmented button:hover:not(.active) {
+  color: var(--text);
+}
+
+.segmented button.active {
+  color: var(--text);
+}
+
+.seg-pill {
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  background: var(--segment-on);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.14);
+}
+
+/* Choice cards (Choice.tsx) */
+
+.choice {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.choice:hover {
+  border-color: var(--input-border-hover);
+}
+
+.choice[aria-checked='true'] {
+  border-color: var(--chip-on-border);
+  background: var(--chip-on-bg);
+  box-shadow: 0 0 0 1px var(--chip-on-border);
+}
+
+/* Chips: toggles in a row (durations, channels, permissions). */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--chip-border);
+  border-radius: 999px;
+  background: var(--chip-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.chip:hover:not(:disabled) {
+  border-color: var(--input-border-hover);
+}
+
+.chip.on {
+  border-color: var(--chip-on-border);
+  background: var(--chip-on-bg);
+  color: var(--chip-on-text);
+  font-weight: 600;
+}
+
+.chip:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* File picker: a drop zone around a hidden file input (FileInput in ui.tsx).
+   A bare <input type=file> gets a themed button too. */
+
+label.file-drop {
+  position: relative;
+  font-size: 14px;
+  font-weight: 400;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1.5px dashed var(--input-border-hover);
+  border-radius: var(--radius);
+  background: var(--input-bg);
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.file-drop:hover,
+.file-drop.over {
+  border-color: var(--accent);
+  background: var(--chip-on-bg);
+}
+
+.file-drop.has-file {
+  border-style: solid;
+}
+
+.file-drop-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.file-drop-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--chip-on-bg);
+  color: var(--accent);
+}
+
+.file-drop.has-file .file-drop-icon {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.file-drop-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.file-drop-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+input[type='file']:not(.file-drop-input) {
+  max-width: 100%;
+  color: var(--muted);
+  font: inherit;
+}
+
+input[type='file']::file-selector-button {
+  min-height: 34px;
+  margin-right: 12px;
+  padding: 0 14px;
+  border: 1px solid var(--btn-secondary-border);
+  border-radius: var(--control-radius);
+  background: var(--btn-secondary-bg);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+}
+
+input[type='file']::file-selector-button:hover {
+  background: var(--btn-secondary-hover);
+  border-color: var(--input-border-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switch span,
+  input[type='checkbox']::before,
+  input[type='radio']::before,
+  .radio-mark::before {
+    transition: none;
+  }
+}
