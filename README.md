@@ -5,3 +5,4 @@ Network traffic analysis (NetFlow / IPFIX / sFlow) with the capabilities of Akvo
 
 - Plan and stack: [docs/plan.md](docs/plan.md)
 - REST API contract: [docs/api.md](docs/api.md)
+- License: proprietary, see [LICENSE](LICENSE)

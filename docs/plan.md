@@ -277,4 +277,3 @@ per day of raw flows after compression at 1:1000 sampling on 100G links — depe
    FortiGate…), whether there are BGP edge routers (is BMP needed).
 2. Retention for raw flows and aggregates (defaults: 15 days / 30 days / 90 days / 2 years).
 3. GeoIP: MaxMind GeoLite2 (needs a free account) or IPinfo Lite.
-4. Licence for the repository.
