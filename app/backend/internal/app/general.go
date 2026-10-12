@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/sbrw-evc/network/app/backend/internal/auth"
 	"github.com/sbrw-evc/network/app/backend/internal/config"
 	"github.com/sbrw-evc/network/app/backend/internal/httpx"
+	"github.com/sbrw-evc/network/app/backend/internal/secrets"
 	"github.com/sbrw-evc/network/app/backend/internal/setup"
 )
 
@@ -181,7 +183,18 @@ func (a *App) testUmbrella(w http.ResponseWriter, r *http.Request, p *Principal)
 		httpx.JSON(w, http.StatusOK, setup.CheckResult{Error: err.Error()})
 		return
 	}
-	httpx.JSON(w, http.StatusOK, setup.CheckUmbrella(r.Context(), u.IngestURL, tok))
+	if a.deps.Detector == nil || u.IngestURL == "" || tok == "" {
+		httpx.JSON(w, http.StatusOK, setup.CheckUmbrella(r.Context(), u.IngestURL, tok))
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	ev, err := a.deps.Detector.SendTest(ctx, u.IngestURL, tok)
+	if err != nil {
+		httpx.JSON(w, http.StatusOK, setup.CheckResult{Error: err.Error()})
+		return
+	}
+	httpx.JSON(w, http.StatusOK, setup.CheckResult{OK: true, Details: map[string]any{"event": ev}})
 }
 
 // ---- OpenBao
@@ -189,20 +202,39 @@ func (a *App) testUmbrella(w http.ResponseWriter, r *http.Request, p *Principal)
 func (a *App) getOpenBao(w http.ResponseWriter, r *http.Request, p *Principal) {
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	httpx.JSON(w, http.StatusOK, a.deps.Vault.Status(ctx))
+	st := a.deps.Vault.Status(ctx)
+	ob := a.deps.Config.OpenBao
+	out := map[string]any{
+		"addr": st.Addr, "mount": st.Mount, "auth": st.Auth,
+		// status.ok: reachable, unsealed, the token works and the mount is readable.
+		"status": struct {
+			OK bool `json:"ok"`
+			secrets.Status
+		}{st.Reachable && !st.Sealed && st.TokenOK && st.MountOK && st.Error == "", st},
+	}
+	if ob.RoleID != "" && ob.Auth == config.AuthAppRole {
+		out["role_id"] = ob.RoleID // the role id is an identifier, the secret id is never shown
+	}
+	httpx.JSON(w, http.StatusOK, out)
 }
 
 // testOpenBao checks the current connection (empty body) or another server.
 func (a *App) testOpenBao(w http.ResponseWriter, r *http.Request, p *Principal) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	if r.ContentLength == 0 {
-		rep := a.deps.Vault.Verify(ctx)
-		httpx.JSON(w, http.StatusOK, setup.CheckResult{OK: rep.OK, Error: rep.Error, Details: rep.Status})
+	raw, ok := httpx.Raw(w, r)
+	if !ok {
 		return
 	}
 	var in setup.OpenBaoInput
-	if !httpx.Decode(w, r, &in) {
+	if err := json.Unmarshal(raw, &in); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bad_request", "invalid JSON body: "+err.Error())
+		return
+	}
+	// An empty body ({} from the console) checks the current connection.
+	if strings.TrimSpace(in.Addr) == "" {
+		rep := a.deps.Vault.Verify(ctx)
+		httpx.JSON(w, http.StatusOK, setup.CheckResult{OK: rep.OK, Error: rep.Error, Details: rep.Status})
 		return
 	}
 	_, res := setup.CheckOpenBao(ctx, config.OpenBao{Addr: in.Addr, Mount: in.Mount, Namespace: in.Namespace, Auth: in.Auth,

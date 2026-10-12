@@ -207,7 +207,7 @@ type inventoryView struct {
 	Enabled  bool              `json:"enabled"`
 	URL      string            `json:"url"`
 	TokenSet bool              `json:"token_set"`
-	Interval int               `json:"interval"` // seconds
+	Interval string            `json:"interval"` // duration: "15m", "1h", "90s"
 	LastSync *store.SyncResult `json:"last_sync"`
 }
 
@@ -218,7 +218,22 @@ func (a *App) getInventory(w http.ResponseWriter, r *http.Request, p *Principal)
 		return
 	}
 	httpx.JSON(w, http.StatusOK, inventoryView{Enabled: c.Enabled, URL: c.URL, TokenSet: c.TokenRef != "",
-		Interval: int(c.Interval / time.Second), LastSync: c.LastSync})
+		Interval: formatInterval(c.Interval), LastSync: c.LastSync})
+}
+
+// formatInterval prints a duration the way the console offers it: "15m",
+// "1h", else seconds ("90s").
+func formatInterval(d time.Duration) string {
+	switch {
+	case d <= 0:
+		return ""
+	case d%time.Hour == 0:
+		return strconv.FormatInt(int64(d/time.Hour), 10) + "h"
+	case d%time.Minute == 0:
+		return strconv.FormatInt(int64(d/time.Minute), 10) + "m"
+	default:
+		return strconv.FormatInt(int64(d/time.Second), 10) + "s"
+	}
 }
 
 // interval accepts seconds (a number) or a Go duration ("15m").

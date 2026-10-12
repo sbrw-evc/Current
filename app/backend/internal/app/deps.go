@@ -90,7 +90,24 @@ const (
 	ReloadSampling    = "sampling"
 	ReloadGeoIP       = "geoip"    // settings key geoip: {databases}
 	ReloadUmbrella    = "umbrella" // settings key umbrella: {enabled, ingest_url, token_ref}
+	ReloadDetector    = "detector" // detection rules (table detector_rules)
 )
+
+// DetectorService is the traffic detector (internal/detector) as seen by the
+// API: rule validation, the default rule set, the live status and the
+// Umbrella test event.
+type DetectorService interface {
+	// DefaultRules returns the built-in rules, used while none were saved.
+	DefaultRules() []json.RawMessage
+	// ValidateRule checks one rule (detector.Rule as JSON) and returns its id;
+	// errors should be 400s.
+	ValidateRule(rule json.RawMessage) (id string, err error)
+	// Status → the rules with their last evaluation, active alerts and the
+	// Umbrella outbox (GET /api/detector/status).
+	Status(ctx context.Context) (any, error)
+	// SendTest posts a test event to an Umbrella ingest URL with the token.
+	SendTest(ctx context.Context, url, token string) (any, error)
+}
 
 // Reloader is told when configuration it depends on has changed in
 // PostgreSQL (the enricher re-reads classifiers, sampling overrides, the
@@ -124,6 +141,7 @@ type Deps struct {
 	Widgets     Widgets
 	Inventory   InventorySyncer
 	Classifiers ClassifierService
+	Detector    DetectorService
 	Reloaders   []Reloader
 	Components  map[string]StatusReporter
 

@@ -278,6 +278,12 @@ type Input struct {
 	Umbrella   *UmbrellaInput   `json:"umbrella"`
 	GeoIP      *GeoIPInput      `json:"geoip"`
 	Admin      *AdminInput      `json:"admin"`
+	// PasswordPolicy for local users (the console sends it here; the
+	// admin.password_policy field is also accepted).
+	PasswordPolicy *auth.PasswordPolicy `json:"password_policy,omitempty"`
+	// Retention of flows; the console sends it here, clickhouse.retention is
+	// also accepted (and wins).
+	Retention *config.Retention `json:"retention,omitempty"`
 }
 
 // General settings (settings key "general").
@@ -561,6 +567,9 @@ func (m *Module) complete(w http.ResponseWriter, r *http.Request) {
 	if !m.checkCode(w, r, in.SetupCode) {
 		return
 	}
+	if in.Retention != nil && in.ClickHouse != nil && in.ClickHouse.Retention == nil {
+		in.ClickHouse.Retention = in.Retention
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.finished {
@@ -750,6 +759,9 @@ func (m *Module) apply(ctx context.Context, in Input, remote string) (Result, er
 	policy := auth.DefaultPolicy
 	if attach {
 		_, _ = st.Setting(ctx, SettingPasswordPolicy, &policy)
+	}
+	if in.PasswordPolicy != nil {
+		policy = *in.PasswordPolicy
 	}
 	var admin *AdminInput
 	if in.Admin != nil && (in.Admin.Username != "" || in.Admin.Password != "") {

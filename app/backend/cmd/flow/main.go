@@ -32,6 +32,7 @@ import (
 	"github.com/sbrw-evc/network/app/backend/internal/app"
 	"github.com/sbrw-evc/network/app/backend/internal/auth"
 	"github.com/sbrw-evc/network/app/backend/internal/config"
+	"github.com/sbrw-evc/network/app/backend/internal/demoexporter"
 	"github.com/sbrw-evc/network/app/backend/internal/httpx"
 	"github.com/sbrw-evc/network/app/backend/internal/secrets"
 	"github.com/sbrw-evc/network/app/backend/internal/setup"
@@ -123,14 +124,16 @@ func main() {
 		webHandler = httpx.Web(webDir)
 	}
 
-	// ---- collector: needs no configuration, only the bus.
-	if role.Runs(config.RoleCollector) {
-		// TODO(coordinator): start the collector here:
-		//   bus := <in-process bus, or NATS JetStream when env.NATSURL != "">
-		//   col := collector.New(collector.Config{NetFlowAddr: env.NetFlowAddr, SFlowAddr: env.SFlowAddr}, bus /* flow.Sink */)
-		//   bg.Go(func() { col.Run(ctx) })
-		// Sampling overrides come from store.SamplingOverrides (re-read on app.ReloadSampling).
-		slog.Info("collector not wired yet", "netflow", env.NetFlowAddr, "sflow", env.SFlowAddr, "nats", env.NATSURL)
+	// ---- collector role: needs no configuration, only NATS (FLOW_NATS_URL).
+	// In role all the collector starts with the rest of the pipeline in launch,
+	// once flow.json tells which bus to use.
+	if role == config.RoleCollector {
+		pl, err := runCollectorOnly(ctx, env, func(string, app.StatusReporter) {})
+		if err != nil {
+			fail("collector", err)
+		}
+		bg.Go(func() { pl.Run(ctx) })
+		slog.Info("collector started", "netflow", env.NetFlowAddr, "sflow", env.SFlowAddr, "nats", env.NATSURL != "")
 	}
 
 	// launch starts everything that needs flow.json once it is available.
@@ -141,35 +144,27 @@ func main() {
 		}
 		bg.Go(func() { vault.Run(ctx) })
 
-		deps := app.Deps{Config: cfg, Store: st, Vault: vault}
+		deps := app.Deps{Config: cfg, Store: st, Vault: vault, Components: map[string]app.StatusReporter{}}
 		if chConn != nil {
 			deps.ClickHouse = chConn
 		}
 
-		if role.Runs(config.RoleEnricher) {
-			// TODO(coordinator): enricher: bus → enrich (Inventory DB dictionaries, GeoIP, classifiers) → ClickHouse writer.
-			//   en := enrich.New(st, chConn, ...); bg.Go(func() { en.Run(ctx) })
-			//   deps.Reloaders = append(deps.Reloaders, en)        // app.Reloader: classifiers, sampling, inventory
-			//   deps.Components["enricher"] = en                     // app.StatusReporter
-			// The ClickHouse schema (flows + 1m/5m/1h aggregates) is created by the storage package here.
-		}
-		if role.Runs(config.RoleDetector) {
-			// TODO(coordinator): detector (stage 4): rules, baselines, DDoS → Umbrella ingest.
+		// Pipeline: collector (role all) → bus → enricher (Inventory DB, GeoIP,
+		// classifiers, applications) → ClickHouse writer; detector → Umbrella.
+		parts, err := startPipeline(ctx, role, env, cfg, vault, st, chConn, &deps, func(f func()) { bg.Go(f) })
+		if err != nil {
+			fail("pipeline", err)
 		}
 		if !serveAPI {
+			slog.Info("flow ready", "role", role, "clickhouse", cfg.ClickHouse.Addr)
 			return
 		}
-		// TODO(coordinator): API dependencies from the traffic packages:
-		//   deps.Visualizer  = query.New(chConn)     // app.Visualizer
-		//   deps.Filter      = filter service        // app.FilterService
-		//   deps.Flows       = query ...             // app.FlowSearcher
-		//   deps.Exporters   = query ...             // app.ExporterLister
-		//   deps.Widgets     = query ...             // app.Widgets
-		//   deps.Inventory   = inventory.New(...)    // app.InventorySyncer
-		//   deps.Classifiers = classifier.New(...)   // app.ClassifierService
+		apiDeps(cfg, st, chConn, parts, &deps)
 		a := app.New(app.Options{Version: version, Commit: commit, BuiltAt: builtAt, Role: string(role),
 			SecureCookies: env.SecureCookies, TrustedProxies: env.TrustedProxies, Web: webHandler,
-			ScheduleInventory: deps.Inventory != nil}, deps)
+			// Inventory DB synchronization is scheduled by the enricher /
+			// detector processes (wiring.Inventory), not by the API.
+			ScheduleInventory: false}, deps)
 		bg.Go(func() { a.Run(ctx) })
 		handler.Set(a.Handler())
 		slog.Info("flow ready", "role", role, "postgres", "ok", "clickhouse", cfg.ClickHouse.Addr, "openbao", cfg.OpenBao.Addr)
@@ -240,12 +235,11 @@ func demo(args []string) int {
 	_ = fs.Parse(args)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	// TODO(coordinator): wire the demo exporter:
-	//   if err := demoexporter.Run(ctx, demoexporter.DefaultConfig(*target)); err != nil { slog.Error("demo", "err", err); return 1 }
-	//   return 0
-	_ = ctx
-	slog.Error("the demo exporter is not wired into this build yet", "target", *target)
-	return 1
+	if err := demoexporter.Run(ctx, demoexporter.DefaultConfig(*target)); err != nil {
+		slog.Error("demo exporter", "err", err)
+		return 1
+	}
+	return 0
 }
 
 // serviceMux serves /healthz and /metrics for roles without the API.

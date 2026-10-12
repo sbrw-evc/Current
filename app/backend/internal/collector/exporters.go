@@ -5,6 +5,7 @@ import (
 	"net/netip"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/netsampler/goflow2/v2/decoders/netflow"
@@ -57,7 +58,7 @@ const anySampler = ^uint64(0)
 type exporter struct {
 	addr     netip.Addr
 	label    string
-	override uint64 // forced sampling rate, 0 if none
+	override atomic.Uint64 // forced sampling rate, 0 if none (changed by SetSamplingOverrides)
 
 	templates netflow.NetFlowTemplateSystem // per exporter; keyed inside by version + domain
 
@@ -97,15 +98,26 @@ func (r *registry) get(addr netip.Addr) *exporter {
 		e = &exporter{
 			addr:      addr,
 			label:     addr.String(),
-			override:  r.cfg.overrideFor(addr),
 			templates: netflow.CreateTemplateSystem(),
 			counters:  make(map[string]*exporterCounters),
 			samplers:  make(map[samplerKey]uint64),
 			ratesSeen: make(map[uint64]struct{}),
 		}
+		e.override.Store(r.cfg.overrideFor(addr))
 		r.exporters[addr] = e
 	}
 	return e
+}
+
+// setOverrides replaces the sampling overrides (sorted longest prefix first)
+// and re-applies them to the known exporters.
+func (r *registry) setOverrides(ov []SamplingOverride) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.cfg.SamplingOverrides = ov
+	for a, e := range r.exporters {
+		e.override.Store(r.cfg.overrideFor(a))
+	}
 }
 
 func (r *registry) count() int {
@@ -158,8 +170,8 @@ func (e *exporter) account(m *metrics, typ string, now time.Time, flows int, fai
 // effectiveRate applies override > reported > default, and remembers it.
 func (e *exporter) effectiveRate(reported, def uint64) uint64 {
 	rate := reported
-	if e.override != 0 {
-		rate = e.override
+	if o := e.override.Load(); o != 0 {
+		rate = o
 	}
 	if rate == 0 {
 		rate = def

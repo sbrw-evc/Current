@@ -135,6 +135,14 @@ func (c *Collector) NetFlowAddr() net.Addr { return c.nfAddr }
 // SFlowAddr returns the bound sFlow address, nil if disabled.
 func (c *Collector) SFlowAddr() net.Addr { return c.sfAddr }
 
+// SetSamplingOverrides replaces the sampling rate overrides at run time
+// (longest prefix wins). Flows decoded afterwards use the new rates. Safe for
+// concurrent use.
+func (c *Collector) SetSamplingOverrides(ov []SamplingOverride) {
+	ov = Config{SamplingOverrides: ov}.withDefaults().SamplingOverrides
+	c.reg.setOverrides(ov)
+}
+
 // IfNames returns the interface names learned from the exporters.
 func (c *Collector) IfNames() IfNameSource { return c.ifc }
 

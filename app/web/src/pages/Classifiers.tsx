@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDown, ArrowUp, FlaskConical, Plus, Trash2 } from 'lucide-react'
 import { get, post, put } from '../api/client'
@@ -7,7 +7,7 @@ import { errorText, useT, type Dict } from '../i18n'
 import { Page } from '../shell/Page'
 import { useSession } from '../shell/session'
 import { notify } from '../ui/notify'
-import { Banner, Button, Card, Loading, Segmented } from '../ui/ui'
+import { Banner, Button, Card, Loading, Rows, Segmented } from '../ui/ui'
 
 const strings: Dict = {
   en: {
@@ -29,6 +29,9 @@ const strings: Dict = {
     'cls.run': 'Run',
     'cls.result': 'Result',
     'cls.matched': 'Rules applied: {list}',
+    'cls.nomatch': 'No rule matched',
+    'cls.invalid': 'The rules do not compile',
+    'cls.rule': 'rule {n}',
     'cls.badjson': 'The sample is not valid JSON.',
     'cls.readonly': 'Read only: your role can view the rules but not change them.',
     'cls.help': 'Functions: ClassifyRole, ClassifySite, ClassifyGroup, ClassifyRegion, ClassifyTenant (exporters); ClassifyExternal, ClassifyInternal, ClassifyConnectivity, ClassifyProvider, ClassifyName, ClassifyDescription (interfaces).',
@@ -52,10 +55,21 @@ const strings: Dict = {
     'cls.run': 'Выполнить',
     'cls.result': 'Результат',
     'cls.matched': 'Сработали правила: {list}',
+    'cls.nomatch': 'Ни одно правило не сработало',
+    'cls.invalid': 'Правила не компилируются',
+    'cls.rule': 'правило {n}',
     'cls.badjson': 'Пример — некорректный JSON.',
     'cls.readonly': 'Только просмотр: ваша роль не позволяет менять правила.',
     'cls.help': 'Функции: ClassifyRole, ClassifySite, ClassifyGroup, ClassifyRegion, ClassifyTenant (экспортёры); ClassifyExternal, ClassifyInternal, ClassifyConnectivity, ClassifyProvider, ClassifyName, ClassifyDescription (интерфейсы).',
   },
+}
+
+type PreviewResult = {
+  valid: boolean
+  errors: { kind: string; index: number; line: number; column: number; offset: number; message: string }[] | null
+  steps: { index: number; output?: Record<string, string>; error?: string }[] | null
+  exporter?: Record<string, unknown>
+  interface?: Record<string, unknown>
 }
 
 const SAMPLES: Record<ClassifierKind, string> = {
@@ -170,7 +184,7 @@ function Preview({ kind, rules }: { kind: ClassifierKind; rules: string[] }) {
   const t = useT(strings)
   const [sample, setSample] = useState(SAMPLES[kind])
   const [bad, setBad] = useState(false)
-  const run = useMutation({ mutationFn: (s: unknown) => post<Record<string, unknown>>('/api/classifiers/preview', { kind, rules: rules.filter((r) => r.trim()), sample: s }) })
+  const run = useMutation({ mutationFn: (s: unknown) => post<PreviewResult>('/api/classifiers/preview', { kind, rules: rules.filter((r) => r.trim()), sample: s }) })
   const go = () => {
     try {
       const s = JSON.parse(sample)
@@ -181,8 +195,15 @@ function Preview({ kind, rules }: { kind: ClassifierKind; rules: string[] }) {
     }
   }
   const res = run.data
-  const matched = Array.isArray(res?.matched) ? (res.matched as number[]) : null
-  const result = res && typeof res.result === 'object' ? res.result : res
+  // POST /api/classifiers/preview → {valid, errors: [{index, line, column, message}],
+  // steps: [{index, output, error}], exporter | interface: the classified object}.
+  const errors = res?.errors ?? []
+  const matched = (res?.steps ?? []).filter((st) => st.output && Object.keys(st.output).length > 0).map((st) => st.index + 1)
+  const stepErrors = (res?.steps ?? []).filter((st) => st.error)
+  const result = (kind === 'exporter' ? res?.exporter : res?.interface) ?? {}
+  const rows = Object.entries(result)
+    .filter(([, v]) => v !== '' && v !== 0 && v !== null && !(Array.isArray(v) && v.length === 0))
+    .map(([k, v]) => [k, <code key={k}>{Array.isArray(v) ? v.join(', ') : String(v)}</code>] as [string, ReactNode])
   return (
     <Card title={t('cls.preview')} className="side-card">
       <p className="muted">{t('cls.preview.text')}</p>
@@ -198,12 +219,21 @@ function Preview({ kind, rules }: { kind: ClassifierKind; rules: string[] }) {
         </Button>
       </div>
       {run.error && <Banner kind="error" title={errorText(t, run.error).message}>{errorText(t, run.error).detail}</Banner>}
-      {res && res.ok === false && <Banner kind="error" title={String(res.error ?? '')} />}
-      {res && res.ok !== false && (
+      {res && !res.valid && (
+        <Banner kind="error" title={t('cls.invalid')}>
+          {errors.map((e) => (
+            <div key={`${e.index}:${e.offset}`}>{t('cls.rule', { n: e.index + 1 })}, {e.line}:{e.column}: {e.message}</div>
+          ))}
+        </Banner>
+      )}
+      {res && res.valid && (
         <div className="stack preview-result">
           <span className="opt-label">{t('cls.result')}</span>
-          {matched && <p className="hint">{t('cls.matched', { list: matched.join(', ') })}</p>}
-          <pre className="code-block">{JSON.stringify(result, null, 2)}</pre>
+          <p className="hint">{matched.length > 0 ? t('cls.matched', { list: matched.join(', ') }) : t('cls.nomatch')}</p>
+          {stepErrors.map((st) => (
+            <p key={st.index} className="filter-status bad">{t('cls.rule', { n: st.index + 1 })}: {st.error}</p>
+          ))}
+          {rows.length > 0 ? <Rows rows={rows} /> : <p className="muted">—</p>}
         </div>
       )}
     </Card>

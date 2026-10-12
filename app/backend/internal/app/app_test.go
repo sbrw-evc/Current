@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/sbrw-evc/network/app/backend/internal/auth"
 	"github.com/sbrw-evc/network/app/backend/internal/httpx"
 	"github.com/sbrw-evc/network/app/backend/internal/secrets/secretstest"
+	"github.com/sbrw-evc/network/app/backend/internal/setup"
 	"github.com/sbrw-evc/network/app/backend/internal/store"
 	"github.com/sbrw-evc/network/app/backend/internal/store/storetest"
 )
@@ -29,6 +31,32 @@ func (fakeVisualizer) Visualize(_ context.Context, req json.RawMessage) (any, er
 		return nil, httpx.BadRequest("invalid_limit", "limit must be 1-50")
 	}
 	return map[string]any{"rows": [][]string{{"Total"}}}, nil
+}
+
+// fakeDetector accepts rules with an id and kind; SendTest posts like the setup check.
+type fakeDetector struct{}
+
+func (fakeDetector) DefaultRules() []json.RawMessage {
+	return []json.RawMessage{json.RawMessage(`{"id":"link-utilization","kind":"link_utilization","enabled":true}`)}
+}
+
+func (fakeDetector) ValidateRule(raw json.RawMessage) (string, error) {
+	var r struct{ ID, Kind string }
+	if err := json.Unmarshal(raw, &r); err != nil || r.ID == "" || r.Kind == "" {
+		return r.ID, errors.New("id and kind are required")
+	}
+	return r.ID, nil
+}
+
+func (fakeDetector) Status(context.Context) (any, error) {
+	return map[string]any{"rules": []any{}, "alerts": []any{}, "queued": 0}, nil
+}
+
+func (fakeDetector) SendTest(ctx context.Context, url, token string) (any, error) {
+	if c := setup.CheckUmbrella(ctx, url, token); !c.OK {
+		return nil, errors.New(c.Error)
+	}
+	return map[string]any{"id": "test"}, nil
 }
 
 type fakeClassifiers struct{}
@@ -88,7 +116,7 @@ func newEnv(t *testing.T) *env {
 	viewer := mk("viewer", "viewer-password", viewerRole.ID)
 	rel := &reloads{}
 	a := New(Options{Version: "test"}, Deps{Store: st, Vault: vault, Visualizer: fakeVisualizer{}, Classifiers: fakeClassifiers{},
-		Reloaders: []Reloader{rel}})
+		Detector: fakeDetector{}, Reloaders: []Reloader{rel}})
 	srv := httptest.NewServer(a.Handler())
 	t.Cleanup(srv.Close)
 	return &env{t: t, srv: srv, st: st, fake: fake, rel: rel, admin: admin, view: viewer}
@@ -276,7 +304,7 @@ func TestSettings(t *testing.T) {
 
 	// Inventory DB: the token goes to OpenBao
 	code, out := admin.do("PUT", "/api/inventory-db", map[string]any{"enabled": true, "url": "https://inventory.example/", "token": "xc-123", "interval": "10m"})
-	if code != 200 || out["token_set"] != true || out["interval"] != float64(600) || out["url"] != "https://inventory.example" {
+	if code != 200 || out["token_set"] != true || out["interval"] != "10m" || out["url"] != "https://inventory.example" {
 		t.Fatal(code, out)
 	}
 	if e.fake.Get("flow/inventory-db")["token"] != "xc-123" {
@@ -460,10 +488,15 @@ func TestGeneralUmbrellaOpenBao(t *testing.T) {
 	if code, out := admin.do("POST", "/api/settings/umbrella/test", map[string]any{"enabled": true, "ingest_url": url}); code != 200 || out["ok"] != true {
 		t.Fatal(code, out)
 	}
-	if code, out := admin.do("GET", "/api/settings/openbao", nil); code != 200 || out["token_ok"] != true {
+	if code, out := admin.do("GET", "/api/settings/openbao", nil); code != 200 || out["mount"] != "flow" ||
+		out["status"].(map[string]any)["ok"] != true || out["status"].(map[string]any)["token_ok"] != true {
 		t.Fatal(code, out)
 	}
 	if code, out := admin.do("POST", "/api/settings/openbao/test", nil); code != 200 || out["ok"] != true {
+		t.Fatal(code, out)
+	}
+	// the console posts {} for "check the current connection"
+	if code, out := admin.do("POST", "/api/settings/openbao/test", map[string]any{}); code != 200 || out["ok"] != true {
 		t.Fatal(code, out)
 	}
 	viewer := e.client()
@@ -487,3 +520,39 @@ func TestGeneralUmbrellaOpenBao(t *testing.T) {
 }
 
 func toJSON(v any) string { b, _ := json.Marshal(v); return string(b) }
+
+func TestDetectorRules(t *testing.T) {
+	e := newEnv(t)
+	admin := e.client()
+	admin.login("admin", "admin-password")
+	code, out := admin.do("GET", "/api/detector/rules", nil)
+	if code != 200 || out["default"] != true || len(out["rules"].([]any)) != 1 {
+		t.Fatal(code, out)
+	}
+	rules := []map[string]any{{"id": "a", "kind": "custom"}, {"id": "b", "kind": "exporter_silent"}}
+	code, out = admin.do("PUT", "/api/detector/rules", map[string]any{"rules": rules})
+	if code != 200 || out["default"] != false || len(out["rules"].([]any)) != 2 || out["rules"].([]any)[1].(map[string]any)["id"] != "b" {
+		t.Fatal(code, out)
+	}
+	if !slices.Contains(*e.rel, ReloadDetector) {
+		t.Fatalf("reloads %v", *e.rel)
+	}
+	if code, out := admin.do("PUT", "/api/detector/rules", map[string]any{"rules": []map[string]any{{"id": "a", "kind": "x"}, {"id": "a", "kind": "x"}}}); code != 400 || out["error"] != "duplicate_rule" {
+		t.Fatal(code, out)
+	}
+	if code, out := admin.do("PUT", "/api/detector/rules", map[string]any{"rules": []map[string]any{{"kind": "x"}}}); code != 400 || out["error"] != "invalid_rule" {
+		t.Fatal(code, out)
+	}
+	// an empty set stays empty (not the defaults)
+	if code, out := admin.do("PUT", "/api/detector/rules", map[string]any{"rules": []any{}}); code != 200 || out["default"] != false || len(out["rules"].([]any)) != 0 {
+		t.Fatal(code, out)
+	}
+	if code, _ := admin.do("GET", "/api/detector/status", nil); code != 200 {
+		t.Fatal(code)
+	}
+	viewer := e.client()
+	viewer.login("viewer", "viewer-password")
+	if code, _ := viewer.do("GET", "/api/detector/rules", nil); code != 403 {
+		t.Fatal(code)
+	}
+}

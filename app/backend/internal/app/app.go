@@ -156,6 +156,11 @@ func (a *App) Handler() http.Handler {
 	h("GET /api/widgets/graph", a.guard(perms(access.VisualizeView), a.widgetGraph))
 	h("GET /api/widgets/last-flow", a.guard(perms(access.VisualizeView), a.widgetLastFlow))
 
+	// detector
+	h("GET /api/detector/rules", a.guard(perms(access.DetectorView), a.getDetectorRules))
+	h("PUT /api/detector/rules", a.guard(perms(access.DetectorEdit), a.putDetectorRules))
+	h("GET /api/detector/status", a.guard(perms(access.DetectorView), a.detectorStatus))
+
 	// saved views
 	h("GET /api/saved-views", a.guard(perms(access.VisualizeView), a.listViews))
 	h("POST /api/saved-views", a.guard(perms(access.VisualizeView), a.createView))

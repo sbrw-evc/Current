@@ -172,6 +172,19 @@ func TestPolicy(t *testing.T) {
 	if err := DefaultPolicy.Validate("long-enough-pass", "x"); err != nil {
 		t.Fatal(err)
 	}
+	web := PasswordPolicy{MinLength: 12, Letters: true, Digits: true, NotUsername: true}
+	if err := web.Validate("onlylettersherehere", "admin"); err == nil {
+		t.Error("digits not required")
+	}
+	if err := web.Validate("my-admin-password-1", "admin"); err == nil {
+		t.Error("user name accepted inside the password")
+	}
+	if err := web.Validate("correct-horse-battery-9", "admin"); err != nil {
+		t.Error(err)
+	}
+	if err := (PasswordPolicy{MinLength: 12, Symbols: true}).Validate("abcdefghijkl", ""); err == nil {
+		t.Error("symbols not required")
+	}
 	if err := (PasswordPolicy{MinLength: 8, RequireClasses: 3}).Validate("alllowercase", "x"); err == nil {
 		t.Fatal("classes")
 	}

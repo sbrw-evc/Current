@@ -43,6 +43,8 @@ const (
 	FlowsView              = "flows:view"
 	ExportersView          = "exporters:view"
 	ExportersEdit          = "exporters:edit"
+	DetectorView           = "detector:view"
+	DetectorEdit           = "detector:edit"
 	InventoryView          = "settings.inventory:view"
 	InventoryEdit          = "settings.inventory:edit"
 	InventorySync          = "settings.inventory:sync"
@@ -85,6 +87,10 @@ var pages = []Page{
 	{"exporters", GroupTraffic, Text{"Exporters", "Экспортёры"}, []Feature{
 		view,
 		{"edit", Text{"Change sampling rate overrides", "Изменение переопределений частоты сэмплирования"}},
+	}},
+	{"detector", GroupTraffic, Text{"Detector", "Детектор"}, []Feature{
+		{View, Text{"See detection rules, active alerts and the Umbrella outbox", "Правила обнаружения, активные оповещения и очередь в Umbrella"}},
+		{"edit", Text{"Change detection rules", "Изменение правил обнаружения"}},
 	}},
 	{"users", GroupOrg, Text{"Users", "Пользователи"}, []Feature{
 		view,

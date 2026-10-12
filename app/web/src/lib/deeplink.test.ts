@@ -20,4 +20,9 @@ describe('incident deep link', () => {
   it('ignores an invalid IP', () => {
     expect(incidentState(new URLSearchParams('ip=1;DROP'), now).filter).toBe('')
   })
+  it('filters by the Inventory DB ref when there is no address', () => {
+    const s = incidentState(new URLSearchParams('ci=edge-01&ref=inventory-db:dcim.device:100&from=2026-10-12T09:30:00Z&to=2026-10-12T10:30:00Z'), now)
+    expect(s.filter).toBe("SrcCI = 'inventory-db:dcim.device:100' OR DstCI = 'inventory-db:dcim.device:100'")
+    expect(s.range).toEqual({ start: '2026-10-12T09:15:00Z', end: '2026-10-12T10:45:00Z' })
+  })
 })

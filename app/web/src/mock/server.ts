@@ -463,18 +463,20 @@ export async function handle(method: string, path: string, body: unknown): Promi
     return ok(state.classifiers)
   }
   if (p === '/api/classifiers/preview') {
+    // Same shape as the server (internal/classifier.PreviewResult).
     const b = body as { kind: string; rules: string[]; sample: Record<string, unknown> }
     const bad = b.rules.findIndex((r) => (r.match(/\(/g)?.length ?? 0) !== (r.match(/\)/g)?.length ?? 0))
-    if (bad >= 0) return ok({ ok: false, error: `rule ${bad + 1}: syntax error: missing ')'` })
-    const name = String((b.sample as { name?: string; description?: string }).name ?? '')
+    if (bad >= 0) return ok({ valid: false, errors: [{ kind: b.kind, index: bad, line: 1, column: b.rules[bad].length, offset: b.rules[bad].length, message: "Syntax error: missing ')'" }], steps: null })
+    const name = String((b.sample as { name?: string }).name ?? '')
     const desc = String((b.sample as { description?: string }).description ?? '')
-    if (b.kind === 'exporter') return ok({ ok: true, matched: [1, 2, 3].slice(0, name.startsWith('edge-') ? 3 : 1), result: { role: name.startsWith('edge-') ? 'border' : '', site: name.includes('-msk-') ? 'MSK-DC1' : '', group: 'default' } })
+    if (b.kind === 'exporter') {
+      const out = { role: name.startsWith('edge-') ? 'border' : '', site: name.includes('-msk-') ? 'MSK-DC1' : '', group: 'default' }
+      return ok({ valid: true, errors: null, steps: b.rules.map((_, i) => ({ index: i, output: i === 0 ? out : {} })), exporter: { ...b.sample, ...out } })
+    }
     const transit = desc.startsWith('Transit:')
-    return ok({
-      ok: true,
-      matched: [transit ? 1 : desc.startsWith('IX:') ? 2 : 3],
-      result: { boundary: transit || desc.startsWith('IX:') ? 'external' : 'internal', connectivity: transit ? 'transit' : desc.startsWith('IX:') ? 'ix' : '', provider: transit ? desc.split(':')[1]?.trim().split(' ')[0] ?? '' : '' },
-    })
+    const out = { boundary: transit || desc.startsWith('IX:') ? 'external' : 'internal', connectivity: transit ? 'transit' : desc.startsWith('IX:') ? 'ix' : '', provider: transit ? desc.split(':')[1]?.trim().split(' ')[0] ?? '' : '' }
+    const { exporter: _e, ...itf } = b.sample
+    return ok({ valid: true, errors: null, steps: b.rules.map((_, i) => ({ index: i, output: i === 0 ? out : {} })), interface: { ...itf, ...out } })
   }
   return fail(404, 'not_found', `${method} ${p}`)
 }

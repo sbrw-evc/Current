@@ -8,7 +8,7 @@ import (
 func TestCatalog(t *testing.T) {
 	want := []string{VisualizeView, FlowsView, ExportersView, ExportersEdit, InventoryView, InventoryEdit, InventorySync,
 		ClassifiersView, ClassifiersEdit, UsersView, UsersEdit, RolesView, RolesEdit, StatusView,
-		GeneralView, GeneralEdit, UmbrellaView, UmbrellaEdit, OpenBaoView, OpenBaoTest}
+		GeneralView, GeneralEdit, UmbrellaView, UmbrellaEdit, OpenBaoView, OpenBaoTest, DetectorView, DetectorEdit}
 	for _, p := range want {
 		if !Valid(p) {
 			t.Errorf("%s missing", p)
