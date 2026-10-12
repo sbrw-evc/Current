@@ -1,6 +1,7 @@
 # Network — Umbrella Flow
 
-Анализ сетевого трафика (NetFlow / IPFIX / sFlow) с возможностями Akvorado и ElastiFlow, интегрированный с
-[Umbrella Monitoring](https://github.com/sbrw-evc/Umbrella-Monitoring) и [Inventory DB](https://github.com/sbrw-evc/Inventory-DB).
+Network traffic analysis (NetFlow / IPFIX / sFlow) with the capabilities of Akvorado and ElastiFlow, integrated with
+[Umbrella Monitoring](https://github.com/sbrw-evc/Umbrella-Monitoring) and [Inventory DB](https://github.com/sbrw-evc/Inventory-DB).
 
-План и предлагаемый стек (черновик, на согласовании): [docs/plan.md](docs/plan.md).
+- Plan and stack: [docs/plan.md](docs/plan.md)
+- REST API contract: [docs/api.md](docs/api.md)
