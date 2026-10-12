@@ -30,7 +30,7 @@ func (c *Client) Verify(ctx context.Context) Check {
 		rep.WriteError = err.Error()
 		rep.Error = "cannot write secrets: " + err.Error()
 		if errors.Is(err, ErrNotFound) {
-			rep.Error = "the mount " + c.cfg.Mount + " does not exist or is not a KV version 2 secrets engine"
+			rep.Error = "the mount " + c.conf().Mount + " does not exist or is not a KV version 2 secrets engine"
 		}
 		return rep
 	}

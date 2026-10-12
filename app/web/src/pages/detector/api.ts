@@ -1,0 +1,25 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { get, put } from '../../api/client'
+import type { DetectorStatus, Rule, RulesView } from './model'
+
+// The detector API (docs/api.md "Detector").
+
+export const useRules = () => useQuery({ queryKey: ['detector', 'rules'], queryFn: ({ signal }) => get<RulesView>('/api/detector/rules', signal) })
+
+export const useDefaultRules = (enabled = true) =>
+  useQuery({ queryKey: ['detector', 'defaults'], queryFn: ({ signal }) => get<RulesView>('/api/detector/rules/defaults', signal), staleTime: Infinity, enabled })
+
+export const useDetectorStatus = (refetch = 10e3) =>
+  useQuery({ queryKey: ['detector', 'status'], queryFn: ({ signal }) => get<DetectorStatus>('/api/detector/status', signal), refetchInterval: refetch })
+
+// useSaveRules PUTs the whole list (the server checks every rule) and refreshes the caches.
+export function useSaveRules() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (rules: Rule[]) => put<RulesView>('/api/detector/rules', { rules }),
+    onSuccess: (v) => {
+      qc.setQueryData(['detector', 'rules'], v)
+      void qc.invalidateQueries({ queryKey: ['detector', 'status'] })
+    },
+  })
+}

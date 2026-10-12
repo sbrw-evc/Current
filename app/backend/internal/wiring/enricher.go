@@ -17,6 +17,7 @@ import (
 	"github.com/sbrw-evc/network/app/backend/internal/classifier"
 	"github.com/sbrw-evc/network/app/backend/internal/enrich"
 	"github.com/sbrw-evc/network/app/backend/internal/flow"
+	"github.com/sbrw-evc/network/app/backend/internal/flowlogs"
 	"github.com/sbrw-evc/network/app/backend/internal/geoip"
 	"github.com/sbrw-evc/network/app/backend/internal/setup"
 	"github.com/sbrw-evc/network/app/backend/internal/store"
@@ -92,8 +93,12 @@ type EnricherConfig struct {
 	Store     *store.Store
 	Inventory enrich.InventorySource // nil: no Inventory DB
 	IfNames   enrich.IfNameSource    // nil when the collector runs in another process
+	PTR       enrich.PTRSource       // reverse DNS (wiring.RDNS); nil: none
+	Threats   enrich.ThreatSource    // threat lists (wiring.Threat); nil: none
 	Metrics   prometheus.Registerer
 	Log       *slog.Logger
+	// Routing adds SNMP interface names and BMP routes (bmp.go); nil = none.
+	Routing *Routing
 }
 
 // Enricher is the enrich.Enricher with its reloadable classifiers and GeoIP.
@@ -124,10 +129,19 @@ func NewEnricher(next flow.Sink, cfg EnricherConfig) (*Enricher, error) {
 	if cfg.IfNames != nil {
 		ec.IfNames = cfg.IfNames
 	}
+	if cfg.PTR != nil {
+		ec.PTR = cfg.PTR
+	}
+	if cfg.Threats != nil {
+		ec.Threats = cfg.Threats
+	}
+	ec.ExporterNames = flowlogs.ExporterName // synthetic exporters of cloud flow logs
+	cfg.Routing.configure(&ec)
 	e, err := enrich.New(next, ec)
 	if err != nil {
 		return nil, err
 	}
+	cfg.Routing.attach(e)
 	en := &Enricher{E: e, Geo: g, st: cfg.Store, log: log.With("component", "enricher")}
 	en.in = NewMeter(e)
 	return en, nil

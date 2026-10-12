@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -144,6 +145,17 @@ type Deps struct {
 	Detector    DetectorService
 	Reloaders   []Reloader
 	Components  map[string]StatusReporter
+	// InventoryIntegration serves /api/integrations/inventory-db/* and
+	// "Create in Inventory DB" (inventory_integration.go).
+	InventoryIntegration InventoryIntegration
+	// Dependencies finds CI ↔ CI pairs for Umbrella proposals (query.Querier).
+	Dependencies DependencyFinder
+	// Routing is the SNMP poller / BMP receiver status of this process (routing.go).
+	Routing RoutingService
+
+	// FlowLogs serves POST /api/ingest/flowlogs/{provider} (cloud flow
+	// logs, token auth of its own); nil answers 501.
+	FlowLogs http.Handler
 
 	// Gatherer serves /metrics; nil = prometheus.DefaultGatherer.
 	Gatherer prometheus.Gatherer

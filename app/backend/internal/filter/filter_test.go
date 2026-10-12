@@ -465,6 +465,7 @@ func TestCompleteOperators(t *testing.T) {
 	sample := map[schema.Kind]string{
 		schema.KindString: "'x'", schema.KindIP: "10.0.0.1", schema.KindPrefix: "10.0.0.0/8",
 		schema.KindUint: "1", schema.KindTime: "'2024-01-01 00:00:00'",
+		schema.KindUintArray: "1", schema.KindStringArray: "'x'",
 	}
 	for _, c := range schema.Columns {
 		for _, op := range CompleteOperators(c.Name) {

@@ -41,7 +41,9 @@ type Config struct {
 	// DefaultSamplingRate is used when an exporter does not report a rate.
 	DefaultSamplingRate uint64
 	// SamplingOverrides force the sampling rate of exporters in a prefix
-	// (longest prefix wins), whatever they report.
+	// (longest prefix wins), whatever they report; an override naming an
+	// interface (IfIndex or IfName) applies to the flows of that interface
+	// only and wins over the exporter-wide ones.
 	SamplingOverrides []SamplingOverride
 
 	// BatchSize is the maximum number of flows handed to the sink at once.
@@ -56,9 +58,33 @@ type Config struct {
 }
 
 // SamplingOverride forces the sampling rate for exporters within Prefix.
+// With IfIndex (≠ 0) or IfName set it applies only to flows whose input
+// interface (else output interface) is that one; IfName is matched against
+// the interface names the collector learns from the exporter (option data,
+// sFlow counters), case-insensitively.
 type SamplingOverride struct {
-	Prefix netip.Prefix
-	Rate   uint64
+	Prefix  netip.Prefix
+	IfIndex uint32
+	IfName  string
+	Rate    uint64
+}
+
+// perInterface reports whether the override names an interface.
+func (o SamplingOverride) perInterface() bool { return o.IfIndex != 0 || o.IfName != "" }
+
+// String formats the override in the ParseSamplingOverrides syntax.
+func (o SamplingOverride) String() string {
+	s := o.Prefix.String()
+	if o.Prefix.IsSingleIP() {
+		s = o.Prefix.Addr().String()
+	}
+	switch {
+	case o.IfIndex != 0:
+		s += "@" + strconv.FormatUint(uint64(o.IfIndex), 10)
+	case o.IfName != "":
+		s += "@" + o.IfName
+	}
+	return s + "=" + strconv.FormatUint(o.Rate, 10)
 }
 
 // DefaultConfig returns a configuration listening on the standard ports.
@@ -101,15 +127,32 @@ func (c Config) withDefaults() Config {
 	return c
 }
 
-// ParseSamplingOverrides parses "CIDR=rate" pairs separated by commas or
-// spaces, e.g. "192.0.2.0/24=1000,2001:db8::/32=512". A bare address is
-// taken as a host prefix.
+// ParseSamplingOverrides parses "CIDR[@interface]=rate" items separated by
+// commas, semicolons or spaces, e.g.
+// "192.0.2.0/24=1000,2001:db8::/32=512,192.0.2.1@17=4000,192.0.2.1@Hu0/0/0/1=8000".
+// A bare address is taken as a host prefix; the interface is an ifIndex
+// (digits) or an interface name.
 func ParseSamplingOverrides(s string) ([]SamplingOverride, error) {
 	var out []SamplingOverride
-	for _, item := range strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == ' ' || r == ';' }) {
+	for _, item := range strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == ' ' || r == ';' || r == '\n' || r == '\t' }) {
 		k, v, ok := strings.Cut(item, "=")
 		if !ok {
-			return nil, fmt.Errorf("sampling override %q: want CIDR=rate", item)
+			return nil, fmt.Errorf("sampling override %q: want CIDR[@interface]=rate", item)
+		}
+		var o SamplingOverride
+		if a, itf, found := strings.Cut(k, "@"); found {
+			k = a
+			if itf == "" {
+				return nil, fmt.Errorf("sampling override %q: empty interface after @", item)
+			}
+			if n, err := strconv.ParseUint(itf, 10, 32); err == nil {
+				if n == 0 {
+					return nil, fmt.Errorf("sampling override %q: ifIndex 0", item)
+				}
+				o.IfIndex = uint32(n)
+			} else {
+				o.IfName = itf
+			}
 		}
 		var p netip.Prefix
 		var err error
@@ -127,17 +170,51 @@ func ParseSamplingOverrides(s string) ([]SamplingOverride, error) {
 		if err != nil || rate == 0 {
 			return nil, fmt.Errorf("sampling override %q: bad rate", item)
 		}
-		out = append(out, SamplingOverride{Prefix: p.Masked(), Rate: rate})
+		o.Prefix, o.Rate = p.Masked(), rate
+		out = append(out, o)
 	}
 	return out, nil
 }
 
-// overrideFor returns the forced sampling rate for an exporter, or 0.
+// overrideFor returns the forced exporter-wide sampling rate for an
+// exporter, or 0.
 func (c *Config) overrideFor(a netip.Addr) uint64 {
 	for _, o := range c.SamplingOverrides {
-		if o.Prefix.Contains(a) {
+		if !o.perInterface() && o.Prefix.Contains(a) {
 			return o.Rate
 		}
 	}
 	return 0
+}
+
+// ifOverrides are the per-interface rates of one exporter.
+type ifOverrides struct {
+	byIndex map[uint32]uint64
+	byName  map[string]uint64 // lower-case interface name
+}
+
+// ifOverridesFor collects the per-interface overrides that apply to an
+// exporter (nil when none). Overrides are sorted longest prefix first, so the
+// first one seen for an interface wins.
+func (c *Config) ifOverridesFor(a netip.Addr) *ifOverrides {
+	var out *ifOverrides
+	for _, o := range c.SamplingOverrides {
+		if !o.perInterface() || !o.Prefix.Contains(a) {
+			continue
+		}
+		if out == nil {
+			out = &ifOverrides{byIndex: map[uint32]uint64{}, byName: map[string]uint64{}}
+		}
+		if o.IfIndex != 0 {
+			if _, ok := out.byIndex[o.IfIndex]; !ok {
+				out.byIndex[o.IfIndex] = o.Rate
+			}
+		} else {
+			n := strings.ToLower(o.IfName)
+			if _, ok := out.byName[n]; !ok {
+				out.byName[n] = o.Rate
+			}
+		}
+	}
+	return out
 }

@@ -1,0 +1,10 @@
+apiVersion: v2
+name: umbrella-flow
+description: Umbrella Flow - network flow analytics (NetFlow / IPFIX / sFlow, BMP) for Umbrella Monitoring
+type: application
+version: 0.1.0
+appVersion: "latest"
+keywords: [netflow, ipfix, sflow, bmp, clickhouse, umbrella]
+home: https://github.com/sbrw-evc/network
+sources:
+  - https://github.com/sbrw-evc/network

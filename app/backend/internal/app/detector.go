@@ -41,6 +41,18 @@ func (a *App) getDetectorRules(w http.ResponseWriter, r *http.Request, p *Princi
 	httpx.JSON(w, http.StatusOK, out)
 }
 
+// getDetectorDefaults returns the built-in rule set (the console's "restore
+// defaults" for one rule or all of them).
+func (a *App) getDetectorDefaults(w http.ResponseWriter, r *http.Request, p *Principal) {
+	if a.deps.Detector == nil {
+		notImplemented(w, "detector")
+		return
+	}
+	out := detectorRulesView{Rules: []json.RawMessage{}, Default: true}
+	out.Rules = append(out.Rules, a.deps.Detector.DefaultRules()...)
+	httpx.JSON(w, http.StatusOK, out)
+}
+
 func (a *App) putDetectorRules(w http.ResponseWriter, r *http.Request, p *Principal) {
 	if a.deps.Detector == nil {
 		notImplemented(w, "detector")

@@ -66,6 +66,41 @@ const (
 	roleAdministratorDescr = "All permissions"
 )
 
+// Permissions of API tokens, integrations and visibility scopes.
+const (
+	OpenBaoMigrate = "settings.openbao:migrate"
+	TokensView     = "tokens:view"
+	TokensEdit     = "tokens:edit"
+	// IntegrationsInventoryRead: the Inventory DB integration calls
+	// /api/integrations/inventory-db/* with a token of this role.
+	IntegrationsInventoryRead = "integrations.inventory:read"
+	// ScopeUmbrella restricts every traffic query of the user to the
+	// visibility scope Umbrella gives for their login (a restriction, not a
+	// right: the Administrator role does not get it).
+	ScopeUmbrella = "scope:umbrella"
+	// Dependency discovery for Umbrella's CMDB (docs/integrations.md §3.3).
+	DependenciesView = "dependencies:view"
+	DependenciesRun  = "dependencies:run"
+)
+
+// Permissions of the SNMP poller and BMP receiver settings.
+const (
+	SNMPView = "settings.snmp:view"
+	SNMPEdit = "settings.snmp:edit"
+	BMPView  = "settings.bmp:view"
+	BMPEdit  = "settings.bmp:edit"
+)
+
+// Permissions of the enrichment extensions and cloud flow log ingestion.
+const (
+	RDNSView     = "settings.rdns:view"
+	RDNSEdit     = "settings.rdns:edit"
+	ThreatView   = "settings.threat:view"
+	ThreatEdit   = "settings.threat:edit"
+	FlowLogsView = "settings.flowlogs:view"
+	FlowLogsEdit = "settings.flowlogs:edit"
+)
+
 var (
 	view = Feature{View, Text{"View the page", "Просмотр страницы"}}
 	edit = Feature{"edit", Text{"Create, change and delete", "Создание, изменение и удаление"}}
@@ -117,6 +152,41 @@ var pages = []Page{
 	{"settings.openbao", GroupSettings, Text{"OpenBao", "OpenBao"}, []Feature{
 		view,
 		{"test", Text{"Check the connection", "Проверка подключения"}},
+		{"migrate", Text{"Move the secrets to another OpenBao", "Перенос секретов в другой OpenBao"}},
+	}},
+	{"tokens", GroupSettings, Text{"API tokens", "API-токены"}, []Feature{
+		view,
+		{"edit", Text{"Create service accounts, issue and revoke tokens", "Создание сервисных учётных записей, выпуск и отзыв токенов"}},
+	}},
+	{"integrations.inventory", GroupSettings, Text{"Inventory DB integration", "Интеграция с Inventory DB"}, []Feature{
+		{"read", Text{"Traffic of DCIM objects and prefixes for Inventory DB", "Трафик объектов DCIM и префиксов для Inventory DB"}},
+	}},
+	{"dependencies", GroupTraffic, Text{"Dependencies", "Зависимости"}, []Feature{
+		{View, Text{"See the CI dependencies discovered from traffic and the runs", "Зависимости КЕ, найденные по трафику, и запуски"}},
+		{"run", Text{"Run discovery and send the proposals to Umbrella", "Запуск поиска и отправка предложений в Umbrella"}},
+	}},
+	{"scope", GroupTraffic, Text{"Visibility scope", "Область видимости"}, []Feature{
+		{"umbrella", Text{"Restrict traffic to the CIs and services visible in Umbrella", "Ограничить трафик КЕ и сервисами, видимыми в Umbrella"}},
+	}},
+	{"settings.snmp", GroupSettings, Text{"SNMP", "SNMP"}, []Feature{
+		view,
+		{"edit", Text{"Change SNMP credentials and polled devices, poll a device", "Изменение учётных данных SNMP и опрашиваемых устройств, проверочный опрос"}},
+	}},
+	{"settings.bmp", GroupSettings, Text{"BMP routing", "Маршруты BMP"}, []Feature{
+		view,
+		{"edit", Text{"Change the BMP receiver settings", "Изменение настроек приёма BMP"}},
+	}},
+	{"settings.rdns", GroupSettings, Text{"Reverse DNS", "Обратный DNS"}, []Feature{
+		view,
+		{"edit", Text{"Change the reverse DNS resolution settings", "Изменение настроек обратного разрешения имён"}},
+	}},
+	{"settings.threat", GroupSettings, Text{"Threat intelligence", "Списки угроз"}, []Feature{
+		view,
+		{"edit", Text{"Change the threat lists and refresh them", "Изменение списков угроз и их обновление"}},
+	}},
+	{"settings.flowlogs", GroupSettings, Text{"Cloud flow logs", "Облачные журналы потоков"}, []Feature{
+		view,
+		{"edit", Text{"Enable AWS / Azure / GCP flow log ingestion and set the tokens", "Включение приёма журналов потоков AWS / Azure / GCP и токены"}},
 	}},
 	{"status", GroupSettings, Text{"System status", "Состояние системы"}, []Feature{
 		{View, Text{"See component status and the audit log", "Состояние компонентов и журнал аудита"}},
@@ -133,7 +203,7 @@ type BuiltinRole struct {
 // BuiltinRoles are Administrator (everything) and Viewer (traffic pages).
 func BuiltinRoles() []BuiltinRole {
 	return []BuiltinRole{
-		{RoleAdministrator, roleAdministratorDescr, All()},
+		{RoleAdministrator, roleAdministratorDescr, slices.DeleteFunc(All(), func(p string) bool { return p == ScopeUmbrella })},
 		{RoleViewer, "Traffic pages: visualize, flows, exporters", []string{VisualizeView, FlowsView, ExportersView}},
 	}
 }

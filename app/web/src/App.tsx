@@ -18,9 +18,19 @@ const SetupPage = lazy(() => import('./pages/Setup'))
 const VisualizePage = lazy(() => import('./pages/visualize/VisualizePage'))
 const FlowsPage = lazy(() => import('./pages/Flows'))
 const ExportersPage = lazy(() => import('./pages/Exporters'))
+const DetectorRulesPage = lazy(() => import('./pages/detector/RulesPage'))
+const DetectorRulePage = lazy(() => import('./pages/detector/RuleEditPage'))
+const DetectorStatusPage = lazy(() => import('./pages/detector/StatusPage'))
 const InventoryPage = lazy(() => import('./pages/InventoryDB'))
 const ClassifiersPage = lazy(() => import('./pages/Classifiers'))
 const OpenBaoPage = lazy(() => import('./pages/OpenBao'))
+const ApiTokensPage = lazy(() => import('./pages/settings/ApiTokens'))
+const EntraPage = lazy(() => import('./pages/settings/Entra'))
+const ThreatPage = lazy(() => import('./pages/settings/Threat'))
+const SnmpPage = lazy(() => import('./pages/settings/Snmp'))
+const BmpPage = lazy(() => import('./pages/settings/Bmp'))
+const UmbrellaSettingsPage = lazy(() => import('./pages/umbrella/UmbrellaSettings'))
+const DependenciesPage = lazy(() => import('./pages/umbrella/Dependencies'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -61,10 +71,21 @@ const router = createBrowserRouter([
       { path: 'visualize', element: <Guard perm="visualize:view">{lazyPage(<VisualizePage />)}</Guard> },
       { path: 'flows', element: <Guard perm="flows:view">{lazyPage(<FlowsPage />)}</Guard> },
       { path: 'exporters', element: <Guard perm="exporters:view">{lazyPage(<ExportersPage />)}</Guard> },
+      { path: 'detector', element: <Navigate to="/detector/status" replace /> },
+      { path: 'detector/rules', element: <Guard perm="detector:view">{lazyPage(<DetectorRulesPage />)}</Guard> },
+      { path: 'detector/rules/:id', element: <Guard perm="detector:view">{lazyPage(<DetectorRulePage />)}</Guard> },
+      { path: 'detector/status', element: <Guard perm="detector:view">{lazyPage(<DetectorStatusPage />)}</Guard> },
       { path: 'settings/inventory-db', element: <Guard perm="settings.inventory:view">{lazyPage(<InventoryPage />)}</Guard> },
       { path: 'settings/classifiers', element: <Guard perm="settings.classifiers:view">{lazyPage(<ClassifiersPage />)}</Guard> },
       { path: 'go/incident', element: <GoIncident /> },
       { path: 'settings/openbao', element: <Guard perm="settings.openbao:view">{lazyPage(<OpenBaoPage />)}</Guard> },
+      { path: 'settings/api-tokens', element: <Guard perm="tokens:view">{lazyPage(<ApiTokensPage />)}</Guard> },
+      { path: 'settings/entra', element: <Guard perm="users:view">{lazyPage(<EntraPage />)}</Guard> },
+      { path: 'settings/threat', element: <Guard perm="settings.threat:view">{lazyPage(<ThreatPage />)}</Guard> },
+      { path: 'settings/snmp', element: <Guard perm="settings.snmp:view">{lazyPage(<SnmpPage />)}</Guard> },
+      { path: 'settings/bmp', element: <Guard perm="settings.bmp:view">{lazyPage(<BmpPage />)}</Guard> },
+      { path: 'settings/umbrella', element: <Guard perm="settings.umbrella:view">{lazyPage(<UmbrellaSettingsPage />)}</Guard> },
+      { path: 'dependencies', element: <Guard perm="dependencies:view">{lazyPage(<DependenciesPage />)}</Guard> },
       { path: '*', element: <NotFound /> },
     ],
   },

@@ -12,6 +12,10 @@ const (
 	KindPrefix Kind = "prefix" // =, !=, IN
 	KindUint   Kind = "uint"   // =, !=, <, <=, >, >=, IN
 	KindTime   Kind = "time"
+	// Array columns: =, != (contains / does not contain an element), IN,
+	// NOTIN (contains any / none of the elements).
+	KindUintArray   Kind = "uint[]"
+	KindStringArray Kind = "string[]"
 )
 
 // Column describes one column of the flows table.
@@ -107,6 +111,18 @@ var Columns = []Column{
 
 	{Name: "Bytes", Type: "UInt64", Kind: KindUint, Metric: true},
 	{Name: "Packets", Type: "UInt64", Kind: KindUint, Metric: true},
+
+	// Reverse DNS (PTR) names of addresses without an Inventory DB host name.
+	{Name: "SrcHostPTR", Type: "LowCardinality(String)", Kind: KindString, Dimension: true, Reverse: "DstHostPTR"},
+	{Name: "DstHostPTR", Type: "LowCardinality(String)", Kind: KindString, Dimension: true, Reverse: "SrcHostPTR"},
+	// Threat intelligence: name of the blocklist containing the address ("" when none).
+	{Name: "SrcThreat", Type: "LowCardinality(String)", Kind: KindString, Dimension: true, Rollup: true, Reverse: "DstThreat"},
+	{Name: "DstThreat", Type: "LowCardinality(String)", Kind: KindString, Dimension: true, Rollup: true, Reverse: "SrcThreat"},
+	// BGP attributes of the route to DstAddr, from BMP (raw table only).
+	// Filters match an element: DstASPath = 15169, DstCommunities = 65000:100.
+	{Name: "DstASPath", Type: "Array(UInt32)", Kind: KindUintArray},
+	{Name: "DstCommunities", Type: "Array(UInt32)", Kind: KindUintArray},
+	{Name: "DstLargeCommunities", Type: "Array(String)", Kind: KindStringArray},
 }
 
 // ByName returns the column with the given name (case-sensitive).

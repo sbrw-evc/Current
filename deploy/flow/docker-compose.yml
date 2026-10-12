@@ -3,7 +3,8 @@
 #   docker compose up -d
 # Then open http://<host>:8080 and finish the setup wizard: the setup code is in
 #   docker compose logs flow | grep setup_code
-# Profiles: --profile demo (synthetic NetFlow / IPFIX / sFlow), --profile geoip (MaxMind updates).
+# Profiles: --profile demo (synthetic NetFlow / IPFIX / sFlow), --profile geoip (MaxMind updates),
+# --profile grafana (Grafana with the "CI traffic" dashboard, deploy/grafana).
 # Joining the shared network "umbrella": COMPOSE_FILE=docker-compose.yml:docker-compose.umbrella.yml in .env.
 name: umbrella-flow
 
@@ -60,6 +61,8 @@ services:
       - "${FLOW_HTTP_BIND:-0.0.0.0}:${FLOW_HTTP_PORT:-8080}:8080/tcp"
       - "${FLOW_NETFLOW_PORT:-2055}:2055/udp"
       - "${FLOW_SFLOW_PORT:-6343}:6343/udp"
+      # BMP (routers stream their BGP tables; enabled under Settings → BMP)
+      - "${FLOW_BMP_PORT:-10179}:10179/tcp"
     volumes:
       - flow-data:/data
       - openbao-approle:/run/openbao:ro
@@ -108,12 +111,15 @@ services:
       CLICKHOUSE_USER: flow
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?set CLICKHOUSE_PASSWORD in .env}
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+      # Read-only user "grafana" (clickhouse/users.d/grafana.xml).
+      CLICKHOUSE_GRAFANA_PASSWORD: ${CLICKHOUSE_GRAFANA_PASSWORD:?set CLICKHOUSE_GRAFANA_PASSWORD in .env}
       TZ: ${TZ:-UTC}
     volumes:
       - clickhouse-data:/var/lib/clickhouse
       - clickhouse-logs:/var/log/clickhouse-server
       - ./clickhouse/config.d/flow.xml:/etc/clickhouse-server/config.d/flow.xml:ro
       - ./clickhouse/users.d/flow.xml:/etc/clickhouse-server/users.d/flow.xml:ro
+      - ./clickhouse/users.d/grafana.xml:/etc/clickhouse-server/users.d/grafana.xml:ro
     ports:
       # HTTP for Grafana / clickhouse-client, only on this host unless CLICKHOUSE_BIND says otherwise.
       - "${CLICKHOUSE_BIND:-127.0.0.1}:${CLICKHOUSE_HTTP_PORT:-8123}:8123"
@@ -173,6 +179,7 @@ services:
       SEED_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       SEED_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
       SEED_NATS_TOKEN: ${NATS_TOKEN}
+      SEED_CLICKHOUSE_GRAFANA_PASSWORD: ${CLICKHOUSE_GRAFANA_PASSWORD}
     volumes:
       - ./openbao/init.sh:/config/init.sh:ro
       - ./openbao/flow-policy.hcl:/config/flow-policy.hcl:ro
@@ -213,7 +220,45 @@ services:
       - geoip:/usr/share/GeoIP
     logging: *logging
 
+  # --profile grafana: Grafana 13 with the ClickHouse datasource (read-only user
+  # "grafana") and the "CI traffic" dashboard Umbrella's incident links open.
+  grafana:
+    image: ${GRAFANA_IMAGE:-grafana/grafana:13.2.3}
+    profiles: [grafana]
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c", "[ -n \"$$GF_SECURITY_ADMIN_PASSWORD\" ] || { echo 'set GRAFANA_ADMIN_PASSWORD in .env'; exit 1; }; exec /run.sh"]
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-}
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
+      GF_PLUGINS_PREINSTALL: grafana-clickhouse-datasource
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_DATE_FORMATS_DEFAULT_TIMEZONE: ${TZ:-UTC}
+      FLOW_CLICKHOUSE_HOST: clickhouse
+      FLOW_CLICKHOUSE_USER: grafana
+      FLOW_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_GRAFANA_PASSWORD}
+    volumes:
+      - ../grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ../grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ../grafana/flow-ci-traffic.json:/var/lib/grafana/flow-dashboards/flow-ci-traffic.json:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_BIND:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health | grep -q '\"database\": *\"ok\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    logging: *logging
+
 volumes:
+  grafana-data:
   flow-data:
   postgres-data:
   clickhouse-data:

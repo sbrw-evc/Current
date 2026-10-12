@@ -84,6 +84,7 @@ bao write "auth/approle/role/$ROLE" token_policies="$ROLE" token_ttl=1h token_ma
 seed postgres password "${SEED_POSTGRES_PASSWORD:-}"
 seed clickhouse password "${SEED_CLICKHOUSE_PASSWORD:-}"
 seed nats token "${SEED_NATS_TOKEN:-}"
+seed grafana clickhouse_password "${SEED_CLICKHOUSE_GRAFANA_PASSWORD:-}"
 
 umask 022
 bao read -field=role_id "auth/approle/role/$ROLE/role-id" > "$APPROLE_DIR/role_id.tmp"

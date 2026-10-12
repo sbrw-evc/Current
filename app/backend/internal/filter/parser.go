@@ -272,13 +272,13 @@ func (p *parser) parseValueToken(col schema.Column, known bool) token {
 	what := "a value"
 	if known {
 		switch col.Kind {
-		case schema.KindUint:
+		case schema.KindUint, schema.KindUintArray:
 			what = "a number"
 		case schema.KindIP:
 			what = "an IP address"
 		case schema.KindPrefix:
 			what = "a prefix"
-		case schema.KindString, schema.KindTime:
+		case schema.KindString, schema.KindTime, schema.KindStringArray:
 			what = "a quoted string"
 		}
 	}

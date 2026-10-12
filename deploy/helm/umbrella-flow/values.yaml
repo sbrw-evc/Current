@@ -1,0 +1,215 @@
+# Umbrella Flow Helm chart. Secrets live only in OpenBao: this chart never
+# takes a password as a value. Database passwords are openbao:// references;
+# the only Kubernetes secrets are the OpenBao AppRole (or token) files Flow
+# signs in with, provided as an existing Secret.
+
+image:
+  repository: umbrella-flow
+  # Defaults to the chart appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Process layout. "all": one Deployment runs every role (collector, enricher,
+# detector, API) with the in-process bus or NATS. "split": one Deployment per
+# role; NATS JetStream is required between the collector and the enricher.
+roles:
+  mode: all
+  all:
+    replicas: 1
+    resources:
+      requests: {cpu: 500m, memory: 512Mi}
+      limits: {memory: 2Gi}
+  api:
+    replicas: 1
+    resources:
+      requests: {cpu: 100m, memory: 256Mi}
+      limits: {memory: 1Gi}
+  collector:
+    replicas: 1
+    resources:
+      requests: {cpu: 500m, memory: 256Mi}
+      limits: {memory: 1Gi}
+  # The BMP receiver and the SNMP poller run with the enricher. With BMP
+  # enabled keep one enricher replica (or one per router group): each
+  # replica only knows the routes of the BMP sessions it holds.
+  enricher:
+    replicas: 1
+    resources:
+      requests: {cpu: 500m, memory: 512Mi}
+      limits: {memory: 2Gi}
+  detector:
+    replicas: 1
+    resources:
+      requests: {cpu: 100m, memory: 128Mi}
+      limits: {memory: 512Mi}
+
+# Settings that prefill the setup wizard (FLOW_SETUP_DEFAULTS_*) and process
+# options (FLOW_*).
+config:
+  language: ru
+  timezone: UTC
+  # External URL of the console (links from Umbrella, Inventory DB).
+  publicURL: ""
+  # true behind an HTTPS ingress.
+  secureCookies: false
+  # Comma-separated addresses / CIDRs of proxies whose X-Forwarded-For is trusted.
+  trustedProxies: ""
+  startupWait: 2m
+  # Comma-separated MMDB paths (mount them with extraVolumes).
+  geoipDatabases: ""
+  inventoryURL: ""
+  umbrellaIngestURL: ""
+  # Fixed setup code from a Secret (key "token"); empty = random, printed in
+  # the log and kept in the data volume.
+  setupTokenSecret: ""
+  # flow.json written by the wizard (no secrets in it, only openbao://
+  # references). In split mode, setting it lets the collector, enricher and
+  # detector pods start without a ReadWriteMany volume: an init container
+  # copies it into their data directory. Copy it from the API pod after the
+  # wizard: kubectl exec deploy/<release>-umbrella-flow-api -- cat /data/flow.json
+  flowJson: ""
+  # Extra environment variables of every Flow container.
+  extraEnv: []
+
+# OpenBao (KV v2). Flow signs in with AppRole files mounted from a Secret.
+openbao:
+  # e.g. http://openbao.vault.svc:8200; ignored with dev.enabled.
+  addr: ""
+  mount: flow
+  # approle | token
+  auth: approle
+  # Secret with keys role_id and secret_id (approle) or token (token).
+  existingSecret: ""
+
+# External services (ignored with dev.enabled). Passwords are openbao://
+# references; put the values into OpenBao first, e.g.
+#   bao kv put -mount=flow postgres password=...
+postgres:
+  host: ""
+  port: 5432
+  database: flow
+  username: flow
+  sslmode: prefer
+  passwordRef: openbao://flow/postgres#password
+clickhouse:
+  # host:9000 (several separated by commas)
+  addr: ""
+  database: flow
+  username: flow
+  secure: false
+  passwordRef: openbao://flow/clickhouse#password
+nats:
+  # nats://nats:4222; required in split mode, optional in all mode
+  # (empty = in-process bus).
+  url: ""
+  tokenRef: openbao://flow/nats#token
+
+ports:
+  http: 8080
+  netflow: 2055
+  sflow: 6343
+  bmp: 10179
+
+service:
+  # Web console, API, /metrics.
+  http:
+    type: ClusterIP
+    port: 8080
+    annotations: {}
+  # NetFlow / IPFIX and sFlow. Keep the exporters' source addresses: Flow
+  # identifies an exporter by it (externalTrafficPolicy Local, no SNAT).
+  flows:
+    enabled: true
+    type: LoadBalancer
+    externalTrafficPolicy: Local
+    loadBalancerIP: ""
+    loadBalancerSourceRanges: []
+    annotations: {}
+  # BMP (TCP 10179). The receiver listens only while BMP is enabled under
+  # Settings -> BMP; restrict the sources here and in the settings.
+  bmp:
+    enabled: true
+    type: LoadBalancer
+    externalTrafficPolicy: Local
+    loadBalancerIP: ""
+    loadBalancerSourceRanges: []
+    annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: flow.example.com
+      paths: ["/"]
+  tls: []
+
+# Data directory (/data): flow.json and the setup code.
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClass: ""
+  # ReadWriteMany lets split-mode pods share flow.json (else use config.flowJson).
+  accessModes: [ReadWriteOnce]
+  existingClaim: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podAnnotations: {}
+podLabels: {}
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile: {type: RuntimeDefault}
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: {drop: [ALL]}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+extraVolumes: []
+extraVolumeMounts: []
+
+probes:
+  startup: {periodSeconds: 5, failureThreshold: 60}
+  liveness: {periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 3}
+  readiness: {periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 3}
+
+# Image for the init container copying config.flowJson (needs cp / sh).
+initImage:
+  repository: busybox
+  tag: "1.37"
+  pullPolicy: IfNotPresent
+
+# Development / evaluation only: simple single-replica StatefulSets of
+# PostgreSQL, ClickHouse, NATS and OpenBao inside the release. OpenBao runs
+# in dev mode (in memory, root token from a generated Secret): its content,
+# including Flow's own secrets, is lost when the pod restarts. Use external
+# services in production.
+dev:
+  enabled: false
+  storageClass: ""
+  postgres:
+    image: postgres:17-alpine
+    size: 5Gi
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.8
+    size: 20Gi
+    resources:
+      requests: {cpu: 500m, memory: 1Gi}
+      limits: {memory: 4Gi}
+  nats:
+    image: nats:2.11-alpine
+    size: 5Gi
+  openbao:
+    image: openbao/openbao:2.7.1

@@ -466,5 +466,6 @@ func DefaultRules() []Rule {
 			Thresholds: Thresholds{Silence: m(10 * time.Minute)}, Interval: m(time.Minute),
 			Hysteresis: m(time.Minute), Severity: "low",
 		},
+		defaultThreatRule(),
 	}
 }

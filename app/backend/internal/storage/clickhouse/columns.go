@@ -129,6 +129,15 @@ var builders = map[string]builder{
 	// Stored scaled by the sampling rate: the tables hold real volumes.
 	"Bytes":   col(func(f *flow.Flow) uint64 { return f.Bytes * samplingRate(f) }),
 	"Packets": col(func(f *flow.Flow) uint64 { return f.Packets * samplingRate(f) }),
+
+	"SrcHostPTR": col(func(f *flow.Flow) string { return f.SrcHostPTR }),
+	"DstHostPTR": col(func(f *flow.Flow) string { return f.DstHostPTR }),
+	"SrcThreat":  col(func(f *flow.Flow) string { return f.SrcThreat }),
+	"DstThreat":  col(func(f *flow.Flow) string { return f.DstThreat }),
+
+	"DstASPath":           col(func(f *flow.Flow) []uint32 { return f.DstASPath }),
+	"DstCommunities":      col(func(f *flow.Flow) []uint32 { return f.DstCommunities }),
+	"DstLargeCommunities": col(func(f *flow.Flow) []string { return f.DstLargeCommunities }),
 }
 
 // insertColumns returns the registry columns with their builders, or an

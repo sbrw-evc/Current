@@ -10,6 +10,9 @@ const OPS: Record<string, string[]> = {
   prefix: ['=', '!=', ...LIST_OPS],
   uint: ['=', '!=', '<', '<=', '>', '>=', ...LIST_OPS],
   time: ['=', '!=', '<', '<=', '>', '>='],
+  // arrays (DstASPath, DstCommunities, DstLargeCommunities): contains / contains any
+  'uint[]': ['=', '!=', ...LIST_OPS],
+  'string[]': ['=', '!=', ...LIST_OPS],
 }
 
 export function operatorsFor(kind: string) {

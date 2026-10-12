@@ -23,6 +23,12 @@ func selectExpr(c schema.Column) (string, func() any) {
 	if c.Kind == schema.KindIP {
 		return dimExpr(c.Name), func() any { return new(string) }
 	}
+	switch c.Type {
+	case "Array(UInt32)":
+		return id, func() any { return new([]uint32) }
+	case "Array(String)":
+		return id, func() any { return new([]string) }
+	}
 	t := strings.TrimSuffix(strings.TrimPrefix(c.Type, "LowCardinality("), ")")
 	switch t {
 	case "DateTime":
@@ -55,6 +61,16 @@ func deref(v any) any {
 	case *uint8:
 		return *x
 	case *string:
+		return *x
+	case *[]uint32:
+		if *x == nil {
+			return []uint32{}
+		}
+		return *x
+	case *[]string:
+		if *x == nil {
+			return []string{}
+		}
 		return *x
 	}
 	return v

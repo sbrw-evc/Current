@@ -38,6 +38,9 @@ type Options struct {
 	// ScheduleInventory runs Inventory DB synchronization on its interval
 	// in Run (when Deps.Inventory is set).
 	ScheduleInventory bool
+	// DataDir holds flow.json; moving the secrets to another OpenBao rewrites
+	// it (openbao_migrate.go). Empty = that move is not available.
+	DataDir string
 }
 
 // App is the HTTP application.
@@ -49,6 +52,7 @@ type App struct {
 	passwords *auth.Passwords
 	limiter   *auth.Limiter
 	syncMu    sync.Mutex
+	umb       umbrellaState // Umbrella scopes and dependency discovery (umbrella_*.go)
 }
 
 // New builds the application. deps.Store and deps.Vault are required: every
@@ -75,6 +79,7 @@ func (a *App) Run(ctx context.Context) {
 	if a.opt.ScheduleInventory && a.deps.Inventory != nil {
 		wg.Go(func() { a.runInventorySchedule(ctx) })
 	}
+	wg.Go(func() { a.runDependencySchedule(ctx) })
 	wg.Wait()
 }
 
@@ -159,6 +164,7 @@ func (a *App) Handler() http.Handler {
 	// detector
 	h("GET /api/detector/rules", a.guard(perms(access.DetectorView), a.getDetectorRules))
 	h("PUT /api/detector/rules", a.guard(perms(access.DetectorEdit), a.putDetectorRules))
+	h("GET /api/detector/rules/defaults", a.guard(perms(access.DetectorView), a.getDetectorDefaults))
 	h("GET /api/detector/status", a.guard(perms(access.DetectorView), a.detectorStatus))
 
 	// saved views
@@ -177,6 +183,7 @@ func (a *App) Handler() http.Handler {
 	h("POST /api/inventory-db/test", a.guard(perms(access.InventoryEdit), a.testInventory))
 	h("POST /api/inventory-db/sync", a.guard(perms(access.InventorySync), a.syncInventory))
 	h("GET /api/inventory-db/unknown", a.guard(perms(access.InventoryView), a.unknownInventory))
+	a.inventoryIntegrationRoutes(h) // integrations.inventory, hook, "Create in Inventory DB"
 
 	// classifiers
 	h("GET /api/classifiers", a.guard(perms(access.ClassifiersView), a.getClassifiers))
@@ -197,6 +204,9 @@ func (a *App) Handler() http.Handler {
 	h("PUT /api/settings/ldap", a.guard(perms(access.UsersEdit), a.putLDAP))
 	h("POST /api/settings/ldap/test", a.guard(perms(access.UsersEdit), a.testLDAP))
 
+	// Umbrella API: visibility scope, connection, dependency discovery (umbrella_routes.go)
+	a.umbrellaRoutes(h)
+
 	// general settings, Umbrella, OpenBao
 	h("GET /api/settings/general", a.guard(perms(access.GeneralView), a.getGeneral))
 	h("PUT /api/settings/general", a.guard(perms(access.GeneralEdit), a.putGeneral))
@@ -207,9 +217,21 @@ func (a *App) Handler() http.Handler {
 	h("GET /api/settings/openbao", a.guard(perms(access.OpenBaoView), a.getOpenBao))
 	h("POST /api/settings/openbao/test", a.guard(perms(access.OpenBaoTest), a.testOpenBao))
 
+	// API tokens, Entra ID sign-in, moving the secrets to another OpenBao
+	// (routes in tokens.go, entra.go, openbao_migrate.go)
+	a.tokenRoutes(h)
+	a.entraRoutes(h)
+	a.openbaoMigrateRoutes(h)
+
+	// SNMP poller and BMP receiver settings (routing.go)
+	a.routingRoutes(h)
+
 	// status
 	h("GET /api/status", a.guard(perms(access.StatusView), a.status))
 	h("GET /api/audit", a.guard(perms(access.StatusView), a.listAudit))
+
+	// reverse DNS, threat intelligence, cloud flow logs (extensions.go)
+	a.extensionRoutes(h)
 
 	h("/api/", func(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "no such API endpoint")
@@ -249,10 +271,16 @@ type handler func(w http.ResponseWriter, r *http.Request, p *Principal)
 
 func perms(p ...string) []string { return p }
 
-// guard authenticates the request, checks CSRF on state-changing methods and
-// requires one of anyOf (nil = any signed-in user).
+// guard authenticates the request (a session cookie, or an API token in
+// "Authorization: Bearer"), checks CSRF on state-changing methods of
+// sessions and requires one of anyOf (nil = any signed-in user).
 func (a *App) guard(anyOf []string, next handler) http.HandlerFunc {
+	next = a.withScope(next) // Umbrella visibility scope for restricted users (umbrella_scope.go)
 	return func(w http.ResponseWriter, r *http.Request) {
+		if token, ok := auth.BearerToken(r); ok { // API token: no session, no CSRF (tokens.go)
+			a.tokenGuard(w, r, token, anyOf, next)
+			return
+		}
 		ctx := r.Context()
 		ss, err := a.sessions.Get(ctx, r)
 		if err != nil {

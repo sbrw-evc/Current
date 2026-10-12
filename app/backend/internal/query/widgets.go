@@ -116,7 +116,7 @@ func (q *Querier) WidgetGraph(ctx context.Context, points int) (*GraphWidget, er
 	}
 	end := q.now()
 	start := end.Add(-24 * time.Hour)
-	res := chooseResolution(q.store, []string{"InIfBoundary"}, start, end, points, end)
+	res := chooseResolution(q.store, append([]string{"InIfBoundary"}, scopeColumns(ctx)...), start, end, points, end)
 	p := makePlan(res, start, end, points)
 	s, _, err := q.series(ctx, p, nil, "InIfBoundary = 'external'", UnitsL3bps, 1, 1)
 	if err != nil {

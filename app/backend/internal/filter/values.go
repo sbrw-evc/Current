@@ -35,6 +35,9 @@ var operatorsByKind = map[schema.Kind][]string{
 	schema.KindPrefix: {opEq, opNe, opIn, opNotIn},
 	schema.KindUint:   {opEq, opNe, opLt, opLe, opGt, opGe, opIn, opNotIn},
 	schema.KindTime:   {opEq, opNe, opLt, opLe, opGt, opGe},
+	// arrays: = / != contain / do not contain the element, IN / NOTIN any / none
+	schema.KindUintArray:   {opEq, opNe, opIn, opNotIn},
+	schema.KindStringArray: {opEq, opNe, opIn, opNotIn},
 }
 
 var operatorDetail = map[string]string{
@@ -135,6 +138,12 @@ func parseUint(s string, bits int) (uint64, error) {
 
 // parseValue validates the literal tok for column c used with operator op.
 func parseValue(c schema.Column, op string, tok token) (value, string) {
+	switch c.Kind {
+	case schema.KindUintArray:
+		return parseArrayElement(c, tok)
+	case schema.KindStringArray:
+		return value{kind: schema.KindString, str: tok.val}, ""
+	}
 	v := value{kind: c.Kind}
 	text := tok.val
 	quoted := tok.kind == tString
@@ -220,4 +229,33 @@ func parseValue(c schema.Column, op string, tok token) (value, string) {
 		return v, fmt.Sprintf("%s expects a time like '2024-01-31 12:00:00' (UTC) or RFC 3339, got %s", c.Name, tok.describe())
 	}
 	return v, fmt.Sprintf("column %s cannot be filtered", c.Name)
+}
+
+// parseArrayElement parses an element of an Array(UInt32) column: a number,
+// AS<number> for AS paths, or <as>:<value> for standard communities.
+func parseArrayElement(c schema.Column, tok token) (value, string) {
+	v := value{kind: schema.KindUint}
+	if tok.kind == tString {
+		return v, fmt.Sprintf("%s expects a number, not a string", c.Name)
+	}
+	text := tok.val
+	if strings.Contains(c.Name, "Communities") {
+		if hi, lo, ok := strings.Cut(text, ":"); ok {
+			h, err1 := parseUint(hi, 16)
+			l, err2 := parseUint(lo, 16)
+			if err1 != nil || err2 != nil {
+				return v, fmt.Sprintf("%s expects a community like 65000:100, got %s", c.Name, tok.describe())
+			}
+			v.u = h<<16 | l
+			return v, ""
+		}
+	} else if len(text) > 2 && strings.EqualFold(text[:2], "AS") {
+		text = text[2:]
+	}
+	n, err := parseUint(text, 32)
+	if err != nil {
+		return v, fmt.Sprintf("%s expects a 32-bit number, got %s", c.Name, tok.describe())
+	}
+	v.u = n
+	return v, ""
 }

@@ -13,6 +13,8 @@ import { notify } from '../ui/notify'
 import { Banner, Button, Card, Chip, Field, formatDate, Input, Loading, Rows, Select, Switch } from '../ui/ui'
 import { SecretField } from '../ui/SecretField'
 import { DEFAULT_STATE, visualizeLink } from './visualize/state'
+import { CreateAddressButton, CreateDeviceLink, InventoryDbIntegrationCard, useInventoryIntegration } from './settings/InventoryDbIntegration'
+import { canCreateAddresses } from './settings/InventoryDbModel'
 
 const strings: Dict = {
   en: {
@@ -138,6 +140,7 @@ export default function InventoryDBPage() {
             <StatusCard view={q.data} canEdit={can('settings.inventory:edit')} />
             <SettingsForm view={q.data} canEdit={can('settings.inventory:edit')} />
           </div>
+          <InventoryDbIntegrationCard canEdit={can('settings.inventory:edit')} />
           <UnknownLists />
         </>
       ) : null}
@@ -303,6 +306,9 @@ function UnknownLists() {
   const link = (ip: string, exporter = false) =>
     visualizeLink({ ...DEFAULT_STATE, range: { preset: '24h' }, filter: exporter ? `ExporterAddress = ${ip}` : `SrcAddr = ${ip} OR DstAddr = ${ip}`, dimensions: exporter ? ['InIfName'] : ['SrcAS', 'DstAS'] })
   const vis = can('visualize:view')
+  const integ = useInventoryIntegration()
+  const create = canCreateAddresses(integ.data, can('settings.inventory:edit'))
+  const invUrl = integ.data?.inventory_url ?? ''
   return (
     <div className="grid-2 unknown-grid">
       <Card title={t('unk.exporters')} actions={q.data && <Chip tone={q.data.exporters.length ? 'warn' : 'ok'}>{q.data.exporters.length}</Chip>} pad={false}>
@@ -315,6 +321,7 @@ function UnknownLists() {
               <tr>
                 <th>{t('unk.address')}</th>
                 <th>{t('unk.seen')}</th>
+                {invUrl && <th aria-hidden />}
               </tr>
             </thead>
             <tbody>
@@ -322,6 +329,11 @@ function UnknownLists() {
                 <tr key={e.address}>
                   <td className="mono">{vis ? <Link to={link(e.address, true)}>{e.address}</Link> : e.address}</td>
                   <td>{relativeTime(e.last_seen, locale)}</td>
+                  {invUrl && (
+                    <td className="num">
+                      <CreateDeviceLink inventoryUrl={invUrl} address={e.address} />
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -340,6 +352,7 @@ function UnknownLists() {
               <tr>
                 <th>{t('unk.address')}</th>
                 <th className="num">{t('unk.bytes')}</th>
+                {create && <th aria-hidden />}
               </tr>
             </thead>
             <tbody>
@@ -347,6 +360,11 @@ function UnknownLists() {
                 <tr key={a.address}>
                   <td className="mono">{vis ? <Link to={link(a.address)}>{a.address}</Link> : a.address}</td>
                   <td className="num">{formatBytes(a.bytes, locale)}</td>
+                  {create && (
+                    <td className="num">
+                      <CreateAddressButton address={a.address} />
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

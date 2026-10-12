@@ -68,8 +68,18 @@ func runCollectorOnly(ctx context.Context, env config.Env, register func(string,
 		b.Close()
 		return nil, err
 	}
+	// Sampling overrides: FLOW_SAMPLING_OVERRIDES, plus the stored ones once
+	// flow.json (shared data volume) gives the PostgreSQL connection;
+	// refreshed every minute.
+	envOv, err := wiring.SamplingFromEnv(nil)
+	if err != nil {
+		b.Close()
+		return nil, err
+	}
+	wc := &wiring.Collector{C: col, Env: envOv, OpenStore: wiring.SamplingStore(env.DataDir, env.StartupWait), Log: slog.Default()}
+	go wc.RunSampling(ctx, wiring.SamplingRefresh)
 	register("bus", bs)
-	register("collector", &wiring.Collector{C: col})
+	register("collector", wc)
 	return &wiring.Pipeline{Bus: b, Collector: col}, nil
 }
 
@@ -107,6 +117,7 @@ type pipelineParts struct {
 	enricher  *wiring.Enricher
 	inventory *wiring.Inventory
 	detector  *wiring.Detector
+	ingest    flow.Sink // the bus, for cloud flow logs (flowLogsIngest)
 }
 
 // startPipeline starts the components of role that need flow.json: the
@@ -159,10 +170,16 @@ func startPipeline(ctx context.Context, role config.Role, env config.Env, cfg co
 				b.Close()
 				return p, fmt.Errorf("collector: %w", err)
 			}
-			wc := &wiring.Collector{C: p.collector, St: st, Log: log}
+			envOv, err := wiring.SamplingFromEnv(nil)
+			if err != nil {
+				b.Close()
+				return p, err
+			}
+			wc := &wiring.Collector{C: p.collector, St: st, Log: log, Env: envOv}
 			if err := wc.ApplySampling(ctx); err != nil {
 				log.Warn("sampling overrides not applied", "err", err)
 			}
+			goRun(func() { wc.RunSampling(ctx, wiring.SamplingRefresh) })
 			deps.Reloaders = append(deps.Reloaders, wc)
 			register("collector", wc)
 			pl.Collector = p.collector
@@ -178,6 +195,15 @@ func startPipeline(ctx context.Context, role config.Role, env config.Env, cfg co
 		if p.collector != nil {
 			ec.IfNames = p.collector.IfNames()
 		}
+		if err := enrichExtensions(ctx, &ec, st, deps, reg, log, goRun); err != nil {
+			b.Close()
+			return p, err
+		}
+		if err := routingExtension(ctx, &ec, st, vault, p.collector, deps, reg, log, goRun); err != nil {
+			b.Close()
+			return p, err
+		}
+		p.ingest = b
 		if p.enricher, err = wiring.NewEnricher(wm, ec); err != nil {
 			b.Close()
 			return p, fmt.Errorf("enricher: %w", err)
@@ -188,6 +214,9 @@ func startPipeline(ctx context.Context, role config.Role, env config.Env, cfg co
 		register("enricher", p.enricher)
 		pl.Consumer, pl.Writer = bs.Out, writer
 		goRun(func() { p.enricher.Run(ctx) })
+		// AS names learned from GeoIP → ClickHouse asn_names (labels in other processes).
+		asp := &wiring.ASNamePersister{Geo: p.enricher.Geo, Conn: chConn, Storage: storage, Log: log}
+		goRun(func() { asp.Run(ctx) })
 		goRun(func() { pl.Run(ctx) })
 		if p.collector != nil {
 			slog.Info("pipeline started", "bus", bs.Kind, "collector", true, "netflow", env.NetFlowAddr, "sflow", env.SFlowAddr)
@@ -208,17 +237,26 @@ func startPipeline(ctx context.Context, role config.Role, env config.Env, cfg co
 		register("detector", d)
 		goRun(func() { d.Run(ctx) })
 	}
+	if err := flowLogsIngest(ctx, role, env, cfg, vault, st, p.ingest, deps, reg, log); err != nil {
+		return p, fmt.Errorf("cloud flow logs: %w", err)
+	}
 	return p, nil
 }
 
 // apiDeps fills the traffic dependencies of the HTTP application.
 func apiDeps(cfg config.File, st *store.Store, chConn driver.Conn, p pipelineParts, deps *app.Deps) {
 	storage := storageConfig(cfg)
+	// Umbrella visibility scopes (docs/integrations.md §3.2): every ClickHouse
+	// read of a restricted user goes through the scope filter (query/scope.go).
+	chConn = query.ScopedConn(chConn, storage)
 	if chConn != nil {
-		qc := query.Config{Storage: storage}
+		deps.Dependencies = query.New(chConn, query.Config{Storage: storage}) // dependency discovery for Umbrella
+		// AS names: GeoIP of this process, else asn_names (ClickHouse), else the built-in list.
+		asn := &query.ASNames{Conn: chConn, Storage: storage, Log: slog.Default()}
 		if p.enricher != nil {
-			qc.ASName = p.enricher.Geo.ASName
+			asn.Local = p.enricher.Geo.ASName
 		}
+		qc := query.Config{Storage: storage, ASName: asn.Name}
 		t := &wiring.Traffic{Q: query.New(chConn, qc), Collector: p.collector}
 		deps.Visualizer, deps.Flows, deps.Exporters, deps.Widgets = t, t, t, t
 		deps.Filter = &wiring.Filter{Conn: chConn, Storage: storage}
@@ -232,4 +270,10 @@ func apiDeps(cfg config.File, st *store.Store, chConn driver.Conn, p pipelinePar
 	deps.Inventory = inv.Syncer()
 	deps.Classifiers = wiring.Classifiers{}
 	deps.Detector = &wiring.DetectorAPI{Local: p.detector, Store: st}
+	// Inventory DB integration (docs/integrations.md §2): object traffic, hook, "Create in Inventory DB".
+	var iq *query.Querier
+	if chConn != nil {
+		iq = query.New(chConn, query.Config{Storage: storage})
+	}
+	deps.InventoryIntegration = wiring.NewInventoryIntegration(iq, st, deps.Vault, p.inventory, slog.Default())
 }

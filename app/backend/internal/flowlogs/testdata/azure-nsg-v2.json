@@ -1,0 +1,4 @@
+{"records":[{"time":"2025-10-09T08:00:35.3899262Z","systemId":"00000000-0000-0000-0000-000000000001","macAddress":"000D3AF87856","category":"NetworkSecurityGroupFlowEvent","resourceId":"/SUBSCRIPTIONS/00000000-0000-0000-0000-000000000000/RESOURCEGROUPS/RG1/PROVIDERS/MICROSOFT.NETWORK/NETWORKSECURITYGROUPS/WEB-NSG","operationName":"NetworkSecurityGroupFlowEvents","properties":{"Version":2,"flows":[
+ {"rule":"DefaultRule_DenyAllInBound","flows":[{"mac":"000D3AF87856","flowTuples":["1760000000,198.51.100.20,10.5.16.4,28746,443,T,I,D,B,,,,"]}]},
+ {"rule":"UserRule_AllowWeb","flows":[{"mac":"000D3AF87856","flowTuples":["1760000010,203.0.113.50,10.5.16.4,51000,443,T,I,A,E,12,3000,10,12000","1760000020,10.5.16.4,192.0.2.53,53000,53,U,O,A,C,1,70,0,0"]}]}
+]}}]}

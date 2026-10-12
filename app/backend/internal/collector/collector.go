@@ -336,6 +336,7 @@ func (c *Collector) decode(p packet, out []*flow.Flow) (result []*flow.Flow) {
 			err = fmt.Errorf("unknown NetFlow version %d", version)
 		}
 	}
+	rates = exp.applyIfOverrides(out[before:], c.ifc, rates)
 	exp.account(c.m, typ, p.received, len(out)-before, err != nil)
 	exp.noteRates(rates)
 	if hadTmpl {

@@ -5,6 +5,7 @@ import { post, setCsrf } from '../api/client'
 import type { Me } from '../api/types'
 import { errorText, useT, type Dict } from '../i18n'
 import { Banner, Brand, Button, Field, Input, Password, Preferences } from '../ui/ui'
+import { EntraLoginButton, EntraSignInError } from './settings/EntraLoginButton'
 
 const strings: Dict = {
   en: { 'signin.title': 'Sign in', 'signin.username': 'Username', 'signin.password': 'Password', 'signin.submit': 'Sign in', 'signin.hint': 'The same account as in Umbrella Monitoring (LDAP / AD or local).' },
@@ -48,6 +49,7 @@ export function LoginPage() {
         </div>
         <form onSubmit={submit} noValidate>
           <h1>{t('signin.title')}</h1>
+          {!error && <EntraSignInError />}
           {error && (
             <Banner kind="error" title={error.message}>
               {error.detail}
@@ -58,6 +60,7 @@ export function LoginPage() {
           <Button variant="primary" type="submit" busy={busy} disabled={!username || !password}>
             {t('signin.submit')}
           </Button>
+          <EntraLoginButton />
           <p className="hint">{t('signin.hint')}</p>
         </form>
       </div>

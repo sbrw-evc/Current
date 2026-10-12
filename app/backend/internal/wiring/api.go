@@ -116,7 +116,9 @@ func (t *Traffic) Exporters(ctx context.Context) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if t.Collector != nil {
+	// The collector registry is not scoped: users restricted to an Umbrella
+	// scope see only the exporters of their flows.
+	if t.Collector != nil && !query.Scoped(ctx) {
 		resp.Results = MergeExporters(resp.Results, t.Collector.Exporters())
 	}
 	return resp, nil

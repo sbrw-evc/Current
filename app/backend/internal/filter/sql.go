@@ -150,6 +150,10 @@ func renderCmpSQL(b *strings.Builder, n *cmpNode, reverse bool) {
 	if reverse && n.col.Reverse != "" {
 		col = n.col.Reverse
 	}
+	if n.col.Kind == schema.KindUintArray || n.col.Kind == schema.KindStringArray {
+		renderArraySQL(b, col, n)
+		return
+	}
 	switch n.op {
 	case opIn, opNotIn:
 		b.WriteString(col)
@@ -227,4 +231,23 @@ func renderNormalized(b *strings.Builder, n node) {
 			b.WriteString(valueNormalized(n.vals[0]))
 		}
 	}
+}
+
+// renderArraySQL matches elements of an array column with has / hasAny.
+func renderArraySQL(b *strings.Builder, col string, n *cmpNode) {
+	if n.op == opNe || n.op == opNotIn {
+		b.WriteString("NOT ")
+	}
+	if n.op == opIn || n.op == opNotIn {
+		b.WriteString("hasAny(" + col + ", [")
+		for i, v := range n.vals {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(valueSQL(v))
+		}
+		b.WriteString("])")
+		return
+	}
+	b.WriteString("has(" + col + ", " + valueSQL(n.vals[0]) + ")")
 }

@@ -11,16 +11,24 @@ Deployment is Docker-first: [deploy/flow](../deploy/flow/README.md) brings up th
 | Part | What it does | Package |
 |---|---|---|
 | Setup wizard | opens on the first start (no `flow.json`): setup code (log + `FLOW_DATA_DIR/setup-token`, 5 wrong codes lock it for a minute), general settings, OpenBao, PostgreSQL (can attach to an existing Flow database), ClickHouse with retention, NATS, collector addresses, optional Inventory DB / Umbrella / GeoIP, first administrator with the password policy. Every step has a check (`POST /api/setup/test/{step}`); the final `POST /api/setup` re-checks everything, writes secrets to OpenBao, migrates PostgreSQL and ClickHouse, writes `flow.json` and switches to the console without a restart. In Docker the fields are prefilled from `FLOW_SETUP_DEFAULTS_*` | `internal/setup` |
-| Sign-in | local users (PBKDF2-SHA256 hashes in OpenBao), LDAP / AD (service account bind, user bind, nested groups, group → role mapping, default role); sessions in an HttpOnly cookie `flow_session` (12 h idle, 7 days max), `X-CSRF-Token` on state-changing requests, lockout after 5 failures | `internal/auth`, `internal/directory`, `internal/app` |
+| Sign-in | local users (PBKDF2-SHA256 hashes in OpenBao), LDAP / AD (service account bind, user bind, nested groups, group → role mapping, default role), Microsoft Entra ID (OpenID Connect code flow + PKCE, ID token verified against the tenant keys, groups from the token or Microsoft Graph, group → role mapping, users created on first sign-in with the default role; Settings → Entra ID); sessions in an HttpOnly cookie `flow_session` (12 h idle, 7 days max), `X-CSRF-Token` on state-changing requests, lockout after 5 failures | `internal/auth`, `internal/directory`, `internal/entra`, `internal/app` |
+| API tokens | service accounts with a role and bearer tokens `flow_…` (HMAC-SHA256 with `keys#tokens`, plaintext shown once, expiry, last use, revoke; no CSRF); Settings → API tokens; audit of creation, revocation and use from a new address | `internal/auth`, `internal/store`, `internal/app` |
 | Roles | permissions `<page>:<function>` (`GET /api/access/catalog`), built-in Administrator (everything) and Viewer (visualize, flows, exporters), custom roles; the last enabled administrator cannot be removed | `internal/access`, `internal/app` |
 | Configuration | relational PostgreSQL schema (goose migrations embedded in the binary): users, roles, sessions, settings, saved views, classifier rules, Inventory DB connection, sampling overrides, LDAP group mapping, audit log | `internal/store` |
-| Platform API | `/healthz`, `/metrics`, `/api/version`, auth, users, roles, LDAP, saved views, classifiers (with validation through the classifier package), Inventory DB connection / test / sync / schedule, sampling overrides, general settings and password policy, Umbrella connection with a test event, OpenBao status / test, system status, audit log, `/api/schema` | `internal/app` |
+| Platform API | `/healthz`, `/metrics`, `/api/version`, auth, users, roles, LDAP, saved views, classifiers (with validation through the classifier package), Inventory DB connection / test / sync / schedule, sampling overrides, general settings and password policy, Umbrella connection with a test event, OpenBao status / test / move to another OpenBao, Entra ID, service accounts and API tokens, system status, audit log, `/api/schema` | `internal/app` |
 | Traffic API | visualize (time series and sankey; `query.ValidationError` / filter errors → 400), filter validation and completion (columns, operators, values: built-in symbols plus the most frequent values of the last 24 h from ClickHouse, `flows_1h` for aggregated columns), raw flow search, exporters (ClickHouse aggregates merged with the collector registry in role `all`), home widgets, unknown Inventory DB objects, classifier validation / preview | `internal/wiring` over `internal/query`, `internal/filter`, `internal/inventory`, `internal/classifier` |
 | Pipeline | collector (NetFlow v5/v9, IPFIX, sFlow; sampling overrides from PostgreSQL applied at run time) → bus (in-process in role `all` without NATS, NATS JetStream otherwise) → enricher (Inventory DB snapshot, interface names learned by the collector, CEL classifiers, GeoIP, applications) → batching ClickHouse writer (schema migrated on start). Stop order: collector, then bus consumer (drained), then writer flush | `internal/collector`, `internal/bus`, `internal/enrich`, `internal/storage/clickhouse`, wired by `internal/wiring` and `cmd/flow` |
 | Inventory DB sync | the enricher / detector processes follow the connection stored in PostgreSQL (token read from OpenBao on each sync): sync on start, every interval, at once on a settings change or a sync requested from the API; result in `last_sync` | `internal/wiring` (`Inventory`), `internal/inventory` |
+| Inventory DB integration | Flow side of [integrations.md §2](../docs/integrations.md): `GET /api/integrations/inventory-db/status` (current 5-minute rates, 48-point sparkline, speed / utilisation, monthly p95 against the circuit commit, console link, last seen; one ClickHouse query per part for all ids) and `/prefix-addresses` (addresses seen in a prefix, `in_ipam` from the snapshot) for tokens with `integrations.inventory:read`; `POST /api/integrations/inventory-db/hook` (HMAC `x-inventory-signature`, secret in OpenBao, 202 + debounced early sync in every process via `inventory_sync_request`); "Create in Inventory DB" for unknown addresses with an optional editor token, link to Inventory DB's device form for unknown exporters (Settings → Inventory DB) | `internal/app` (`inventory_integration.go`), `internal/wiring` (`InventoryIntegration`), `internal/query` (`inventory_status.go`) |
 | Detector | rules from PostgreSQL (`detector_rules`; the built-in set until saved), state and undelivered events in `detector_state`, events to the Umbrella ingest URL with the token from OpenBao, exporter last-seen from the collector registry (same process), circuit commit rates from the Inventory DB snapshot, `/metrics` per-interface utilisation; `GET/PUT /api/detector/rules`, `GET /api/detector/status`, Umbrella test event | `internal/detector`, `internal/wiring` (`Detector`) |
-| Status | `GET /api/status` components: `collector`, `bus`, `enricher`, `writer`, `inventory`, `detector` (those running in the process) | `internal/wiring` |
-| Web console | React console: setup wizard, overview widgets, Visualize, flow search, exporters, Inventory DB, classifiers, OpenBao; screenshots with live demo data in [docs/screens](docs/screens) (`*-live.png`) | `web/` |
+| Umbrella scopes and dependencies | Umbrella API connection (address + service-account token in OpenBao, test = the signed-in user's scope); roles with `scope:umbrella` see only the flows of their Umbrella CIs (scope fetched per login, cached 60 s, applied to every ClickHouse read by `query.ScopedConn`, fail closed with 503 `scope_unavailable` and a console banner); dependency discovery of steady CI ↔ CI traffic (7 days of raw flows, server = lower port, thresholds) posted daily or on demand as CMDB proposals, Dependencies page (`dependencies:view` / `dependencies:run`); Grafana "CI traffic" dashboard in [deploy/grafana](../deploy/grafana/README.md) | `internal/umbrella`, `internal/query` (`scope.go`, `dependencies.go`), `internal/app` (`umbrella_*.go`) |
+| Reverse DNS | asynchronous PTR resolution in the enricher (bounded worker pool, positive / negative cache with TTLs, rate limit, configurable servers, scope all / private / public) for addresses without an Inventory DB host name → `SrcHostPTR` / `DstHostPTR`; never blocks the pipeline (first flows get an empty name); `GET/PUT /api/settings/rdns`, `flow_rdns_*` metrics | `internal/rdns`, `internal/enrich` (`rdns.go`), `internal/wiring` (`RDNS`) |
+| Threat intelligence | public blocklists (FireHOL level1, Spamhaus DROP, abuse.ch Feodo; any URL list) downloaded at run time on an interval (never stored in the repository or the image) into an LPM trie → `SrcThreat` / `DstThreat`; special-purpose ranges and own prefixes never flagged; detector kind `threat_contact` → `sec.threat.contact` (RED) per internal host, built-in rule enabled with severity `error`; `GET/PUT /api/settings/threat`, `POST /api/settings/threat/refresh`, Settings → Threat intelligence page, `flow_threat_*` metrics | `internal/threat`, `internal/enrich` (`threat.go`), `internal/detector` (`threat.go`), `internal/wiring` (`Threat`) |
+| Cloud flow logs | `POST /api/ingest/flowlogs/aws` (VPC Flow Logs v2 and custom formats, header line or `fields`, CloudWatch Logs JSON, Kinesis Data Firehose HTTP delivery with `X-Amz-Firehose-Access-Key`), `/azure` (NSG flow logs v1/v2, VNet flow logs v4), `/gcp` (Pub/Sub push, LogEntry JSON) → flow records on the bus (`FlowType` `aws-vpc`, `azure-vnet`, `gcp-vpc`; synthetic exporter addresses in `fd75:666c::/32` named after the ENI / VPC, NIC or VM); per-provider tokens in OpenBao; `GET/PUT /api/settings/flowlogs` | `internal/flowlogs`, `internal/wiring` (`FlowLogs`) |
+| SNMP | fallback interface names / descriptions / speeds (SNMPv2c / v3, GETBULK of `ifName`, `ifDescr`, `ifAlias`, `ifHighSpeed`, `ifSpeed`) for exporters seen in flows and listed devices, credential profiles by prefix with community / USM passwords in OpenBao, refresh interval and TTL cache; the enricher uses it after Inventory DB and the collector's option data; `GET/PUT /api/settings/snmp`, `POST /api/settings/snmp/test`, Settings → SNMP page, `flow_snmp_*` metrics | `internal/snmp`, `internal/enrich` (`snmp.go`), `internal/wiring` (`SNMP`) |
+| BMP | RFC 7854 receiver on TCP 10179 (own BGP decoder: IPv4 / IPv6 unicast, MP_REACH / MP_UNREACH, 4-byte AS and AS4_PATH, ADD-PATH, communities, large communities), per-peer Adj-RIB-In with post-policy preference in a compact LPM table with interned attributes, withdrawals, peer down / session close cleanup, memory metrics; the enricher fills `DstASPath`, `DstCommunities`, `DstLargeCommunities`, the next hop when missing, and SrcAS / DstAS through the `routing` AS provider; `GET/PUT /api/settings/bmp`, `GET /api/bmp/lookup`, Settings → BMP page, `flow_bmp_*` metrics | `internal/bmp`, `internal/enrich` (`routing.go`), `internal/wiring` (`BMP`, `Routing`) |
+| Status | `GET /api/status` components: `collector`, `bus`, `enricher`, `writer`, `inventory`, `detector`, `rdns`, `threat`, `snmp`, `bmp` (those running in the process) | `internal/wiring` |
+| Web console | React console: setup wizard, overview widgets, Visualize, flow search, exporters, dependencies, Inventory DB, classifiers, Umbrella (events and API connection), OpenBao, SNMP, BMP; a banner when the Umbrella scope cannot be loaded; screenshots with live demo data in [docs/screens](docs/screens) (`*-live.png`) | `web/` |
 
 ## Secrets
 
@@ -39,8 +47,13 @@ OpenBao is the only secret store (KV v2, mount `flow`, AppRole `flow`), as in Um
   again when needed.
 - Secrets are never returned by the API (only `*_set: true`), never logged and never written to the audit log.
   A test after the setup scans every PostgreSQL table and `flow.json` for the plaintext values.
-- Settings → OpenBao: `GET /api/settings/openbao` (status), `POST /api/settings/openbao/test` (the current or
-  another server). Moving secrets to another OpenBao is not implemented yet.
+- Settings → OpenBao: `GET /api/settings/openbao` (status with the token renewal state), `POST
+  /api/settings/openbao/test` (the current or another server), and moving the secrets to another OpenBao
+  (`/probe`, `/migrate`): every secret of the mount is copied, `openbao://` references in PostgreSQL and `flow.json`
+  follow a new mount name, `flow.json` is rewritten and the running client switches in place — no restart for the
+  `all` / `api` process; separate `enricher` / `detector` processes pick the new `flow.json` up on restart (the source
+  keeps its copy until then).
+- API tokens are stored as HMAC-SHA256 with the key `keys#tokens`; the plaintext is shown once.
 - Docker: `.env` holds only bootstrap values for the containers themselves (PostgreSQL / ClickHouse / NATS server
   passwords, MaxMind key). `openbao-init` seeds them into OpenBao once; the wizard gets references only.
 
@@ -50,10 +63,16 @@ OpenBao is the only secret store (KV v2, mount `flow`, AppRole `flow`), as in Um
 | `clickhouse` | `password` | ClickHouse password |
 | `nats` | `token` | NATS token |
 | `inventory-db` | `token` | Inventory DB API token |
+| `inventory-db-hook` | `secret` | Inventory DB change-notification hook secret |
+| `inventory-db-write` | `token` | optional Inventory DB editor token ("Create in Inventory DB") |
 | `umbrella` | `token` | Umbrella ingest Bearer token |
+| `flowlogs` | `aws`, `azure`, `gcp` | cloud flow log ingest tokens |
+| `umbrella-api` | `token` | Umbrella service-account token (visibility scopes, CMDB proposals) |
+| `grafana` | `clickhouse_password` | read-only ClickHouse user `grafana` (seeded by the Docker stack; used by Grafana, not by Flow) |
 | `ldap` | `bind_password` | LDAP / AD service account |
 | `users/<id>` | `password_hash` | local user password hash |
-| `keys` | `session`, `csrf` | session / CSRF HMAC keys |
+| `entra` | `client_secret` | Microsoft Entra ID application client secret |
+| `keys` | `session`, `csrf`, `tokens` | session / CSRF / API token HMAC keys |
 
 ## Run
 
@@ -129,6 +148,7 @@ within a minute.
 | `FLOW_ROLE` | `all` | `all`, `collector`, `enricher`, `api`, `detector` |
 | `FLOW_NETFLOW_ADDR` | `:2055` | UDP for NetFlow v5/v9 and IPFIX |
 | `FLOW_SFLOW_ADDR` | `:6343` | UDP for sFlow |
+| `FLOW_BMP_ADDR` | `:10179` | TCP for BMP (enricher process), listened to only while BMP is enabled in the settings |
 | `FLOW_NATS_URL` | — | NATS JetStream URL: required by the `collector` role; for the other roles it overrides `nats.url` of `flow.json`. Empty everywhere = in-process bus (role `all` only; `enricher` fails without NATS) |
 | `FLOW_SETUP_DEFAULTS_*` | — | wizard prefill, see `internal/setup/defaults.go`; secrets only as `openbao://` references |
 
@@ -147,6 +167,7 @@ app/
       auth/              PBKDF2 passwords in OpenBao, session / CSRF keys, sessions, lockout, password policy
       config/            environment and flow.json
       directory/         LDAP / AD sign-in and groups
+      entra/             Microsoft Entra ID sign-in (OIDC + PKCE, Graph groups), entratest fake provider
       httpx/             JSON, errors {error, message}, security headers, SPA serving, client address
       secrets/           OpenBao KV v2 client (token / AppRole, renewal, 30 s cache), secretstest fake
       setup/             first-run wizard and connection checks
@@ -160,13 +181,12 @@ app/
   Dockerfile             node + go build → distroless, one image for every role
   Makefile
 deploy/flow/             Docker Compose: Flow, PostgreSQL, ClickHouse, NATS, OpenBao (+ demo, geoip)
+deploy/helm/umbrella-flow/  Helm chart: all-in-one or one Deployment per role, services for HTTP, UDP flows and BMP
 ```
 
 ## Not done yet
 
-- Entra ID sign-in, moving secrets to another OpenBao, API tokens.
 - Detector pages in the web console (the API is there: `/api/detector/*`).
 - Per-interface sampling overrides (`if_index` ≠ 0) are stored but not applied: the collector overrides per exporter
   prefix only. A standalone `collector` role applies no overrides.
 - AS names in labels come only from GeoIP lookups made by the enricher of the same process (role `all`).
-- Inventory DB webhooks (changes arrive with the periodic sync).

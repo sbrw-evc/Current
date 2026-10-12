@@ -1,0 +1,225 @@
+# Built-in fallback AS names: well-known networks, written from public
+# knowledge (operators' own names) for installs without GeoIP. Names learned
+# from GeoIP (asn_names table) take precedence. Format: asn,name
+3,MIT
+42,Packet Clearing House
+109,Cisco
+137,GARR
+174,Cogent
+209,Lumen (Qwest)
+286,KPN International
+577,Bell Canada
+680,DFN
+701,Verizon Business
+702,Verizon Business EMEA
+714,Apple
+719,Elisa
+766,RedIRIS
+786,Jisc (JANET)
+812,Rogers
+852,TELUS
+1103,SURF
+1221,Telstra
+1239,Sprint
+1257,Tele2
+1273,Vodafone (Cable & Wireless)
+1299,Arelion
+2119,Telenor Norge
+2152,CENIC
+2200,RENATER
+2497,IIJ
+2516,KDDI
+2518,BIGLOBE
+2635,Automattic
+2852,CESNET
+2856,BT
+2906,Netflix
+2914,NTT
+3209,Vodafone Germany
+3215,Orange France
+3216,Beeline
+3243,MEO
+3257,GTT
+3267,RUNNet
+3269,Telecom Italia
+3301,Telia Sweden
+3303,Swisscom
+3320,Deutsche Telekom
+3326,Datagroup
+3352,Telefonica Spain
+3356,Lumen (Level 3)
+3462,HiNet (Chunghwa Telecom)
+3491,PCCW Global
+3549,Lumen (Global Crossing)
+3561,Lumen (Savvis)
+3598,Microsoft
+3786,LG U+
+4134,China Telecom
+4637,Telstra International
+4713,NTT OCN
+4755,Tata Communications India
+4760,HKT (Netvigator)
+4766,Korea Telecom
+4788,TM Net
+4809,China Telecom CN2
+4826,Vocus
+4837,China Unicom
+5089,Virgin Media
+5400,BT
+5410,Bouygues Telecom
+5432,Proximus
+5483,Magyar Telekom
+5511,Orange (Opentransit)
+5617,Orange Polska
+5650,Frontier
+6128,Optimum (Cablevision)
+6185,Apple
+6327,Shaw
+6453,Tata Communications
+6461,Zayo
+6507,Riot Games
+6697,Beltelecom
+6762,Telecom Italia Sparkle
+6805,Telefonica Germany
+6830,Liberty Global
+6848,Telenet
+6849,Ukrtelecom
+6939,Hurricane Electric
+7018,AT&T
+7160,Oracle
+7303,Telecom Argentina
+7473,Singtel
+7545,TPG Telecom
+7552,Viettel
+7713,Telkom Indonesia
+7922,Comcast
+8068,Microsoft
+8075,Microsoft
+8100,QuadraNet
+8151,Telmex (Uninet)
+8220,Colt
+8359,MTS
+8402,Beeline (Corbina)
+8447,A1 Telekom Austria
+8452,Telecom Egypt (TE Data)
+8492,OBIT
+8551,Bezeq International
+8560,IONOS
+8708,RCS & RDS
+8732,Comcor
+8881,1&1 Versatel
+8972,Host Europe
+8987,Amazon
+9002,RETN
+9009,M247
+9049,ER-Telecom
+9121,Turk Telekom
+9198,Kazakhtelecom
+9299,PLDT
+9304,HGC Global
+9318,SK Broadband
+9498,Bharti Airtel
+9808,China Mobile
+9829,BSNL
+10310,Yahoo
+11427,Charter (Spectrum)
+11537,Internet2
+12076,Microsoft (Azure)
+12322,Free (Iliad)
+12389,Rostelecom
+12479,Orange Espagne
+12714,NetByNet (MegaFon)
+12741,Netia
+12876,Scaleway
+12956,Telefonica Global Solutions
+12989,StackPath (Highwinds)
+13030,Init7
+13238,Yandex
+13335,Cloudflare
+13414,X (Twitter)
+14061,DigitalOcean
+14618,Amazon
+14907,Wikimedia
+15133,Edgecast
+15169,Google
+15557,SFR
+15830,Equinix (Telecity)
+15895,Kyivstar
+16135,Turkcell
+16276,OVHcloud
+16509,Amazon
+16591,Google Fiber
+16625,Akamai
+17676,SoftBank
+18881,Telefonica Brasil (Vivo)
+19318,Interserver
+19527,Google
+19551,Imperva
+19679,Dropbox
+20115,Charter
+20473,Vultr
+20485,TransTelecom (TTK)
+20764,RASCOM
+20940,Akamai
+20965,GEANT
+21342,Akamai
+21859,Zenlayer
+21928,T-Mobile USA
+22773,Cox
+22822,Edgio (Limelight)
+24429,Alibaba (Taobao)
+24560,Bharti Airtel
+24940,Hetzner
+24961,myLoc
+25513,MGTS
+26101,Yahoo
+26415,Verisign
+26496,GoDaddy
+27699,Telefonica Brasil
+28573,Claro Brasil
+28840,Tattelecom
+31133,MegaFon
+31898,Oracle Cloud
+32590,Valve
+32934,Meta (Facebook)
+33891,Core-Backbone
+34224,Neterra
+36040,Google (YouTube)
+36351,IBM Cloud (SoftLayer)
+36352,ColoCrossing
+36459,GitHub
+36692,Cisco OpenDNS
+37100,SEACOM
+37963,Alibaba Cloud
+40027,Netflix
+41095,IPTP Networks
+43515,Google (YouTube)
+45090,Tencent
+45102,Alibaba Cloud
+46489,Twitch
+46606,Unified Layer
+47541,VKontakte
+47764,VK
+49505,Selectel
+51167,Contabo
+53667,FranTech
+54113,Fastly
+55095,Netflix
+55836,Reliance Jio
+57724,DDoS-Guard
+57976,Blizzard
+58453,China Mobile International
+60068,CDN77 (Datacamp)
+60781,Leaseweb
+62041,Telegram
+62240,Clouvider
+63949,Akamai (Linode)
+132203,Tencent Cloud
+136907,Huawei Cloud
+197540,netcup
+197695,Reg.ru
+199524,G-Core Labs
+200019,AlexHost
+200350,Yandex.Cloud
+209242,Cloudflare
+396982,Google Cloud

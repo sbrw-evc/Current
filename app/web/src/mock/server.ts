@@ -13,6 +13,7 @@ import { LIST_OPS, MATCH_OPS } from '../filter/lexer'
 import { operatorsFor, validate } from '../filter/parse'
 import { diurnal, hash, mockExporters, rng, values, valuesFor } from './data'
 import { columns } from './schema'
+import { detectorMock } from './detector'
 
 // An in-browser stand-in for the backend (VITE_MOCK=1): every endpoint of docs/api.md answers
 // with synthetic data, so the console can be developed and screenshot-tested without ClickHouse.
@@ -25,6 +26,11 @@ const ALL_PERMISSIONS = [
   'visualize:view',
   'flows:view',
   'exporters:view',
+  'exporters:edit',
+  'detector:view',
+  'detector:edit',
+  'settings.umbrella:view',
+  'settings.umbrella:edit',
   'settings.inventory:view',
   'settings.inventory:edit',
   'settings.classifiers:view',
@@ -478,5 +484,7 @@ export async function handle(method: string, path: string, body: unknown): Promi
     const { exporter: _e, ...itf } = b.sample
     return ok({ valid: true, errors: null, steps: b.rules.map((_, i) => ({ index: i, output: i === 0 ? out : {} })), interface: { ...itf, ...out } })
   }
+  const det = detectorMock(method, p, body)
+  if (det) return det
   return fail(404, 'not_found', `${method} ${p}`)
 }

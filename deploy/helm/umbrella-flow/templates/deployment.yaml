@@ -1,0 +1,163 @@
+{{- $root := . -}}
+{{- $split := eq .Values.roles.mode "split" -}}
+{{- $nats := include "flow.natsURL" . -}}
+{{- if and $split (not $nats) }}
+{{- fail "roles.mode=split needs NATS JetStream: set nats.url (or dev.enabled)" }}
+{{- end }}
+{{- if and $split (not .Values.config.flowJson) (not (include "flow.sharedData" .)) .Values.persistence.enabled }}
+{{- fail "roles.mode=split: set config.flowJson, or persistence.accessModes [ReadWriteMany] / persistence.existingClaim so every role reads flow.json" }}
+{{- end }}
+{{- range $role := splitList " " (include "flow.roles" .) }}
+{{- $rv := index $root.Values.roles $role }}
+{{- $ownsData := or (eq $role "all") (eq $role "api") }}
+{{- $seed := and (not $ownsData) $root.Values.config.flowJson }}
+{{- $usePVC := and $root.Values.persistence.enabled (or $ownsData (and (not $seed) (include "flow.sharedData" $root))) }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "flow.fullname" $root }}{{ if $split }}-{{ $role }}{{ end }}
+  labels:
+    {{- include "flow.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $role }}
+spec:
+  replicas: {{ $rv.replicas }}
+  {{- if and $usePVC (not (include "flow.sharedData" $root)) }}
+  # A ReadWriteOnce data volume: never two pods at once.
+  strategy:
+    type: Recreate
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "flow.selector" (dict "root" $root "role" $role) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "flow.selector" (dict "root" $root "role" $role) | nindent 8 }}
+        {{- with $root.Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/env: {{ include (print $root.Template.BasePath "/configmap.yaml") $root | sha256sum }}
+        {{- with $root.Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "flow.serviceAccountName" $root }}
+      {{- with $root.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml $root.Values.podSecurityContext | nindent 8 }}
+      {{- if $seed }}
+      initContainers:
+        # Copies flow.json (only openbao:// references inside) into the data
+        # directory, keeping a file written there before.
+        - name: flow-json
+          image: "{{ $root.Values.initImage.repository }}:{{ $root.Values.initImage.tag }}"
+          imagePullPolicy: {{ $root.Values.initImage.pullPolicy }}
+          command: ["sh", "-c", "[ -s /data/flow.json ] || cp /seed/flow.json /data/flow.json"]
+          securityContext:
+            {{- toYaml $root.Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+            - {name: flow-json, mountPath: /seed, readOnly: true}
+      {{- end }}
+      containers:
+        - name: flow
+          image: {{ include "flow.image" $root | quote }}
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "flow.fullname" $root }}-env
+          env:
+            - name: FLOW_ROLE
+              value: {{ $role | quote }}
+            {{- if and $split $nats }}
+            - name: FLOW_NATS_URL
+              value: {{ $nats | quote }}
+            {{- end }}
+            {{- if $root.Values.config.setupTokenSecret }}
+            - name: FLOW_SETUP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.config.setupTokenSecret }}
+                  key: token
+            {{- end }}
+            {{- with $root.Values.config.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - {name: http, containerPort: {{ $root.Values.ports.http }}, protocol: TCP}
+            {{- if or (eq $role "all") (eq $role "collector") }}
+            - {name: netflow, containerPort: {{ $root.Values.ports.netflow }}, protocol: UDP}
+            - {name: sflow, containerPort: {{ $root.Values.ports.sflow }}, protocol: UDP}
+            {{- end }}
+            {{- if or (eq $role "all") (eq $role "enricher") }}
+            - {name: bmp, containerPort: {{ $root.Values.ports.bmp }}, protocol: TCP}
+            {{- end }}
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            {{- toYaml $root.Values.probes.startup | nindent 12 }}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            {{- toYaml $root.Values.probes.liveness | nindent 12 }}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            {{- toYaml $root.Values.probes.readiness | nindent 12 }}
+          resources:
+            {{- toYaml $rv.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml $root.Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+            - {name: tmp, mountPath: /tmp}
+            {{- if include "flow.openbaoSecret" $root }}
+            - {name: openbao, mountPath: /run/openbao, readOnly: true}
+            {{- end }}
+            {{- with $root.Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: data
+          {{- if $usePVC }}
+          persistentVolumeClaim:
+            claimName: {{ include "flow.claimName" $root }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir: {}
+        {{- if $seed }}
+        - name: flow-json
+          configMap:
+            name: {{ include "flow.fullname" $root }}-flowjson
+        {{- end }}
+        {{- if include "flow.openbaoSecret" $root }}
+        # OpenBao sign-in files (AppRole role_id / secret_id, or a token).
+        - name: openbao
+          secret:
+            secretName: {{ include "flow.openbaoSecret" $root }}
+            defaultMode: 0440
+            {{- if $root.Values.dev.enabled }}
+            items:
+              - {key: openbao-token, path: token}
+            {{- end }}
+        {{- end }}
+        {{- with $root.Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with $root.Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $root.Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $root.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

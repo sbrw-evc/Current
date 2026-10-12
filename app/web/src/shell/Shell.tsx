@@ -8,6 +8,7 @@ import { Banner, Button } from '../ui/ui'
 import { Sidebar, SidebarResizer, useCollapsed, useSidebarWidth } from './Sidebar'
 import { SessionProvider, type Session } from './session'
 import { TopBar } from './TopBar'
+import { ScopeBanner } from './ScopeBanner'
 
 // Shell: checks the setup state and the session, then draws Umbrella's frame (top bar, sidebar,
 // rounded page block) around the current page.
@@ -70,6 +71,7 @@ export function Shell() {
           <Sidebar collapsed={collapsed} />
           {!collapsed && <SidebarResizer width={width} onChange={setWidth} />}
           <div id="app-main" className="app-main">
+            <ScopeBanner />
             <Outlet />
           </div>
         </div>

@@ -1,0 +1,30 @@
+/* Umbrella settings, Dependencies page and the scope banner. */
+
+.um-grow {
+  flex: 1 1 auto;
+  font-size: 12px;
+}
+
+.um-sub {
+  font-size: 12px;
+}
+
+.scope-banner {
+  padding: 12px 24px 0;
+}
+
+.dep-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dep-search input {
+  min-width: 240px;
+}
+
+@media (max-width: 720px) {
+  .dep-search input {
+    min-width: 0;
+  }
+}

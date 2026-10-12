@@ -12,6 +12,7 @@ One Compose project brings up the whole stack:
 | `openbao-init` | same | initialises and unseals OpenBao, creates the `flow` KV v2 mount and AppRole, seeds passwords |
 | `flow-demo` | `umbrella-flow` | `--profile demo`: synthetic NetFlow v9 / IPFIX / sFlow traffic |
 | `geoipupdate` | `ghcr.io/maxmind/geoipupdate` | `--profile geoip`: MaxMind GeoLite2 databases |
+| `grafana` | `grafana/grafana:13.2.3` | `--profile grafana`: the "CI traffic" dashboard on ClickHouse (read-only user `grafana`), see [deploy/grafana](../grafana/README.md) |
 
 ## Quick start
 
@@ -32,8 +33,9 @@ With demo traffic: `docker compose --profile demo up -d` (graphs fill within a m
 
 - `.env` holds only bootstrap values the containers themselves need: the PostgreSQL, ClickHouse and NATS
   passwords (for the server containers) and the MaxMind key (for `geoipupdate`).
-- On the first start `openbao-init` copies `POSTGRES_PASSWORD`, `CLICKHOUSE_PASSWORD` and `NATS_TOKEN` into OpenBao
-  (`flow/postgres#password`, `flow/clickhouse#password`, `flow/nats#token`), only when they are not there yet.
+- On the first start `openbao-init` copies `POSTGRES_PASSWORD`, `CLICKHOUSE_PASSWORD`, `NATS_TOKEN` and
+  `CLICKHOUSE_GRAFANA_PASSWORD` into OpenBao (`flow/postgres#password`, `flow/clickhouse#password`, `flow/nats#token`,
+  `flow/grafana#clickhouse_password`), only when they are not there yet.
   The `flow` container never sees these values in its environment: the wizard gets only `openbao://` references
   (`FLOW_SETUP_DEFAULTS_*_REF`) and Flow reads the secrets from OpenBao (30 s cache, so a rotation needs no restart).
 - Flow signs in to OpenBao with AppRole; `openbao-init` writes `role_id` / `secret_id` into the `openbao-approle`
@@ -50,8 +52,10 @@ With demo traffic: `docker compose --profile demo up -d` (graphs fill within a m
 | 8080 | TCP | web console, API, `/metrics`, `/healthz` | `FLOW_HTTP_PORT`, `FLOW_HTTP_BIND` |
 | 2055 | UDP | NetFlow v5 / v9, IPFIX | `FLOW_NETFLOW_PORT` |
 | 6343 | UDP | sFlow v5 | `FLOW_SFLOW_PORT` |
+| 10179 | TCP | BMP (BGP Monitoring Protocol), listened to only while enabled under Settings → BMP | `FLOW_BMP_PORT` |
 | 8123 | TCP | ClickHouse HTTP (Grafana, `clickhouse-client`), localhost only | `CLICKHOUSE_HTTP_PORT`, `CLICKHOUSE_BIND` |
 | 8200 | TCP | OpenBao UI / API, localhost only | `OPENBAO_PORT`, `OPENBAO_BIND` |
+| 3000 | TCP | Grafana (`--profile grafana`), localhost only | `GRAFANA_PORT`, `GRAFANA_BIND` |
 
 PostgreSQL and NATS are not published: only the containers of the project reach them.
 
@@ -82,6 +86,28 @@ sflow collector 192.0.2.10 6343
 
 Export interface and sampler option templates: Flow uses them for interface names and the sampling rate. A sampling
 rate the exporter does not report can be set on the Exporters page.
+
+BMP (optional, for AS paths and communities): enable it under Settings → BMP, then point the routers at TCP 10179,
+for example:
+
+```text
+! Cisco IOS XR
+bmp server 1
+ host 192.0.2.10 port 10179
+ update-source Loopback0
+ initial-delay 30
+!
+router bgp 65000
+ neighbor 198.51.100.2
+  bmp-activate server 1
+```
+
+```text
+# Junos
+set routing-options bmp station FLOW station-address 192.0.2.10 station-port 10179
+set routing-options bmp station FLOW route-monitoring post-policy
+set routing-options bmp station FLOW connection-mode active
+```
 
 Behind NAT or a load balancer keep the original source address (UDP with `externalTrafficPolicy: Local` / no SNAT).
 Docker's default userland proxy for UDP is fine on Linux with `iptables` (the source address is kept).

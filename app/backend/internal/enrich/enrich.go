@@ -76,6 +76,19 @@ type Config struct {
 	TrackUnknown func(netip.Addr) bool
 	// Metrics registers Prometheus metrics when set.
 	Metrics Registerer
+	// PTR resolves reverse DNS names of addresses without an Inventory DB
+	// host name (rdns.go); nil disables.
+	PTR PTRSource
+	// Threats names the threat list of an address (threat.go); nil disables.
+	Threats ThreatSource
+	// ExporterNames names exporters that are not Inventory DB devices but
+	// synthetic addresses of cloud flow logs (internal/flowlogs); such
+	// exporters are not reported as unknown.
+	ExporterNames func(netip.Addr) (string, bool)
+	// Routing gives the BGP route of an address (BMP, routing.go): the
+	// "routing" AS provider and DstASPath / DstCommunities /
+	// DstLargeCommunities; nil disables.
+	Routing RoutingSource
 }
 
 // Enricher implements flow.Sink.
@@ -87,6 +100,7 @@ type Enricher struct {
 	geo     GeoSource
 	apps    AppSource
 	asOrder []string
+	asDyn   atomic.Pointer[[]string] // SetASProviders (routing.go)
 	cls     atomic.Pointer[classifier.Set]
 	empty   *inventory.Snapshot
 	mu      sync.RWMutex
@@ -118,7 +132,7 @@ func New(next flow.Sink, cfg Config) (*Enricher, error) {
 	}
 	for _, p := range cfg.ASProviders {
 		switch p {
-		case ASFlow, ASFlowExceptPrivate, ASGeoIP:
+		case ASFlow, ASFlowExceptPrivate, ASGeoIP, ASRouting:
 		default:
 			return nil, errors.New("enrich: unknown AS provider " + strconv.Quote(p))
 		}
@@ -212,6 +226,11 @@ func (e *Enricher) exporter(addr netip.Addr, snap *inventory.Snapshot, cls *clas
 		in.Name, in.Site, in.Region, in.Role, in.Tenant, in.Tags = d.Name, d.Site, d.Region, d.Role, d.Tenant, d.Tags
 	} else {
 		in.Name = addr.String()
+		if e.cfg.ExporterNames != nil {
+			if n, ok := e.cfg.ExporterNames(addr); ok {
+				in.Name, x.known = n, true
+			}
+		}
 	}
 	out := in
 	if cls.HasExporterRules() {
@@ -347,6 +366,7 @@ func (e *Enricher) enrichOne(f *flow.Flow, x *expEntry, ea netip.Addr, snap *inv
 		e.network(src, f.SrcNetMask, snap, &n, st, unk, f.Bytes*max(f.SamplingRate, 1))
 		f.SrcNetPrefix, f.SrcNetName, f.SrcNetRole, f.SrcNetSite, f.SrcNetTenant, f.SrcNetVRF = n.prefix, n.name, n.role, n.site, n.tenant, n.vrf
 		f.SrcHost, f.SrcCI, f.SrcCountry, f.SrcCity = n.host, n.ci, n.geo.Country, n.geo.City
+		e.route(src, &n)
 		f.SrcAS = e.as(f.SrcAS, &n)
 	}
 	if dst.IsValid() {
@@ -354,8 +374,12 @@ func (e *Enricher) enrichOne(f *flow.Flow, x *expEntry, ea netip.Addr, snap *inv
 		e.network(dst, f.DstNetMask, snap, &n, st, unk, f.Bytes*max(f.SamplingRate, 1))
 		f.DstNetPrefix, f.DstNetName, f.DstNetRole, f.DstNetSite, f.DstNetTenant, f.DstNetVRF = n.prefix, n.name, n.role, n.site, n.tenant, n.vrf
 		f.DstHost, f.DstCI, f.DstCountry, f.DstCity = n.host, n.ci, n.geo.Country, n.geo.City
+		e.route(dst, &n)
 		f.DstAS = e.as(f.DstAS, &n)
+		e.applyDstRoute(f, &n)
 	}
+	e.enrichPTR(f, src, dst)
+	e.enrichThreat(f, src, dst)
 	if f.App == "" {
 		f.App = e.apps.Lookup(f.Proto, f.SrcPort, f.DstPort)
 	}
@@ -377,6 +401,8 @@ type netInfo struct {
 	name, role, site, tenant, vrf, host, ci string
 	geo                                     geoip.Info
 	geoDone                                 bool
+	rt                                      RouteInfo // routing.go
+	rtOK                                    bool
 }
 
 func (e *Enricher) network(a netip.Addr, mask uint8, snap *inventory.Snapshot, n *netInfo, st *batchStats, unk *unknownBatch, bytes uint64) {
@@ -403,8 +429,16 @@ func (e *Enricher) network(a netip.Addr, mask uint8, snap *inventory.Snapshot, n
 }
 
 func (e *Enricher) as(reported uint32, n *netInfo) uint32 {
-	for _, p := range e.asOrder {
+	order := e.asOrder
+	if d := e.asDyn.Load(); d != nil {
+		order = *d
+	}
+	for _, p := range order {
 		switch p {
+		case ASRouting:
+			if n.rtOK && n.rt.OriginAS != 0 {
+				return n.rt.OriginAS
+			}
 		case ASFlow:
 			if reported != 0 {
 				return reported

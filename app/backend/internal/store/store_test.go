@@ -37,7 +37,7 @@ func TestStore(t *testing.T) {
 		t.Fatal(roles, err)
 	}
 	admin, err := st.RoleByName(ctx, "administrator")
-	if err != nil || len(admin.Permissions) != len(access.All()) || !admin.Builtin {
+	if err != nil || len(admin.Permissions) != len(access.BuiltinRoles()[0].Permissions) || !admin.Builtin {
 		t.Fatal(admin, err)
 	}
 	viewer, _ := st.RoleByName(ctx, access.RoleViewer)
@@ -71,7 +71,7 @@ func TestStore(t *testing.T) {
 	if n, _ := st.CountEnabledAdmins(ctx); n != 1 {
 		t.Fatal("admins", n)
 	}
-	if perms, _ := st.Permissions(ctx, u.ID); len(perms) != len(access.All()) {
+	if perms, _ := st.Permissions(ctx, u.ID); len(perms) != len(access.BuiltinRoles()[0].Permissions) {
 		t.Fatal(perms)
 	}
 	if err := st.DeleteRole(ctx, custom.ID); err != nil {

@@ -18,6 +18,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -62,20 +63,59 @@ type cached struct {
 }
 
 type Client struct {
-	cfg  Config
-	http *http.Client
+	cur atomic.Pointer[conn]
 
 	mu        sync.Mutex
 	token     string
 	expires   time.Time
+	ttl       time.Duration // lease duration of the token
 	renewable bool
 	policies  []string
 	cache     map[string]cached
 	lastErr   string
 	lastErrAt time.Time
+	renewal   Renewal
 }
 
 func New(cfg Config) (*Client, error) {
+	cn, err := newConn(cfg)
+	if err != nil {
+		return nil, err
+	}
+	c := &Client{cache: map[string]cached{}}
+	c.cur.Store(cn)
+	return c, nil
+}
+
+// Reconfigure switches the client to another OpenBao (or mount) in place:
+// every holder of the client follows at once. The token and the read cache
+// are dropped; the next request signs in to the new server.
+func (c *Client) Reconfigure(cfg Config) error {
+	cn, err := newConn(cfg)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cur.Store(cn)
+	c.token, c.expires, c.ttl, c.renewable, c.policies = "", time.Time{}, 0, false, nil
+	c.cache = map[string]cached{}
+	c.lastErr, c.renewal = "", Renewal{}
+	return nil
+}
+
+// Config returns the current connection settings.
+func (c *Client) Config() Config { return *c.conf() }
+
+// conn is one connection: settings and the HTTP client built from them.
+type conn struct {
+	cfg  Config
+	http *http.Client
+}
+
+func (c *Client) conf() *Config { return &c.cur.Load().cfg }
+
+func newConn(cfg Config) (*conn, error) {
 	if cfg.Mount == "" {
 		cfg.Mount = DefaultMount
 	}
@@ -105,15 +145,15 @@ func New(cfg Config) (*Client, error) {
 	}
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.TLSClientConfig = tlsCfg
-	return &Client{cfg: cfg, http: &http.Client{Timeout: 10 * time.Second, Transport: tr}, cache: map[string]cached{}}, nil
+	return &conn{cfg: cfg, http: &http.Client{Timeout: 10 * time.Second, Transport: tr}}, nil
 }
 
-func (c *Client) Enabled() bool { return c != nil && c.cfg.Addr != "" }
+func (c *Client) Enabled() bool { return c != nil && c.cur.Load() != nil && c.conf().Addr != "" }
 
-func (c *Client) Mount() string { return c.cfg.Mount }
+func (c *Client) Mount() string { return c.conf().Mount }
 
 func (c *Client) Ref(path, key string) string {
-	return Scheme + c.cfg.Mount + "/" + strings.Trim(path, "/") + "#" + key
+	return Scheme + c.conf().Mount + "/" + strings.Trim(path, "/") + "#" + key
 }
 
 func ParseRef(ref string) (mount, path, key string, err error) {
@@ -155,7 +195,7 @@ func (c *Client) Put(ctx context.Context, path string, values map[string]string)
 		return ErrNotConfigured
 	}
 	path = strings.Trim(path, "/")
-	data, err := c.read(ctx, c.cfg.Mount, path)
+	data, err := c.read(ctx, c.conf().Mount, path)
 	if err != nil && !errors.Is(err, ErrNotFound) {
 		return err
 	}
@@ -173,11 +213,11 @@ func (c *Client) Put(ctx context.Context, path string, values map[string]string)
 	if len(merged) == 0 {
 		return c.Delete(ctx, path)
 	}
-	if err := c.do(ctx, http.MethodPost, "/v1/"+c.cfg.Mount+"/data/"+path, map[string]any{"data": merged}, nil); err != nil {
+	if err := c.do(ctx, http.MethodPost, "/v1/"+c.conf().Mount+"/data/"+path, map[string]any{"data": merged}, nil); err != nil {
 		return err
 	}
 	c.mu.Lock()
-	c.cache[c.cfg.Mount+"/"+path] = cached{data: merged, at: time.Now()}
+	c.cache[c.conf().Mount+"/"+path] = cached{data: merged, at: time.Now()}
 	c.mu.Unlock()
 	return nil
 }
@@ -194,9 +234,9 @@ func (c *Client) Delete(ctx context.Context, path string) error {
 		return ErrNotConfigured
 	}
 	path = strings.Trim(path, "/")
-	err := c.do(ctx, http.MethodDelete, "/v1/"+c.cfg.Mount+"/metadata/"+path, nil, nil)
+	err := c.do(ctx, http.MethodDelete, "/v1/"+c.conf().Mount+"/metadata/"+path, nil, nil)
 	c.mu.Lock()
-	delete(c.cache, c.cfg.Mount+"/"+path)
+	delete(c.cache, c.conf().Mount+"/"+path)
 	c.mu.Unlock()
 	if errors.Is(err, ErrNotFound) {
 		return nil
@@ -206,7 +246,7 @@ func (c *Client) Delete(ctx context.Context, path string) error {
 
 func (c *Client) Owns(ref, path string) bool {
 	mount, p, _, err := ParseRef(ref)
-	return err == nil && mount == c.cfg.Mount && p == strings.Trim(path, "/")
+	return err == nil && mount == c.conf().Mount && p == strings.Trim(path, "/")
 }
 
 func (c *Client) read(ctx context.Context, mount, path string) (map[string]string, error) {
@@ -215,7 +255,7 @@ func (c *Client) read(ctx context.Context, mount, path string) (map[string]strin
 	}
 	k := mount + "/" + path
 	c.mu.Lock()
-	if e, ok := c.cache[k]; ok && time.Since(e.at) < c.cfg.CacheTTL {
+	if e, ok := c.cache[k]; ok && time.Since(e.at) < c.conf().CacheTTL {
 		c.mu.Unlock()
 		return e.data, nil
 	}
@@ -253,7 +293,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 			return err
 		}
 		code, err := c.raw(ctx, method, path, tok, body, out)
-		if code == http.StatusForbidden && attempt == 0 && (c.cfg.RoleID != "" || c.cfg.RoleIDFile != "" || c.cfg.TokenFile != "") {
+		if code == http.StatusForbidden && attempt == 0 && (c.conf().RoleID != "" || c.conf().RoleIDFile != "" || c.conf().TokenFile != "") {
 			continue
 		}
 		if err != nil && !errors.Is(err, ErrNotFound) {
@@ -270,20 +310,20 @@ func (c *Client) raw(ctx context.Context, method, path, token string, body, out 
 		b, _ := json.Marshal(body)
 		rd = bytes.NewReader(b)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, c.cfg.Addr+path, rd)
+	req, err := http.NewRequestWithContext(ctx, method, c.conf().Addr+path, rd)
 	if err != nil {
 		return 0, err
 	}
 	if token != "" {
 		req.Header.Set("X-Vault-Token", token)
 	}
-	if c.cfg.Namespace != "" {
-		req.Header.Set("X-Vault-Namespace", c.cfg.Namespace)
+	if c.conf().Namespace != "" {
+		req.Header.Set("X-Vault-Namespace", c.conf().Namespace)
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := c.http.Do(req)
+	resp, err := c.cur.Load().http.Do(req)
 	if err != nil {
 		return 0, fmt.Errorf("OpenBao is unreachable: %w", err)
 	}
@@ -328,10 +368,10 @@ func readValue(v, file string) (string, error) {
 }
 
 func (c *Client) authMethod() string {
-	if c.cfg.RoleID != "" || c.cfg.RoleIDFile != "" {
+	if c.conf().RoleID != "" || c.conf().RoleIDFile != "" {
 		return "approle"
 	}
-	if c.cfg.Token != "" || c.cfg.TokenFile != "" {
+	if c.conf().Token != "" || c.conf().TokenFile != "" {
 		return "token"
 	}
 	return ""
@@ -350,11 +390,11 @@ func (c *Client) ensureToken(ctx context.Context, force bool) (string, error) {
 func (c *Client) login(ctx context.Context) (string, error) {
 	switch c.authMethod() {
 	case "approle":
-		roleID, err := readValue(c.cfg.RoleID, c.cfg.RoleIDFile)
+		roleID, err := readValue(c.conf().RoleID, c.conf().RoleIDFile)
 		if err != nil {
 			return "", fmt.Errorf("OpenBao role_id: %w", err)
 		}
-		secretID, err := readValue(c.cfg.SecretID, c.cfg.SecretIDFile)
+		secretID, err := readValue(c.conf().SecretID, c.conf().SecretIDFile)
 		if err != nil {
 			return "", fmt.Errorf("OpenBao secret_id: %w", err)
 		}
@@ -366,14 +406,15 @@ func (c *Client) login(ctx context.Context) (string, error) {
 				Policies      []string `json:"policies"`
 			} `json:"auth"`
 		}
-		if _, err := c.raw(ctx, http.MethodPost, "/v1/auth/"+c.cfg.AppRolePath+"/login",
+		if _, err := c.raw(ctx, http.MethodPost, "/v1/auth/"+c.conf().AppRolePath+"/login",
 			"", map[string]string{"role_id": roleID, "secret_id": secretID}, &out); err != nil {
 			return "", fmt.Errorf("OpenBao AppRole login: %w", err)
 		}
 		c.setToken(out.Auth.ClientToken, out.Auth.LeaseDuration, out.Auth.Renewable, out.Auth.Policies)
+		c.noteLogin()
 		return out.Auth.ClientToken, nil
 	case "token":
-		tok, err := readValue(c.cfg.Token, c.cfg.TokenFile)
+		tok, err := readValue(c.conf().Token, c.conf().TokenFile)
 		if err != nil {
 			return "", fmt.Errorf("OpenBao token: %w", err)
 		}
@@ -382,6 +423,7 @@ func (c *Client) login(ctx context.Context) (string, error) {
 			return "", err
 		}
 		c.setToken(tok, info.TTL, info.Renewable, info.Policies)
+		c.noteLogin()
 		return tok, nil
 	}
 	return "", ErrNotConfigured
@@ -407,11 +449,71 @@ func (c *Client) setToken(tok string, ttl int, renewable bool, policies []string
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.token, c.renewable, c.policies = tok, renewable, policies
-	c.expires = time.Time{}
+	c.expires, c.ttl = time.Time{}, 0
 	if ttl > 0 {
-		c.expires = time.Now().Add(time.Duration(ttl) * time.Second)
+		c.ttl = time.Duration(ttl) * time.Second
+		c.expires = time.Now().Add(c.ttl)
 	}
 	c.lastErr = ""
+}
+
+// Renewal is how the client keeps its token alive (Settings → OpenBao).
+type Renewal struct {
+	// Mode: "renew" (the token is renewed), "login" (a non-renewable token:
+	// AppRole signs in again), "none" (a token without expiry).
+	Mode        string     `json:"mode"`
+	LoggedInAt  *time.Time `json:"logged_in_at,omitempty"`
+	Logins      int        `json:"logins"`
+	RenewedAt   *time.Time `json:"renewed_at,omitempty"`
+	Renewals    int        `json:"renewals"`
+	NextAt      *time.Time `json:"next_at,omitempty"`
+	LastError   string     `json:"last_error,omitempty"`
+	LastErrorAt *time.Time `json:"last_error_at,omitempty"`
+}
+
+func (c *Client) noteLogin() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := time.Now().UTC()
+	c.renewal.LoggedInAt = &now
+	c.renewal.Logins++
+}
+
+func (c *Client) noteRenewal(err error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := time.Now().UTC()
+	if err != nil {
+		c.renewal.LastError, c.renewal.LastErrorAt = err.Error(), &now
+		return
+	}
+	c.renewal.RenewedAt = &now
+	c.renewal.Renewals++
+	c.renewal.LastError, c.renewal.LastErrorAt = "", nil
+}
+
+// renewalState returns the renewal record with the mode and next check.
+func (c *Client) renewalState() Renewal {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	r := c.renewal
+	switch {
+	case c.expires.IsZero():
+		r.Mode = "none"
+	case c.renewable:
+		r.Mode = "renew"
+	default:
+		r.Mode = "login"
+	}
+	if !c.expires.IsZero() {
+		next := c.expires.Add(-c.ttl / 3)
+		if c.ttl == 0 || next.Before(time.Now()) {
+			next = time.Now()
+		}
+		next = next.UTC()
+		r.NextAt = &next
+	}
+	return r
 }
 
 func (c *Client) fail(err error) {
@@ -427,7 +529,7 @@ func (c *Client) Run(ctx context.Context) {
 	for {
 		wait := time.Minute
 		c.mu.Lock()
-		tok, exp, renewable := c.token, c.expires, c.renewable
+		tok, exp, ttl, renewable := c.token, c.expires, c.ttl, c.renewable
 		c.mu.Unlock()
 		if tok == "" {
 			if _, err := c.login(ctx); err != nil {
@@ -436,9 +538,12 @@ func (c *Client) Run(ctx context.Context) {
 				wait = 15 * time.Second
 			}
 		} else if !exp.IsZero() {
+			// Renew once two thirds of the lease have passed (or in the last minute).
 			left := time.Until(exp)
-			if left < 2*left/3+10*time.Second || left < time.Minute {
-				if err := c.renew(ctx, renewable); err != nil {
+			if left < ttl/3 || left < time.Minute {
+				err := c.renew(ctx, renewable)
+				c.noteRenewal(err)
+				if err != nil {
 					slog.Warn("openbao token renewal failed, logging in again", "err", err)
 					if _, err := c.login(ctx); err != nil {
 						c.fail(err)
@@ -448,7 +553,11 @@ func (c *Client) Run(ctx context.Context) {
 			}
 			c.mu.Lock()
 			if !c.expires.IsZero() {
-				if w := time.Until(c.expires) / 3; w > 5*time.Second && w < wait {
+				w := time.Until(c.expires.Add(-c.ttl / 3))
+				if w < 5*time.Second {
+					w = 5 * time.Second
+				}
+				if w < wait {
 					wait = w
 				}
 			}
@@ -503,13 +612,14 @@ type Status struct {
 	Error       string     `json:"error,omitempty"`
 	LastError   string     `json:"last_error,omitempty"`
 	LastErrorAt *time.Time `json:"last_error_at,omitempty"`
+	Renewal     Renewal    `json:"renewal"`
 }
 
 func (c *Client) Status(ctx context.Context) Status {
 	if !c.Enabled() {
 		return Status{Error: ErrNotConfigured.Error()}
 	}
-	s := Status{Configured: true, Addr: c.cfg.Addr, Mount: c.cfg.Mount, Auth: c.authMethod(), Namespace: c.cfg.Namespace}
+	s := Status{Configured: true, Addr: c.conf().Addr, Mount: c.conf().Mount, Auth: c.authMethod(), Namespace: c.conf().Namespace}
 	var h struct {
 		Initialized bool   `json:"initialized"`
 		Sealed      bool   `json:"sealed"`
@@ -542,16 +652,17 @@ func (c *Client) Status(ctx context.Context) Status {
 		s.TokenExpiry = &t
 	}
 
-	_, err = c.raw(ctx, http.MethodGet, "/v1/"+c.cfg.Mount+"/data/_flow_probe", tok, nil, nil)
+	_, err = c.raw(ctx, http.MethodGet, "/v1/"+c.conf().Mount+"/data/_flow_probe", tok, nil, nil)
 	if err == nil || errors.Is(err, ErrNotFound) {
 		s.MountOK = true
 	} else {
-		s.Error = "no access to the KV mount " + c.cfg.Mount + ": " + err.Error()
+		s.Error = "no access to the KV mount " + c.conf().Mount + ": " + err.Error()
 	}
 	return c.withLast(s)
 }
 
 func (c *Client) withLast(s Status) Status {
+	s.Renewal = c.renewalState()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.lastErr != "" {

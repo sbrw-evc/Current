@@ -10,6 +10,7 @@ import { Page } from '../shell/Page'
 import { useSession } from '../shell/session'
 import { Banner, Chip, Loading, Tile, spring, type Tone } from '../ui/ui'
 import { DEFAULT_STATE, visualizeLink } from './visualize/state'
+import { SamplingOverrides } from './ExportersSampling'
 
 const strings: Dict = {
   en: {
@@ -213,6 +214,7 @@ export default function ExportersPage() {
           </div>
         )}
       </section>
+      <SamplingOverrides exporters={list} />
     </Page>
   )
 }

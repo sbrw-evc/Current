@@ -3,6 +3,7 @@ package wiring
 import (
 	"context"
 	"log/slog"
+	"sync"
 
 	"github.com/sbrw-evc/network/app/backend/internal/app"
 	"github.com/sbrw-evc/network/app/backend/internal/collector"
@@ -10,42 +11,22 @@ import (
 )
 
 // Collector adapts the collector for the API: sampling override reloads and
-// the status component.
+// the status component. The sampling override loading lives in sampling.go.
 type Collector struct {
 	C   *collector.Collector
-	St  *store.Store // nil: overrides are not applied
+	St  *store.Store // nil: overrides are read through OpenStore, if set
 	Log *slog.Logger
-}
+	// Env are the overrides of FLOW_SAMPLING_OVERRIDES; they win over the
+	// stored ones for the same exporter prefix and interface.
+	Env []collector.SamplingOverride
+	// OpenStore connects PostgreSQL lazily (standalone collector role, which
+	// learns the connection from flow.json on the shared data volume); it is
+	// retried on each refresh until it succeeds.
+	OpenStore func(ctx context.Context) (*store.Store, error)
 
-// SamplingOverrides converts the stored overrides for the collector. The
-// collector applies a rate per exporter prefix; per-interface overrides
-// (if_index ≠ 0) are not supported by it and are skipped.
-func SamplingOverrides(in []store.SamplingOverride) (out []collector.SamplingOverride, skipped int) {
-	for _, o := range in {
-		if o.IfIndex != 0 {
-			skipped++
-			continue
-		}
-		out = append(out, collector.SamplingOverride{Prefix: o.Exporter, Rate: o.Rate})
-	}
-	return out, skipped
-}
-
-// ApplySampling reads the overrides from PostgreSQL and applies them.
-func (c *Collector) ApplySampling(ctx context.Context) error {
-	if c.St == nil {
-		return nil
-	}
-	list, err := c.St.SamplingOverrides(ctx)
-	if err != nil {
-		return err
-	}
-	ov, skipped := SamplingOverrides(list)
-	c.C.SetSamplingOverrides(ov)
-	if skipped > 0 && c.Log != nil {
-		c.Log.Warn("per-interface sampling overrides are not supported by the collector; skipped", "count", skipped)
-	}
-	return nil
+	smu     sync.Mutex
+	lastErr string
+	opened  bool // St was opened through OpenStore (closed by RunSampling)
 }
 
 // Reload implements app.Reloader.

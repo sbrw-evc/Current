@@ -164,7 +164,7 @@ func main() {
 			SecureCookies: env.SecureCookies, TrustedProxies: env.TrustedProxies, Web: webHandler,
 			// Inventory DB synchronization is scheduled by the enricher /
 			// detector processes (wiring.Inventory), not by the API.
-			ScheduleInventory: false}, deps)
+			ScheduleInventory: false, DataDir: env.DataDir}, deps)
 		bg.Go(func() { a.Run(ctx) })
 		handler.Set(a.Handler())
 		slog.Info("flow ready", "role", role, "postgres", "ok", "clickhouse", cfg.ClickHouse.Addr, "openbao", cfg.OpenBao.Addr)

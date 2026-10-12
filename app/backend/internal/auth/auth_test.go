@@ -189,3 +189,35 @@ func TestPolicy(t *testing.T) {
 		t.Fatal("classes")
 	}
 }
+
+func TestAPITokens(t *testing.T) {
+	_, vault := secretstest.New(t)
+	keys := NewKeys(vault)
+	ctx := context.Background()
+	tok := NewAPIToken()
+	if !WellFormedToken(tok) || WellFormedToken(tok+"x") || WellFormedToken("umb_"+tok[5:]) || WellFormedToken(tok[:20]+"!"+tok[21:]) {
+		t.Fatal("token format", tok)
+	}
+	// The key is created on first use.
+	h1, err := keys.TokenHash(ctx, tok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h2, _ := keys.TokenHash(ctx, tok)
+	h3, _ := keys.TokenHash(ctx, NewAPIToken())
+	if h1 != h2 || h1 == h3 || len(h1) != 64 {
+		t.Fatal("hash", h1, h2, h3)
+	}
+	if TokenDisplay(tok) != tok[:9]+"…" {
+		t.Fatal(TokenDisplay(tok))
+	}
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.Header.Set("Authorization", "bearer "+tok)
+	if got, ok := BearerToken(r); !ok || got != tok {
+		t.Fatal("bearer")
+	}
+	r.Header.Set("Authorization", "Basic x")
+	if _, ok := BearerToken(r); ok {
+		t.Fatal("basic accepted")
+	}
+}

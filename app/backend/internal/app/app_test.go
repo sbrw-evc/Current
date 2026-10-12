@@ -205,7 +205,7 @@ func TestLoginAndLockout(t *testing.T) {
 		t.Fatal(code, out)
 	}
 	user := out["user"].(map[string]any)
-	if user["username"] != "admin" || user["role"] != access.RoleAdministrator || len(user["permissions"].([]any)) != len(access.All()) {
+	if user["username"] != "admin" || user["role"] != access.RoleAdministrator || len(user["permissions"].([]any)) != len(access.BuiltinRoles()[0].Permissions) {
 		t.Fatal(user)
 	}
 	if code, out := c.do("GET", "/api/schema", nil); code != 200 || len(out["columns"].([]any)) == 0 {

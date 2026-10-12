@@ -98,6 +98,19 @@ type Flow struct {
 
 	// enriched: classification
 	App string // application name ("https", "dns", vendor App-ID, …)
+
+	// enriched: reverse DNS (PTR) of addresses without an Inventory DB host name
+	SrcHostPTR string
+	DstHostPTR string
+	// enriched: threat intelligence, name of the blocklist holding the address
+	SrcThreat string
+	DstThreat string
+
+	// enriched: BGP attributes of the route to DstAddr (BMP). The slices may
+	// be shared with the routing table and must not be modified.
+	DstASPath           []uint32
+	DstCommunities      []uint32 // standard communities, high 16 bits = AS
+	DstLargeCommunities []string // "global:local1:local2"
 }
 
 // Sink receives batches of flows. Implementations must not retain the slice

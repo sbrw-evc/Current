@@ -4,11 +4,14 @@ import (
 	"cmp"
 	"net/netip"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/netsampler/goflow2/v2/decoders/netflow"
+
+	"github.com/sbrw-evc/network/app/backend/internal/flow"
 )
 
 // IfNameSource resolves interface names learned from the exporters
@@ -58,7 +61,8 @@ const anySampler = ^uint64(0)
 type exporter struct {
 	addr     netip.Addr
 	label    string
-	override atomic.Uint64 // forced sampling rate, 0 if none (changed by SetSamplingOverrides)
+	override atomic.Uint64               // forced sampling rate, 0 if none (changed by SetSamplingOverrides)
+	ifov     atomic.Pointer[ifOverrides] // per-interface forced rates, nil if none
 
 	templates netflow.NetFlowTemplateSystem // per exporter; keyed inside by version + domain
 
@@ -104,6 +108,7 @@ func (r *registry) get(addr netip.Addr) *exporter {
 			ratesSeen: make(map[uint64]struct{}),
 		}
 		e.override.Store(r.cfg.overrideFor(addr))
+		e.ifov.Store(r.cfg.ifOverridesFor(addr))
 		r.exporters[addr] = e
 	}
 	return e
@@ -117,6 +122,7 @@ func (r *registry) setOverrides(ov []SamplingOverride) {
 	r.cfg.SamplingOverrides = ov
 	for a, e := range r.exporters {
 		e.override.Store(r.cfg.overrideFor(a))
+		e.ifov.Store(r.cfg.ifOverridesFor(a))
 	}
 }
 
@@ -177,6 +183,50 @@ func (e *exporter) effectiveRate(reported, def uint64) uint64 {
 		rate = def
 	}
 	return rate
+}
+
+// applyIfOverrides forces the per-interface sampling rates on flows (input
+// interface first, then output interface). It returns the rates it set.
+func (e *exporter) applyIfOverrides(flows []*flow.Flow, ifc *ifCache, rates []uint64) []uint64 {
+	ov := e.ifov.Load()
+	if ov == nil {
+		return rates
+	}
+	names := map[uint32]string{}
+	nameOf := func(idx uint32) string {
+		n, ok := names[idx]
+		if !ok {
+			n, _, _, _ = ifc.Lookup(e.addr, idx)
+			n = strings.ToLower(n)
+			names[idx] = n
+		}
+		return n
+	}
+	rateFor := func(idx uint32) uint64 {
+		if idx == 0 {
+			return 0
+		}
+		if r, ok := ov.byIndex[idx]; ok {
+			return r
+		}
+		if len(ov.byName) > 0 {
+			if n := nameOf(idx); n != "" {
+				return ov.byName[n]
+			}
+		}
+		return 0
+	}
+	for _, f := range flows {
+		r := rateFor(f.InIf)
+		if r == 0 {
+			r = rateFor(f.OutIf)
+		}
+		if r != 0 && f.SamplingRate != r {
+			f.SamplingRate = r
+			rates = appendRate(rates, r)
+		}
+	}
+	return rates
 }
 
 func (e *exporter) noteRates(rates []uint64) {

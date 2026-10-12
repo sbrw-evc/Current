@@ -7,6 +7,9 @@ export type Permission =
   | 'visualize:view'
   | 'flows:view'
   | 'exporters:view'
+  | 'exporters:edit'
+  | 'detector:view'
+  | 'detector:edit'
   | 'settings.inventory:view'
   | 'settings.inventory:edit'
   | 'settings.classifiers:view'
@@ -18,7 +21,7 @@ export type User = { id: string; username: string; name: string; role: string; p
 export type Me = { user: User; csrf: string }
 
 
-export type ColumnKind = 'string' | 'ip' | 'prefix' | 'uint' | 'time'
+export type ColumnKind = 'string' | 'ip' | 'prefix' | 'uint' | 'time' | 'uint[]' | 'string[]'
 export type Column = { name: string; kind: ColumnKind; dimension: boolean; rollup: boolean; reverse: string; metric: boolean }
 export type Schema = { columns: Column[] }
 

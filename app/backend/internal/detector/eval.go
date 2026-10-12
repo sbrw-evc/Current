@@ -56,6 +56,8 @@ func (d *Detector) evaluate(ctx context.Context, e evalCtx) ([]observation, erro
 		return d.evalSilent(ctx, e)
 	case KindCustom:
 		return d.evalCustom(ctx, e)
+	case KindThreatContact:
+		return d.evalThreat(ctx, e)
 	}
 	return nil, fmt.Errorf("unknown kind %q", e.rule.Kind)
 }

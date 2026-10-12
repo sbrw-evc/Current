@@ -68,12 +68,12 @@ func TestClassifierPreviewSamples(t *testing.T) {
 }
 
 func TestSamplingOverrides(t *testing.T) {
-	ov, skipped := wiring.SamplingOverrides([]store.SamplingOverride{
+	ov := wiring.SamplingOverrides([]store.SamplingOverride{
 		{Exporter: netip.MustParsePrefix("10.0.0.0/8"), Rate: 100},
 		{Exporter: netip.MustParsePrefix("10.0.0.1/32"), IfIndex: 3, Rate: 10},
 	})
-	if len(ov) != 1 || skipped != 1 || ov[0].Rate != 100 {
-		t.Fatal(ov, skipped)
+	if len(ov) != 2 || ov[0].Rate != 100 || ov[1].IfIndex != 3 || ov[1].Rate != 10 {
+		t.Fatal(ov)
 	}
 }
 

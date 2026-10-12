@@ -109,6 +109,11 @@ func Migrate(ctx context.Context, conn driver.Conn, cfg Config) error {
 			return err
 		}
 	}
+
+	// AS names learned by the enrichers (asnames.go).
+	if err := exec(ASNamesDDL(cfg)); err != nil {
+		return err
+	}
 	return nil
 }
 

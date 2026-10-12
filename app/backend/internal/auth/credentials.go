@@ -61,10 +61,11 @@ func (p *Passwords) Verify(ref, password string) (bool, error) {
 	return CheckPassword(hash, password), nil
 }
 
-// Keys are the HMAC keys of sessions and CSRF tokens, kept in OpenBao at
-// keys#session and keys#csrf. Session IDs are stored in PostgreSQL only as
-// HMAC(session key, id); the CSRF token is HMAC(csrf key, id), so neither a
-// database dump nor the logs give a usable token.
+// Keys are the HMAC keys of sessions, CSRF tokens and API tokens, kept in
+// OpenBao at keys#session, keys#csrf and keys#tokens. Session IDs and API
+// tokens are stored in PostgreSQL only as HMACs; the CSRF token is
+// HMAC(csrf key, id), so neither a database dump nor the logs give a usable
+// token.
 type Keys struct {
 	vault Vault
 }
@@ -81,7 +82,7 @@ func NewKeys(v Vault) *Keys { return &Keys{vault: v} }
 
 // Ensure creates the keys that do not exist yet.
 func (k *Keys) Ensure(ctx context.Context) error {
-	for _, name := range []string{keySession, keyCSRF} {
+	for _, name := range []string{keySession, keyCSRF, keyTokens} {
 		if v, err := k.vault.Resolve(k.vault.Ref(KeysPath, name)); err == nil && v != "" {
 			continue
 		}

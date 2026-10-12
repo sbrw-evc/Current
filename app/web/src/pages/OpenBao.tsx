@@ -6,17 +6,21 @@ import { errorText, useLocale, useT, type Dict } from '../i18n'
 import { Page } from '../shell/Page'
 import { useSession } from '../shell/session'
 import { Banner, Button, Card, Chip, formatDate, Loading, Rows } from '../ui/ui'
+import { OpenBaoMigrate } from './settings/OpenBaoMigrate'
 
 // Settings → OpenBao, as in Umbrella (app/settings/openbao): where the secrets live and whether
 // Flow can reach them. Proposed contract (not yet in docs/api.md):
 //   GET  /api/settings/openbao      → OpenBaoView
 //   POST /api/settings/openbao/test → {ok, error?, details?}
+// Token renewal (secrets.Renewal): renewed in place, or a new AppRole sign-in for a non-renewable token.
+type Renewal = { mode: 'renew' | 'login' | 'none'; logged_in_at?: string; logins: number; renewed_at?: string; renewals: number; next_at?: string; last_error?: string; last_error_at?: string }
+
 type OpenBaoView = {
   addr: string
   mount: string
   auth: 'token' | 'approle'
   role_id?: string
-  status: { ok: boolean; version?: string; token_expires?: string; renewable?: boolean; policies?: string[]; error?: string }
+  status: { ok: boolean; version?: string; token_expires?: string; renewable?: boolean; policies?: string[]; error?: string; renewal?: Renewal }
   secrets?: number
 }
 
@@ -38,12 +42,20 @@ const strings: Dict = {
     'ob.renewable': 'Renewable',
     'ob.policies': 'Policies',
     'ob.secrets': 'Secrets in the mount',
+    'ob.renewal': 'Token renewal',
+    'ob.renewal.renew': 'Renewed before expiry',
+    'ob.renewal.login': 'AppRole signs in again before expiry',
+    'ob.renewal.none': 'Token without expiry',
+    'ob.renewed': 'Last renewal',
+    'ob.next': 'Next check',
+    'ob.login': 'Last sign-in',
+    'ob.renewal.error': 'Last renewal failed',
     'ob.test': 'Check',
     'ob.test.ok': 'OpenBao answers, the mount is readable and writable',
     'ob.test.fail': 'Check failed',
     'ob.what': 'What is kept there',
     'ob.what.text': 'PostgreSQL and ClickHouse passwords, the Inventory DB token, the Umbrella ingest token, the NATS credentials. Forms show such fields as "set · kept in OpenBao" with a Replace button.',
-    'ob.change': 'The connection to OpenBao itself is set by the setup wizard and the AppRole file of the container (FLOW_SETUP_DEFAULTS_OPENBAO_*).',
+    'ob.change': 'The connection to OpenBao itself is set by the setup wizard and the AppRole file of the container (FLOW_SETUP_DEFAULTS_OPENBAO_*), or changed by moving the secrets to another OpenBao.',
   },
   ru: {
     'ob.sub': 'Все пароли и токены Flow хранятся в OpenBao; на диске и в интерфейсе секретов нет',
@@ -62,12 +74,20 @@ const strings: Dict = {
     'ob.renewable': 'Продлевается',
     'ob.policies': 'Политики',
     'ob.secrets': 'Секретов в хранилище',
+    'ob.renewal': 'Продление токена',
+    'ob.renewal.renew': 'Продлевается до истечения',
+    'ob.renewal.login': 'AppRole входит заново до истечения',
+    'ob.renewal.none': 'Токен без срока действия',
+    'ob.renewed': 'Последнее продление',
+    'ob.next': 'Следующая проверка',
+    'ob.login': 'Последний вход',
+    'ob.renewal.error': 'Последнее продление не удалось',
     'ob.test': 'Проверить',
     'ob.test.ok': 'OpenBao отвечает, хранилище доступно на чтение и запись',
     'ob.test.fail': 'Проверка не прошла',
     'ob.what': 'Что там хранится',
     'ob.what.text': 'Пароли PostgreSQL и ClickHouse, токен Inventory DB, токен приёма Umbrella, учётные данные NATS. В формах такие поля показываются как «задан · хранится в OpenBao» с кнопкой «Заменить».',
-    'ob.change': 'Само подключение к OpenBao задаётся мастером настройки и файлом AppRole контейнера (FLOW_SETUP_DEFAULTS_OPENBAO_*).',
+    'ob.change': 'Само подключение к OpenBao задаётся мастером настройки и файлом AppRole контейнера (FLOW_SETUP_DEFAULTS_OPENBAO_*) или меняется переносом секретов в другой OpenBao.',
   },
 }
 
@@ -99,9 +119,18 @@ export default function OpenBaoPage() {
                 [t('ob.renewable'), v.status.renewable === undefined ? '—' : t(v.status.renewable ? 'yes' : 'no')],
                 [t('ob.policies'), v.status.policies?.join(', ')],
                 [t('ob.secrets'), v.secrets === undefined ? '—' : num(v.secrets, locale)],
+                ...(v.status.renewal
+                  ? ([
+                      [t('ob.renewal'), t(`ob.renewal.${v.status.renewal.mode}`)],
+                      [t('ob.login'), v.status.renewal.logged_in_at ? formatDate(v.status.renewal.logged_in_at, locale) : '—'],
+                      [t('ob.renewed'), v.status.renewal.renewed_at ? `${formatDate(v.status.renewal.renewed_at, locale)} (${num(v.status.renewal.renewals, locale)})` : '—'],
+                      [t('ob.next'), v.status.renewal.next_at ? formatDate(v.status.renewal.next_at, locale) : '—'],
+                    ] as [string, React.ReactNode][])
+                  : []),
               ]}
             />
             {v.status.error && <Banner kind="error" title={t('ob.state.fail')}>{v.status.error}</Banner>}
+            {v.status.renewal?.last_error && <Banner kind="warn" title={t('ob.renewal.error')}>{v.status.renewal.last_error}</Banner>}
             {test.data && (
               <Banner kind={test.data.ok ? 'ok' : 'error'} title={test.data.ok ? t('ob.test.ok') : t('ob.test.fail')}>
                 {test.data.error}
@@ -121,6 +150,7 @@ export default function OpenBaoPage() {
             <p>{t('ob.what.text')}</p>
             <p className="hint">{t('ob.change')}</p>
           </Card>
+          {can('settings.openbao:migrate') && <OpenBaoMigrate />}
         </div>
       ) : null}
     </Page>

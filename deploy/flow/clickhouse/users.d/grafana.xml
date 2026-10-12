@@ -1,0 +1,29 @@
+<!-- Umbrella Flow: read-only ClickHouse user "grafana" for the Grafana datasource
+     (deploy/grafana, uid flow-clickhouse). The password comes from
+     CLICKHOUSE_GRAFANA_PASSWORD (.env), which openbao-init also seeds into OpenBao
+     (flow/grafana#clickhouse_password). -->
+<clickhouse>
+    <profiles>
+        <grafana_readonly>
+            <!-- 2: reads only, but the client may still pass query settings. -->
+            <readonly>2</readonly>
+            <max_memory_usage>1073741824</max_memory_usage>
+            <max_execution_time>60</max_execution_time>
+            <max_result_rows>100000</max_result_rows>
+            <result_overflow_mode>break</result_overflow_mode>
+        </grafana_readonly>
+    </profiles>
+    <users>
+        <grafana>
+            <password from_env="CLICKHOUSE_GRAFANA_PASSWORD"/>
+            <profile>grafana_readonly</profile>
+            <quota>default</quota>
+            <networks>
+                <ip>::/0</ip>
+            </networks>
+            <grants>
+                <query>GRANT SELECT ON flow.*</query>
+            </grants>
+        </grafana>
+    </users>
+</clickhouse>

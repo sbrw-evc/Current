@@ -24,10 +24,10 @@ FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=backend /flow /flow
 COPY --from=web /web/dist /web
 COPY --from=backend --chown=65532:65532 /out/data /data
-ENV FLOW_WEB_DIR=/web FLOW_ADDR=:8080 FLOW_DATA_DIR=/data FLOW_ROLE=all FLOW_NETFLOW_ADDR=:2055 FLOW_SFLOW_ADDR=:6343
+ENV FLOW_WEB_DIR=/web FLOW_ADDR=:8080 FLOW_DATA_DIR=/data FLOW_ROLE=all FLOW_NETFLOW_ADDR=:2055 FLOW_SFLOW_ADDR=:6343 FLOW_BMP_ADDR=:10179
 VOLUME /data
-# HTTP (web console, API, /metrics), NetFlow v5/v9 / IPFIX, sFlow
-EXPOSE 8080/tcp 2055/udp 6343/udp
+# HTTP (web console, API, /metrics), NetFlow v5/v9 / IPFIX, sFlow, BMP
+EXPOSE 8080/tcp 2055/udp 6343/udp 10179/tcp
 USER nonroot
 HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=3 CMD ["/flow", "-healthcheck"]
 ENTRYPOINT ["/flow"]

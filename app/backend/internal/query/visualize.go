@@ -101,7 +101,7 @@ func (q *Querier) Visualize(ctx context.Context, req VisualizeRequest) (any, err
 	if err != nil {
 		return nil, err
 	}
-	res := chooseResolution(q.store, usedColumns(req, fr), req.Start, req.End, req.Points, q.now())
+	res := chooseResolution(q.store, append(usedColumns(req, fr), scopeColumns(ctx)...), req.Start, req.End, req.Points, q.now())
 	if req.Graph == GraphSankey {
 		return q.sankey(ctx, req, fr, sankeyPlan(res, req.Start, req.End))
 	}
