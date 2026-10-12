@@ -1,0 +1,1 @@
+{"count":1,"next":null,"previous":null,"results":[{"id":1,"url":"/api/v1/circuits/circuit-types/1/","display_url":"/circuits/circuit-types/1","display":"IP Transit","name":"IP Transit","slug":"ip-transit","color":null,"description":null,"circuit_count":1,"tags":[],"custom_fields":{},"created":"2026-10-12T09:45:51.368Z","last_updated":"2026-10-12T09:45:51.368Z"}]}
