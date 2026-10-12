@@ -20,12 +20,43 @@
 | POST | `/api/auth/logout` | — |
 | GET | `/api/auth/me` | `{user: {id, username, name, role, permissions: ["visualize:view", …]}, csrf}` или 401 |
 
-## Мастер настройки
+## Мастер первичной настройки
+
+Открывается при первом запуске, пока нет `flow.json` в `FLOW_DATA_DIR`. Код установки пишется в журнал сервера и в
+файл `FLOW_DATA_DIR/setup-token` (или берётся из `FLOW_SETUP_TOKEN`); после завершения файл удаляется, мастер больше
+не открывается, все `/api/setup*` отвечают 404. В Docker-стеке поля предзаполняются из переменных окружения
+контейнера (`FLOW_SETUP_DEFAULTS_*`: адреса PostgreSQL, ClickHouse, NATS, OpenBao и файл AppRole), так что после
+`docker compose up -d` достаточно ввести код установки и пароль администратора.
 
 | Метод | Путь | Тело / ответ |
 |---|---|---|
-| GET | `/api/setup` | `{required: bool}` |
-| POST | `/api/setup` | `{setup_code, postgres: {dsn}, clickhouse: {addr, database, username, password}, admin: {username, password}}` → `{ok}` |
+| GET | `/api/setup` | `{required: bool, defaults: {language, theme, timezone, public_url, openbao: {...}, postgres: {...}, clickhouse: {...}, nats: {...}, collector: {...}}}` — пароли и секреты в `defaults` не возвращаются, только признак `*_set` |
+| POST | `/api/setup/check-code` | `{setup_code}` → `{ok}` (401 `setup_code_invalid`) |
+| POST | `/api/setup/test/{step}` | `step` = `openbao` \| `postgres` \| `clickhouse` \| `nats` \| `inventory` \| `umbrella` \| `geoip`; тело — поля шага + `setup_code` → `{ok, error?, details?}` (`details`: версия сервера, найдено ли уже состояние Flow в базе, число устройств Inventory DB и т. п.) |
+| POST | `/api/setup` | всё целиком (ниже) → `{ok}`; сервер повторяет все проверки, пишет секреты в OpenBao, создаёт схемы PostgreSQL и ClickHouse, сохраняет `flow.json`, создаёт администратора и переключается в рабочий режим без перезапуска |
+
+Шаги (экраны) и поля `POST /api/setup`:
+
+1. **Код установки** — `setup_code`.
+2. **Общие** — `language` (`ru`/`en`), `theme` (`light`/`dark`/`system`), `timezone`, `public_url` (адрес Flow для
+   ссылок из Umbrella и Inventory DB; предзаполняется адресом браузера).
+3. **OpenBao** — `openbao: {addr, mount (flow), auth: "token"|"approle", token? | role_id?, secret_id?}`.
+4. **PostgreSQL** — `postgres: {host, port, database, username, password, sslmode}`; пароль уходит в OpenBao. Если в
+   базе уже есть состояние Flow — предлагается подключиться к нему (тогда шаг «Администратор» можно пропустить).
+5. **ClickHouse** — `clickhouse: {addr, database (flow), username, password, secure}` + сроки хранения
+   `retention: {raw_days 15, d1m 30, d5m 90, d1h 730}`.
+6. **Шина** — `nats: {url}` (пусто — встроенная очередь в процессе).
+7. **Приём потоков** — `collector: {netflow_addr ":2055", sflow_addr ":6343", default_sampling_rate 1}`; показывается,
+   какие адреса настроить на маршрутизаторах.
+8. **Inventory DB (по желанию)** — `inventory: {enabled, url, token, interval "15m"}` с проверкой и числом устройств.
+9. **Umbrella (по желанию)** — `umbrella: {enabled, ingest_url, token}`: адрес приёма и токен из диалога «Подключить
+   источник → Umbrella Flow»; проверка отправляет тестовое событие.
+10. **GeoIP (по желанию)** — `geoip: {databases: ["/geoip/GeoLite2-City.mmdb", …]}`; проверка открывает файлы.
+11. **Администратор** — `admin: {username, name, email, password}` с парольной политикой (свёрнута, по умолчанию 12+
+    символов).
+12. **Проверка** — сводка всех шагов с результатами проверок, кнопка «Завершить».
+
+Необязательные шаги можно пропустить; их же можно настроить позже в «Настройках».
 
 ## Схема колонок
 
