@@ -12,24 +12,34 @@ from Umbrella's incident context link. The same file lives in Umbrella Monitorin
 
 ## Variables
 
-All four are text boxes; Umbrella fills them in the link (`/d/flow-ci-traffic/ci-traffic?var-ci=…&var-ci_id=…&var-ip=…&var-ref=…&from=…&to=…`).
+Umbrella fills the four text boxes in the link (`/d/flow-ci-traffic/ci-traffic?var-ci=…&var-ci_id=…&var-ip=…&var-ref=…&from=…&to=…`).
 
 | Variable | Matches | |
 |---|---|---|
-| `ref` | `SrcCI` / `DstCI` | Inventory DB `source_ref` (`inventory-db:dcim.device:100`); used first |
-| `ip` | `SrcAddr` / `DstAddr` | an address of the CI; used when set (together with `ref`, either side matches) |
-| `ci` | `SrcCI` / `DstCI`, `SrcHost` / `DstHost` | Umbrella CI name; used only when `ref` and `ip` are empty |
+| `ref` | `SrcCI` / `DstCI`, `ExporterRef` | Inventory DB `source_ref` (`inventory-db:dcim.device:100`) |
+| `ip` | `SrcAddr` / `DstAddr`, `ExporterAddress` | an address of the CI (together with `ref`, either matches) |
+| `ci` | `SrcHost` / `DstHost` (name or `name.` prefix), `ExporterName` | Umbrella CI name; used only when `ref` and `ip` are empty |
 | `ci_id` | — | Umbrella CI id, kept for reference |
+| `rollup` | — | aggregated table of the long-range panel: `flows_1m`, `flows_5m` (default), `flows_1h` |
+| `db` | — | hidden constant: the ClickHouse database (`flow`); change it when Flow uses another one |
 
 ## Panels
 
-- **CI traffic in / out** — bits/s to the CI (destination side) and from it (source side).
-- **Top talkers** — peer addresses with host and CI, in / out rates over the range, bytes.
-- **Top ports / applications** — application, protocol and server port (the lower port of a flow).
-- **Top interfaces** — exporter interfaces the CI's traffic crosses (input and output side).
+- **Received by / Sent by the CI, Peers, Flows** — totals over the range (raw flows).
+- **Traffic in / out** — bits/s to the CI (destination side) and from it (source side).
+- **Traffic in / out by reference, long range** — the same from `${rollup}` (matched by `ref` only: the aggregates keep
+  no addresses), buckets at least the aggregate's step.
+- **Top talkers** — peer addresses with host and Inventory DB reference, bytes to / from the CI.
+- **Top ports and applications** — protocol, the lower port of a flow, the application.
+- **Top interfaces** — exporter, input and output interface the CI's traffic crosses.
+- **Carried by the CI as an exporter** (bits/s per input interface, top 10) and **Interfaces of the CI as an exporter**
+  (in / out bits/s, speed, utilization) — for a CI that is itself a router or a switch exporting flows, as in an
+  interface utilization incident.
 
-The queries read the raw table `flow.flows` (addresses and ports are not in the aggregates), so the range is limited
-by the raw retention (15 days by default). Volumes are already multiplied by the sampling rate.
+Raw-table panels are limited by the raw retention (15 days by default). Volumes are already multiplied by the sampling
+rate. Every panel's SQL was run against a real ClickHouse filled by the demo exporter and cloud flow logs, with the
+variables of a host CI (`ref` + `ip`), a router CI, `ip` only and `ci` only. The same file is in Umbrella Monitoring's
+`deploy/grafana` (keep them identical).
 
 ## With the Flow stack
 

@@ -140,6 +140,7 @@ reject → hidden for that key unless evidence grows 10×). Proposals not refres
 
 ### 3.5 Grafana
 
-`deploy/grafana/flow-ci-traffic.json` (in both Network and Umbrella `deploy/grafana`): dashboard "CI traffic" on the
+`deploy/grafana/flow-ci-traffic.json` (identical in Network and Umbrella `deploy/grafana`): dashboard "CI traffic" on the
 ClickHouse datasource (`grafana-clickhouse-datasource`, uid `flow-clickhouse`) with variables `ci`, `ci_id`, `ip`, `ref`
-— Umbrella's incident context link fills them.
+— Umbrella's incident context link fills them. A CI matches as an end of the traffic (`SrcCI` / `DstCI`, `SrcAddr` /
+`DstAddr`) and, for routers and switches, as the exporter (`ExporterRef`, `ExporterAddress`).

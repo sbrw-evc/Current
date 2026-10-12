@@ -14,6 +14,7 @@ import { operatorsFor, validate } from '../filter/parse'
 import { diurnal, hash, mockExporters, rng, values, valuesFor } from './data'
 import { columns } from './schema'
 import { detectorMock } from './detector'
+import { extensionsMock } from './extensions'
 import { routingMock } from './routing'
 
 // An in-browser stand-in for the backend (VITE_MOCK=1): every endpoint of docs/api.md answers
@@ -42,6 +43,22 @@ const ALL_PERMISSIONS = [
   'settings.snmp:edit',
   'settings.bmp:view',
   'settings.bmp:edit',
+  'settings.openbao:migrate',
+  'settings.general:view',
+  'settings.general:edit',
+  'settings.threat:view',
+  'settings.threat:edit',
+  'settings.rdns:view',
+  'settings.rdns:edit',
+  'settings.flowlogs:view',
+  'settings.flowlogs:edit',
+  'tokens:view',
+  'tokens:edit',
+  'users:view',
+  'users:edit',
+  'roles:view',
+  'dependencies:view',
+  'dependencies:run',
 ]
 
 const user: User = { id: 'u1', username: 'admin', name: 'Анна Смирнова', role: 'admin', permissions: ALL_PERMISSIONS }
@@ -491,6 +508,8 @@ export async function handle(method: string, path: string, body: unknown): Promi
   }
   const det = detectorMock(method, p, body)
   if (det) return det
+  const ext = extensionsMock(method, p, body)
+  if (ext) return ext
   const rt = routingMock(method, p, body, url.searchParams)
   if (rt) return rt
   return fail(404, 'not_found', `${method} ${p}`)

@@ -1,110 +1,144 @@
 {
   "uid": "flow-ci-traffic",
   "title": "CI traffic",
-  "description": "Umbrella Flow: traffic of one CI from ClickHouse. Umbrella's incident context link fills var-ci, var-ci_id, var-ip and var-ref (docs/integrations.md §3.5).",
+  "description": "Umbrella Flow: traffic of one configuration item from the Flow ClickHouse tables (flows, flows_1m, flows_5m, flows_1h). Umbrella's incident context link fills var-ci, var-ci_id, var-ip and var-ref (Network docs/integrations.md §3.5). The same file is kept in Umbrella Flow and Umbrella Monitoring.",
   "tags": [
-    "umbrella-flow",
     "umbrella",
-    "traffic"
+    "umbrella-flow",
+    "netflow"
   ],
+  "timezone": "",
+  "schemaVersion": 41,
   "editable": true,
   "graphTooltip": 1,
-  "timezone": "browser",
-  "refresh": "1m",
   "time": {
     "from": "now-6h",
     "to": "now"
   },
-  "schemaVersion": 41,
-  "version": 1,
-  "links": [],
-  "annotations": {
-    "list": [
-      {
-        "builtIn": 1,
-        "datasource": {
-          "type": "grafana",
-          "uid": "-- Grafana --"
-        },
-        "enable": true,
-        "hide": true,
-        "iconColor": "rgba(0, 211, 255, 1)",
-        "name": "Annotations & Alerts",
-        "type": "dashboard"
-      }
-    ]
-  },
+  "refresh": "1m",
   "templating": {
     "list": [
       {
         "type": "textbox",
         "name": "ci",
         "label": "CI",
-        "description": "Umbrella CI name; used only when ref and ip are empty (matched against SrcCI / DstCI and SrcHost / DstHost)",
         "query": "",
         "current": {
           "text": "",
           "value": ""
         },
-        "options": [],
         "hide": 0
       },
       {
         "type": "textbox",
         "name": "ci_id",
-        "label": "CI id",
-        "description": "Umbrella CI id (ci_…), for reference",
+        "label": "CI ID",
         "query": "",
         "current": {
           "text": "",
           "value": ""
         },
-        "options": [],
         "hide": 0
       },
       {
         "type": "textbox",
         "name": "ip",
         "label": "IP",
-        "description": "Address of the CI (SrcAddr / DstAddr)",
         "query": "",
         "current": {
           "text": "",
           "value": ""
         },
-        "options": [],
         "hide": 0
       },
       {
         "type": "textbox",
         "name": "ref",
         "label": "Inventory DB ref",
-        "description": "Inventory DB source_ref, e.g. inventory-db:dcim.device:100 (SrcCI / DstCI)",
         "query": "",
         "current": {
           "text": "",
           "value": ""
         },
-        "options": [],
         "hide": 0
+      },
+      {
+        "type": "custom",
+        "name": "rollup",
+        "label": "Long-range table",
+        "query": "flows_1m,flows_5m,flows_1h",
+        "current": {
+          "text": "flows_5m",
+          "value": "flows_5m"
+        },
+        "options": [
+          {
+            "text": "flows_1m",
+            "value": "flows_1m",
+            "selected": false
+          },
+          {
+            "text": "flows_5m",
+            "value": "flows_5m",
+            "selected": true
+          },
+          {
+            "text": "flows_1h",
+            "value": "flows_1h",
+            "selected": false
+          }
+        ],
+        "hide": 0,
+        "multi": false,
+        "includeAll": false
+      },
+      {
+        "type": "constant",
+        "name": "db",
+        "label": "ClickHouse database",
+        "query": "flow",
+        "hide": 2,
+        "current": {
+          "text": "flow",
+          "value": "flow"
+        }
       }
     ]
   },
+  "annotations": {
+    "list": []
+  },
+  "links": [],
   "panels": [
     {
       "id": 1,
-      "type": "timeseries",
-      "title": "CI traffic in / out",
-      "description": "Bits per second to and from the CI: by Inventory DB source_ref ($ref), else by address ($ip), else by CI name ($ci). Raw flows, sampling already applied.",
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "**${ci}** — Inventory DB reference `${ref}`, address `${ip}`.\n\nFlows are matched to the item as an end of the traffic by `SrcCI` / `DstCI` = `ref` or `SrcAddr` / `DstAddr` = `ip` (either may be empty; with both empty, by the host name `ci`). *In* is traffic to the item, *Out* — from it. When the item is a router or a switch that exports flows (an interface utilization incident), the last two panels show the traffic it carried (`ExporterRef` = `ref` or `ExporterAddress` = `ip`). Bytes are already multiplied by the sampling rate. Panels over the raw `flows` table cover its retention (15 days by default); the long-range panel reads `${rollup}` and matches by reference only. Open from an Umbrella incident (Settings → Alerting → Grafana) to have the variables filled."
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Received by the CI",
+      "description": "Bytes sent to the item over the time range (raw flows).",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "flow-clickhouse"
       },
       "gridPos": {
-        "h": 9,
-        "w": 24,
+        "h": 4,
+        "w": 6,
         "x": 0,
-        "y": 0
+        "y": 4
       },
       "targets": [
         {
@@ -114,20 +148,202 @@
             "uid": "flow-clickhouse"
           },
           "editorType": "sql",
-          "rawSql": "WITH\n    ((${ref:sqlstring} != '' AND SrcCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND SrcAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (SrcCI = ${ci:sqlstring} OR SrcHost = ${ci:sqlstring}))) AS from_ci,\n    ((${ref:sqlstring} != '' AND DstCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND DstAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (DstCI = ${ci:sqlstring} OR DstHost = ${ci:sqlstring}))) AS to_ci\nSELECT\n    $__timeInterval(TimeReceived) AS time,\n    toFloat64(sumIf(Bytes, to_ci)) * 8 / $__interval_s AS \"In (to the CI)\",\n    toFloat64(sumIf(Bytes, from_ci)) * 8 / $__interval_s AS \"Out (from the CI)\"\nFROM flow.flows\nWHERE $__timeFilter(TimeReceived) AND (from_ci OR to_ci)\nGROUP BY time\nORDER BY time",
-          "format": 0,
-          "queryType": "timeseries"
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT sum(Bytes) AS \"In\" FROM ${db}.flows WHERE $__timeFilter(TimeReceived) AND ((${ref:sqlstring} != '' AND DstCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND DstAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (DstHost = ${ci:sqlstring} OR startsWith(DstHost, concat(${ci:sqlstring}, '.')))))"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "bps",
-          "custom": {
-            "drawStyle": "line",
-            "fillOpacity": 15,
-            "lineWidth": 1,
-            "spanNulls": true
-          }
+          "unit": "decbytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Sent by the CI",
+      "description": "Bytes sent from the item over the time range (raw flows).",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "flow-clickhouse"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "flow-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT sum(Bytes) AS \"Out\" FROM ${db}.flows WHERE $__timeFilter(TimeReceived) AND ((${ref:sqlstring} != '' AND SrcCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND SrcAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (SrcHost = ${ci:sqlstring} OR startsWith(SrcHost, concat(${ci:sqlstring}, '.')))))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "decbytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value"
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Peers",
+      "description": "Distinct addresses the item talked to (raw flows).",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "flow-clickhouse"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "flow-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT uniqExact(if(((${ref:sqlstring} != '' AND DstCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND DstAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (DstHost = ${ci:sqlstring} OR startsWith(DstHost, concat(${ci:sqlstring}, '.'))))), SrcAddr, DstAddr)) AS \"Peers\" FROM ${db}.flows WHERE $__timeFilter(TimeReceived) AND (((${ref:sqlstring} != '' AND DstCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND DstAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (DstHost = ${ci:sqlstring} OR startsWith(DstHost, concat(${ci:sqlstring}, '.'))))) OR ((${ref:sqlstring} != '' AND SrcCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND SrcAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (SrcHost = ${ci:sqlstring} OR startsWith(SrcHost, concat(${ci:sqlstring}, '.'))))))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value"
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Flows",
+      "description": "Flow records that touch the item (raw flows, after sampling).",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "flow-clickhouse"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "flow-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT count() AS \"Flows\" FROM ${db}.flows WHERE $__timeFilter(TimeReceived) AND (((${ref:sqlstring} != '' AND DstCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND DstAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (DstHost = ${ci:sqlstring} OR startsWith(DstHost, concat(${ci:sqlstring}, '.'))))) OR ((${ref:sqlstring} != '' AND SrcCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND SrcAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (SrcHost = ${ci:sqlstring} OR startsWith(SrcHost, concat(${ci:sqlstring}, '.'))))))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value"
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Traffic in / out — ${ci}",
+      "description": "bit/s to (In) and from (Out) the item, by reference or address (raw flows).",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "flow-clickhouse"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "flow-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT $__timeInterval(TimeReceived) AS time,\n  sumIf(Bytes, ((${ref:sqlstring} != '' AND DstCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND DstAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (DstHost = ${ci:sqlstring} OR startsWith(DstHost, concat(${ci:sqlstring}, '.')))))) * 8 / $__interval_s AS \"In\",\n  sumIf(Bytes, ((${ref:sqlstring} != '' AND SrcCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND SrcAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (SrcHost = ${ci:sqlstring} OR startsWith(SrcHost, concat(${ci:sqlstring}, '.')))))) * 8 / $__interval_s AS \"Out\"\nFROM ${db}.flows\nWHERE $__timeFilter(TimeReceived) AND (((${ref:sqlstring} != '' AND DstCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND DstAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (DstHost = ${ci:sqlstring} OR startsWith(DstHost, concat(${ci:sqlstring}, '.'))))) OR ((${ref:sqlstring} != '' AND SrcCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND SrcAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (SrcHost = ${ci:sqlstring} OR startsWith(SrcHost, concat(${ci:sqlstring}, '.'))))))\nGROUP BY time\nORDER BY time"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bps"
         },
         "overrides": []
       },
@@ -145,22 +361,23 @@
           "mode": "multi",
           "sort": "desc"
         }
-      }
+      },
+      "interval": "1m"
     },
     {
-      "id": 2,
-      "type": "table",
-      "title": "Top talkers",
-      "description": "Addresses exchanging the most traffic with the CI over the selected range.",
+      "id": 7,
+      "type": "timeseries",
+      "title": "Traffic in / out by reference, long range (${rollup})",
+      "description": "bit/s to and from the item over the aggregated table chosen in the rollup variable; matched by SrcCI / DstCI only (the aggregates keep no addresses). Pick flows_1h for months.",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "flow-clickhouse"
       },
       "gridPos": {
-        "h": 10,
-        "w": 12,
+        "h": 8,
+        "w": 24,
         "x": 0,
-        "y": 9
+        "y": 17
       },
       "targets": [
         {
@@ -170,9 +387,60 @@
             "uid": "flow-clickhouse"
           },
           "editorType": "sql",
-          "rawSql": "WITH\n    ((${ref:sqlstring} != '' AND SrcCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND SrcAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (SrcCI = ${ci:sqlstring} OR SrcHost = ${ci:sqlstring}))) AS from_ci,\n    ((${ref:sqlstring} != '' AND DstCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND DstAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (DstCI = ${ci:sqlstring} OR DstHost = ${ci:sqlstring}))) AS to_ci\nSELECT\n    replaceRegexpOne(toString(if(from_ci, DstAddr, SrcAddr)), '^::ffff:([0-9.]+)$', '\\\\1') AS \"Peer\",\n    any(if(from_ci, DstHost, SrcHost)) AS \"Host\",\n    any(if(from_ci, DstCI, SrcCI)) AS \"Peer CI\",\n    toFloat64(sumIf(Bytes, to_ci)) * 8 / $__range_s AS \"In, bit/s\",\n    toFloat64(sumIf(Bytes, from_ci)) * 8 / $__range_s AS \"Out, bit/s\",\n    sum(Bytes) AS \"Bytes\"\nFROM flow.flows\nWHERE $__timeFilter(TimeReceived) AND (from_ci OR to_ci)\nGROUP BY \"Peer\"\nORDER BY \"Bytes\" DESC\nLIMIT 20",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT toStartOfInterval(TimeReceived, INTERVAL greatest($__interval_s, multiIf('${rollup}' = 'flows_1h', 3600, '${rollup}' = 'flows_5m', 300, 60)) second) AS time,\n  sumIf(Bytes, DstCI = ${ref:sqlstring}) * 8 / greatest($__interval_s, multiIf('${rollup}' = 'flows_1h', 3600, '${rollup}' = 'flows_5m', 300, 60)) AS \"In\",\n  sumIf(Bytes, SrcCI = ${ref:sqlstring}) * 8 / greatest($__interval_s, multiIf('${rollup}' = 'flows_1h', 3600, '${rollup}' = 'flows_5m', 300, 60)) AS \"Out\"\nFROM ${db}.${rollup}\nWHERE $__timeFilter(TimeReceived) AND ${ref:sqlstring} != '' AND (SrcCI = ${ref:sqlstring} OR DstCI = ${ref:sqlstring})\nGROUP BY time\nORDER BY time"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "interval": "5m"
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Top talkers",
+      "description": "Peers of the item by volume: address, host name and Inventory DB reference of the other side.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "flow-clickhouse"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 25
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "flow-clickhouse"
+          },
+          "editorType": "sql",
           "format": 1,
-          "queryType": "table"
+          "queryType": "table",
+          "rawSql": "SELECT\n  replaceRegexpOne(IPv6NumToString(if(((${ref:sqlstring} != '' AND DstCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND DstAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (DstHost = ${ci:sqlstring} OR startsWith(DstHost, concat(${ci:sqlstring}, '.'))))), SrcAddr, DstAddr)), '^::ffff:', '') AS \"Peer\",\n  any(if(((${ref:sqlstring} != '' AND DstCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND DstAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (DstHost = ${ci:sqlstring} OR startsWith(DstHost, concat(${ci:sqlstring}, '.'))))), SrcHost, DstHost)) AS \"Host\",\n  any(if(((${ref:sqlstring} != '' AND DstCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND DstAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (DstHost = ${ci:sqlstring} OR startsWith(DstHost, concat(${ci:sqlstring}, '.'))))), SrcCI, DstCI)) AS \"Peer CI\",\n  sumIf(Bytes, ((${ref:sqlstring} != '' AND DstCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND DstAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (DstHost = ${ci:sqlstring} OR startsWith(DstHost, concat(${ci:sqlstring}, '.')))))) AS \"To the CI\",\n  sumIf(Bytes, ((${ref:sqlstring} != '' AND SrcCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND SrcAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (SrcHost = ${ci:sqlstring} OR startsWith(SrcHost, concat(${ci:sqlstring}, '.')))))) AS \"From the CI\",\n  sum(Bytes) AS \"Total\"\nFROM ${db}.flows\nWHERE $__timeFilter(TimeReceived) AND (((${ref:sqlstring} != '' AND DstCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND DstAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (DstHost = ${ci:sqlstring} OR startsWith(DstHost, concat(${ci:sqlstring}, '.'))))) OR ((${ref:sqlstring} != '' AND SrcCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND SrcAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (SrcHost = ${ci:sqlstring} OR startsWith(SrcHost, concat(${ci:sqlstring}, '.'))))))\nGROUP BY \"Peer\"\nORDER BY \"Total\" DESC\nLIMIT 20"
         }
       ],
       "fieldConfig": {
@@ -180,20 +448,32 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byRegexp",
-              "options": "bit/s"
+              "id": "byName",
+              "options": "To the CI"
             },
             "properties": [
               {
                 "id": "unit",
-                "value": "bps"
+                "value": "decbytes"
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "Bytes"
+              "options": "From the CI"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Total"
             },
             "properties": [
               {
@@ -206,19 +486,17 @@
       },
       "options": {
         "showHeader": true,
-        "sortBy": [
-          {
-            "displayName": "Bytes",
-            "desc": true
-          }
-        ]
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
       }
     },
     {
-      "id": 3,
+      "id": 9,
       "type": "table",
-      "title": "Top ports / applications",
-      "description": "Applications and server ports (the lower port of a flow) of the CI's traffic.",
+      "title": "Top ports and applications",
+      "description": "Protocol, the lower (usually the server) port and the application Flow detected.",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "flow-clickhouse"
@@ -227,7 +505,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 9
+        "y": 25
       },
       "targets": [
         {
@@ -237,9 +515,9 @@
             "uid": "flow-clickhouse"
           },
           "editorType": "sql",
-          "rawSql": "WITH\n    ((${ref:sqlstring} != '' AND SrcCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND SrcAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (SrcCI = ${ci:sqlstring} OR SrcHost = ${ci:sqlstring}))) AS from_ci,\n    ((${ref:sqlstring} != '' AND DstCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND DstAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (DstCI = ${ci:sqlstring} OR DstHost = ${ci:sqlstring}))) AS to_ci\nSELECT\n    if(App = '', '—', toString(App)) AS \"Application\",\n    multiIf(Proto = 6, 'tcp', Proto = 17, 'udp', Proto = 1, 'icmp', Proto = 58, 'icmpv6', toString(Proto)) AS \"Protocol\",\n    least(SrcPort, DstPort) AS \"Server port\",\n    toFloat64(sumIf(Bytes, to_ci)) * 8 / $__range_s AS \"In, bit/s\",\n    toFloat64(sumIf(Bytes, from_ci)) * 8 / $__range_s AS \"Out, bit/s\",\n    sum(Bytes) AS \"Bytes\",\n    count() AS \"Flows\"\nFROM flow.flows\nWHERE $__timeFilter(TimeReceived) AND (from_ci OR to_ci)\nGROUP BY \"Application\", \"Protocol\", \"Server port\"\nORDER BY \"Bytes\" DESC\nLIMIT 20",
           "format": 1,
-          "queryType": "table"
+          "queryType": "table",
+          "rawSql": "SELECT\n  multiIf(Proto = 6, 'tcp', Proto = 17, 'udp', Proto = 1, 'icmp', Proto = 58, 'icmpv6', toString(Proto)) AS \"Protocol\",\n  least(SrcPort, DstPort) AS \"Port\",\n  App AS \"Application\",\n  sumIf(Bytes, ((${ref:sqlstring} != '' AND DstCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND DstAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (DstHost = ${ci:sqlstring} OR startsWith(DstHost, concat(${ci:sqlstring}, '.')))))) AS \"To the CI\",\n  sumIf(Bytes, ((${ref:sqlstring} != '' AND SrcCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND SrcAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (SrcHost = ${ci:sqlstring} OR startsWith(SrcHost, concat(${ci:sqlstring}, '.')))))) AS \"From the CI\",\n  sum(Bytes) AS \"Total\"\nFROM ${db}.flows\nWHERE $__timeFilter(TimeReceived) AND (((${ref:sqlstring} != '' AND DstCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND DstAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (DstHost = ${ci:sqlstring} OR startsWith(DstHost, concat(${ci:sqlstring}, '.'))))) OR ((${ref:sqlstring} != '' AND SrcCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND SrcAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (SrcHost = ${ci:sqlstring} OR startsWith(SrcHost, concat(${ci:sqlstring}, '.'))))))\nGROUP BY \"Protocol\", \"Port\", \"Application\"\nORDER BY \"Total\" DESC\nLIMIT 20"
         }
       ],
       "fieldConfig": {
@@ -247,20 +525,32 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byRegexp",
-              "options": "bit/s"
+              "id": "byName",
+              "options": "To the CI"
             },
             "properties": [
               {
                 "id": "unit",
-                "value": "bps"
+                "value": "decbytes"
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "Bytes"
+              "options": "From the CI"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Total"
             },
             "properties": [
               {
@@ -272,14 +562,18 @@
         ]
       },
       "options": {
-        "showHeader": true
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
       }
     },
     {
-      "id": 4,
+      "id": 10,
       "type": "table",
       "title": "Top interfaces",
-      "description": "Exporter interfaces the CI's traffic passes (input and output side of each flow).",
+      "description": "Exporter interfaces the traffic of the item crosses.",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "flow-clickhouse"
@@ -288,7 +582,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 19
+        "y": 35
       },
       "targets": [
         {
@@ -298,9 +592,9 @@
             "uid": "flow-clickhouse"
           },
           "editorType": "sql",
-          "rawSql": "WITH\n    ((${ref:sqlstring} != '' AND SrcCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND SrcAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (SrcCI = ${ci:sqlstring} OR SrcHost = ${ci:sqlstring}))) AS from_ci,\n    ((${ref:sqlstring} != '' AND DstCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND DstAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (DstCI = ${ci:sqlstring} OR DstHost = ${ci:sqlstring}))) AS to_ci\nSELECT\n    toString(ExporterName) AS \"Exporter\",\n    toString(tupleElement(i, 1)) AS \"Interface\",\n    toString(tupleElement(i, 2)) AS \"Description\",\n    toString(tupleElement(i, 3)) AS \"Boundary\",\n    toFloat64(sumIf(Bytes, tupleElement(i, 4) = 'in')) * 8 / $__range_s AS \"In, bit/s\",\n    toFloat64(sumIf(Bytes, tupleElement(i, 4) = 'out')) * 8 / $__range_s AS \"Out, bit/s\",\n    sum(Bytes) AS \"Bytes\"\nFROM flow.flows\nARRAY JOIN [(InIfName, InIfDescription, InIfBoundary, 'in'), (OutIfName, OutIfDescription, OutIfBoundary, 'out')] AS i\nWHERE $__timeFilter(TimeReceived) AND (from_ci OR to_ci) AND tupleElement(i, 1) != ''\nGROUP BY \"Exporter\", \"Interface\", \"Description\", \"Boundary\"\nORDER BY \"Bytes\" DESC\nLIMIT 20",
           "format": 1,
-          "queryType": "table"
+          "queryType": "table",
+          "rawSql": "SELECT\n  ExporterName AS \"Exporter\",\n  InIfName AS \"In interface\",\n  OutIfName AS \"Out interface\",\n  any(InIfDescription) AS \"In description\",\n  sumIf(Bytes, ((${ref:sqlstring} != '' AND DstCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND DstAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (DstHost = ${ci:sqlstring} OR startsWith(DstHost, concat(${ci:sqlstring}, '.')))))) AS \"To the CI\",\n  sumIf(Bytes, ((${ref:sqlstring} != '' AND SrcCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND SrcAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (SrcHost = ${ci:sqlstring} OR startsWith(SrcHost, concat(${ci:sqlstring}, '.')))))) AS \"From the CI\",\n  sum(Bytes) AS \"Total\"\nFROM ${db}.flows\nWHERE $__timeFilter(TimeReceived) AND (((${ref:sqlstring} != '' AND DstCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND DstAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (DstHost = ${ci:sqlstring} OR startsWith(DstHost, concat(${ci:sqlstring}, '.'))))) OR ((${ref:sqlstring} != '' AND SrcCI = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND SrcAddr = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND (SrcHost = ${ci:sqlstring} OR startsWith(SrcHost, concat(${ci:sqlstring}, '.'))))))\nGROUP BY \"Exporter\", \"In interface\", \"Out interface\"\nORDER BY \"Total\" DESC\nLIMIT 20"
         }
       ],
       "fieldConfig": {
@@ -308,20 +602,32 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byRegexp",
-              "options": "bit/s"
+              "id": "byName",
+              "options": "To the CI"
             },
             "properties": [
               {
                 "id": "unit",
-                "value": "bps"
+                "value": "decbytes"
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "Bytes"
+              "options": "From the CI"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "decbytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Total"
             },
             "properties": [
               {
@@ -333,8 +639,138 @@
         ]
       },
       "options": {
-        "showHeader": true
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
       }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Carried by the CI as an exporter — input interfaces",
+      "description": "bit/s of the flows the item exported, by input interface (top 10 over the range): who filled the link.",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "flow-clickhouse"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 45
+      },
+      "interval": "1m",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "max",
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "flow-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT $__timeInterval(TimeReceived) AS time,\n  concat(toString(ExporterName), ' ', toString(InIfName)) AS interface,\n  sum(Bytes) * 8 / $__interval_s AS bps\nFROM ${db}.flows\nWHERE $__timeFilter(TimeReceived) AND ((${ref:sqlstring} != '' AND ExporterRef = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND ExporterAddress = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND ExporterName = ${ci:sqlstring})) AND InIfName != ''\n  AND (ExporterName, InIfName) IN (\n    SELECT ExporterName, InIfName FROM ${db}.flows\n    WHERE $__timeFilter(TimeReceived) AND ((${ref:sqlstring} != '' AND ExporterRef = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND ExporterAddress = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND ExporterName = ${ci:sqlstring})) AND InIfName != ''\n    GROUP BY ExporterName, InIfName ORDER BY sum(Bytes) DESC LIMIT 10)\nGROUP BY time, interface\nORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Interfaces of the CI as an exporter",
+      "description": "Average bit/s in and out of each interface of the item over the range, with the speed and the utilization (from the flows it exported).",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "flow-clickhouse"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 54
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(In|Out), bit/s$|^Speed$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bps"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(In|Out), %$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false,
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "flow-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT\n  toString(ExporterName) AS \"Exporter\",\n  toString(tupleElement(itf, 1)) AS \"Interface\",\n  any(toString(tupleElement(itf, 2))) AS \"Description\",\n  any(toString(tupleElement(itf, 3))) AS \"Boundary\",\n  max(tupleElement(itf, 4)) AS \"Speed\",\n  toFloat64(sumIf(Bytes, tupleElement(itf, 5) = 'in')) * 8 / $__range_s AS \"In, bit/s\",\n  toFloat64(sumIf(Bytes, tupleElement(itf, 5) = 'out')) * 8 / $__range_s AS \"Out, bit/s\",\n  if(max(tupleElement(itf, 4)) > 0, toFloat64(sumIf(Bytes, tupleElement(itf, 5) = 'in')) * 8 / $__range_s / max(tupleElement(itf, 4)) * 100, NULL) AS \"In, %\",\n  if(max(tupleElement(itf, 4)) > 0, toFloat64(sumIf(Bytes, tupleElement(itf, 5) = 'out')) * 8 / $__range_s / max(tupleElement(itf, 4)) * 100, NULL) AS \"Out, %\"\nFROM ${db}.flows\nARRAY JOIN [(InIfName, InIfDescription, InIfBoundary, InIfSpeed, 'in'), (OutIfName, OutIfDescription, OutIfBoundary, OutIfSpeed, 'out')] AS itf\nWHERE $__timeFilter(TimeReceived) AND ((${ref:sqlstring} != '' AND ExporterRef = ${ref:sqlstring}) OR (${ip:sqlstring} != '' AND ExporterAddress = toIPv6OrDefault(${ip:sqlstring})) OR (${ref:sqlstring} = '' AND ${ip:sqlstring} = '' AND ${ci:sqlstring} != '' AND ExporterName = ${ci:sqlstring})) AND tupleElement(itf, 1) != ''\nGROUP BY \"Exporter\", \"Interface\"\nORDER BY greatest(\"In, bit/s\", \"Out, bit/s\") DESC\nLIMIT 50"
+        }
+      ]
     }
-  ]
+  ],
+  "version": 1
 }

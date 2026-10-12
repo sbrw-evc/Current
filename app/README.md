@@ -28,7 +28,7 @@ Deployment is Docker-first: [deploy/flow](../deploy/flow/README.md) brings up th
 | SNMP | fallback interface names / descriptions / speeds (SNMPv2c / v3, GETBULK of `ifName`, `ifDescr`, `ifAlias`, `ifHighSpeed`, `ifSpeed`) for exporters seen in flows and listed devices, credential profiles by prefix with community / USM passwords in OpenBao, refresh interval and TTL cache; the enricher uses it after Inventory DB and the collector's option data; `GET/PUT /api/settings/snmp`, `POST /api/settings/snmp/test`, Settings → SNMP page, `flow_snmp_*` metrics | `internal/snmp`, `internal/enrich` (`snmp.go`), `internal/wiring` (`SNMP`) |
 | BMP | RFC 7854 receiver on TCP 10179 (own BGP decoder: IPv4 / IPv6 unicast, MP_REACH / MP_UNREACH, 4-byte AS and AS4_PATH, ADD-PATH, communities, large communities), per-peer Adj-RIB-In with post-policy preference in a compact LPM table with interned attributes, withdrawals, peer down / session close cleanup, memory metrics; the enricher fills `DstASPath`, `DstCommunities`, `DstLargeCommunities`, the next hop when missing, and SrcAS / DstAS through the `routing` AS provider; `GET/PUT /api/settings/bmp`, `GET /api/bmp/lookup`, Settings → BMP page, `flow_bmp_*` metrics | `internal/bmp`, `internal/enrich` (`routing.go`), `internal/wiring` (`BMP`, `Routing`) |
 | Status | `GET /api/status` components: `collector`, `bus`, `enricher`, `writer`, `inventory`, `detector`, `rdns`, `threat`, `snmp`, `bmp` (those running in the process) | `internal/wiring` |
-| Web console | React console: setup wizard, overview widgets, Visualize, flow search, exporters with sampling overrides (per exporter / per interface), detector rules (form with per-kind fields, client checks mirroring the server) and status, dependencies, Inventory DB, classifiers, Umbrella (events and API connection), OpenBao, SNMP, BMP; a banner when the Umbrella scope cannot be loaded; screenshots with live demo data in [docs/screens](docs/screens) (`*-live.png`) | `web/` |
+| Web console | React console: setup wizard, overview widgets, Visualize, flow search, exporters with sampling overrides (per exporter / per interface), detector rules (form with per-kind fields, client checks mirroring the server) and status, dependencies, Inventory DB, classifiers, Umbrella (events and API connection), OpenBao, API tokens, Entra ID, threat intelligence, reverse DNS, cloud flow logs (write-only tokens, ingest URLs and AWS Firehose / Azure / GCP Pub/Sub setup snippets), SNMP, BMP; the mock server (`VITE_MOCK=1`) answers every page; a banner when the Umbrella scope cannot be loaded; screenshots with live demo data in [docs/screens](docs/screens) (`*-live.png`) | `web/` |
 
 ## Secrets
 
@@ -130,6 +130,26 @@ address in the wizard of the api role. The enricher then has no interface names 
 from Inventory DB) and the exporters list has no collector registry merge. A standalone collector applies the
 sampling overrides of `FLOW_SAMPLING_OVERRIDES` and, once the shared `flow.json` names PostgreSQL, the stored ones
 (re-read every minute); settings changed in the console reach the other processes within a minute.
+
+### End to end with Umbrella Monitoring and Inventory DB
+
+Verified on one host (OpenBao dev, NATS, ClickHouse, PostgreSQL; Inventory DB on `:8091` seeded with
+`seed-demo.mjs`, Umbrella on `:8081` with OpenBao mount `umbrella`, Flow in role `all` on NATS JetStream with
+`flow demo` and cloud flow logs posted to `/api/ingest/flowlogs/aws`), every link wired through the products' own
+APIs and wizards:
+
+| Link | How it was wired | Verified |
+|---|---|---|
+| Inventory DB → Flow enrichment | wizard step Inventory DB (`xc-token`) | exporters carry name, site, role, `ExporterRef`, interface descriptions, speeds, boundaries and providers from the circuits |
+| Inventory DB → Flow change hook | Flow service account + token (`integrations.inventory:read`) → Inventory DB integration `kind: flow`; its secret → Settings → Inventory DB | an interface description renamed in Inventory DB: signed hook delivered (202) 5 s later, early sync 5 s after that, the next flows carry the new description |
+| Flow → Inventory DB traffic | same integration | `/integrations/flow/status` (devices, interfaces, circuits) and `/prefix-addresses` (with `in_ipam`) answer through Inventory DB's proxy; device page "Traffic (Flow, 24 h)" card |
+| Flow → Umbrella events | Umbrella quick connect `network-flow` → wizard step Umbrella | a link-utilization rule with a lowered threshold opened an incident on the right CI (the exporter's `source_ref`) with the "Traffic" link; raising it resolved the incident (the resolved events stayed in the outbox across a Flow restart) |
+| Umbrella → Flow links | Umbrella Settings → Alerting → Umbrella Flow address | `/go/incidents/{id}/flow` and `/go/cis/{id}/flow` redirect to `/go/incident`, which filters on the CI as a traffic end or as the exporter |
+| Flow → Umbrella scopes | Umbrella role (`integrations.flow:read`, `cmdb:propose`) + service account token → Settings → Umbrella API | a Flow user with `scope:umbrella`, matching an Umbrella user with one selected service, sees only that CI's flows in Visualize (time series, bidirectional, sankey), flow search, widgets, exporters and filter completion |
+| Flow → Umbrella dependencies | same token; Dependencies → run now (`min_flows` 10, `min_days` 1) | steady app → db traffic became a proposal on Umbrella's CMDB map with the implied service dependency |
+
+Screenshots: [visualize-e2e.png](docs/screens/visualize-e2e.png) (the Umbrella "Traffic" link opened in Flow),
+[settings-flowlogs-e2e.png](docs/screens/settings-flowlogs-e2e.png), [settings-rdns-e2e.png](docs/screens/settings-rdns-e2e.png).
 
 `flow -version` prints the version, `flow -healthcheck` probes `/healthz` (used by the image), `flow <role>` is
 `FLOW_ROLE=<role>`, `flow demo -target host:2055` runs the demo exporter.

@@ -342,7 +342,8 @@ connection of the API.
 
 **Dependency discovery.** Reads 7 days of raw flows (the aggregates have no ports): flows whose both ends have an
 Inventory DB reference (`SrcCI`, `DstCI`, different), TCP / UDP / SCTP; the server is the side with the lower port
-(equal ports: the destination); grouped by client CI, server CI, protocol and server port; kept when there are at least
+(equal ports: the destination); grouped by client CI, server CI, protocol and server port (requests and responses of
+a connection count together); kept when there are at least
 `min_flows` flow records on at least `min_days` distinct days; largest `max_proposals` by bytes. Each pair becomes a
 proposal `client depends_on server` with the key `flow:<from ref>-><to ref>:<proto>/<port>`, evidence (bytes, flows,
 days seen, first / last seen, top application) and `flow_url` (Visualize of the pair over the period, from the public
@@ -351,7 +352,7 @@ URL of the general settings), posted to `POST {url}/api/cmdb/proposals` in batch
 (PostgreSQL). Defaults: `{enabled: false, hour: 3, min_flows: 100, min_days: 3, max_proposals: 500}`.
 
 A run (`Run`): `{id, trigger: "schedule"|"manual", actor, dry_run, started_at, finished_at, ok, error, pairs, sent,
-accepted, updated, ignored, params}`; the last 50 are kept; a run without a result after 30 minutes is shown as
+accepted, updated, ignored, params: {days, min_flows, min_days, limit}}`; the last 50 are kept; a run without a result after 30 minutes is shown as
 `ok: false, error: "interrupted"`. A `Proposal` is the object of integrations.md §3.3.
 
 ## Settings: moving the secrets to another OpenBao
@@ -547,6 +548,9 @@ Settings key `bmp`, permissions `settings.bmp:view` / `settings.bmp:edit`. Metri
 
 ## Incident link
 
-`/go/incident?ci=&ip=&ref=&from=&to=` (web route, the "Traffic" link of Umbrella incidents) opens Visualize: by `ip`
-(`SrcAddr = ip OR DstAddr = ip`, `<<` for a prefix), else by `ref` (Inventory DB `source_ref`:
-`SrcCI = ref OR DstCI = ref`), else by `ci`; from 15 minutes before `from` to 15 minutes after `to` (or now).
+`/go/incident?ci=&ip=&ref=&from=&to=` (web route, the "Traffic" link of Umbrella incidents and CIs) opens Visualize
+filtered on the CI as an end of the traffic or as the exporter that carried it (a router whose link is overloaded):
+`ip` → `SrcAddr = ip OR DstAddr = ip OR ExporterAddress = ip` (`<<` for a prefix), `ref` (Inventory DB `source_ref`) →
+`SrcCI = ref OR DstCI = ref OR ExporterRef = ref` (both joined with `OR` when both are given; dimensions `SrcAddr`,
+`DstAddr`, `Proto` with an address, else `SrcCI`, `DstCI`, `App`); `ci` alone → `SrcCI`, `DstCI` or `ExporterName` =
+`ci`; from 15 minutes before `from` to 15 minutes after `to` (or now).

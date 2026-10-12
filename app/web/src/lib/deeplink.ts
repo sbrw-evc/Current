@@ -14,19 +14,23 @@ export function incidentState(params: URLSearchParams, now = Date.now()): VisSta
   const ip = (params.get('ip') ?? '').trim()
   const ci = (params.get('ci') ?? '').trim()
   const ref = (params.get('ref') ?? '').trim()
-  let filter = ''
+  // A CI may be an end of the traffic (a host: SrcAddr / DstAddr, SrcCI / DstCI) or the exporter that
+  // carried it (a router whose link is overloaded: ExporterAddress / ExporterRef), so both match.
+  const terms: string[] = []
   let dimensions = ['SrcAS', 'DstAS']
   if (ip && IP.test(ip)) {
     const op = ip.includes('/') ? '<<' : '='
-    filter = `SrcAddr ${op} ${ip} OR DstAddr ${op} ${ip}`
+    terms.push(`SrcAddr ${op} ${ip}`, `DstAddr ${op} ${ip}`, `ExporterAddress ${op} ${ip}`)
     dimensions = ['SrcAddr', 'DstAddr', 'Proto']
-  } else if (ref) {
-    filter = `SrcCI = ${quote(ref)} OR DstCI = ${quote(ref)}`
-    dimensions = ['SrcCI', 'DstCI', 'App']
-  } else if (ci) {
-    filter = `SrcCI = ${quote(ci)} OR DstCI = ${quote(ci)}`
+  }
+  if (ref) {
+    terms.push(`SrcCI = ${quote(ref)}`, `DstCI = ${quote(ref)}`, `ExporterRef = ${quote(ref)}`)
+    if (!terms.some((x) => x.startsWith('SrcAddr'))) dimensions = ['SrcCI', 'DstCI', 'App']
+  } else if (ci && !terms.length) {
+    terms.push(`SrcCI = ${quote(ci)}`, `DstCI = ${quote(ci)}`, `ExporterName = ${quote(ci)}`)
     dimensions = ['SrcCI', 'DstCI', 'App']
   }
+  const filter = terms.join(' OR ')
   const from = Date.parse(params.get('from') ?? '')
   const to = Date.parse(params.get('to') ?? '')
   let range: VisState['range'] = { preset: '1h' }

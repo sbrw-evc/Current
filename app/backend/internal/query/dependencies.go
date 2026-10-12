@@ -17,13 +17,13 @@ import (
 // DependencyParams are the discovery thresholds.
 type DependencyParams struct {
 	// Days is the period (default 7).
-	Days int
+	Days int `json:"days"`
 	// MinFlows is the minimum number of flow records over the period (default 100).
-	MinFlows int
+	MinFlows int `json:"min_flows"`
 	// MinDays is the minimum number of distinct days with traffic (default 3).
-	MinDays int
+	MinDays int `json:"min_days"`
 	// Limit bounds the pairs returned, largest first (default 500).
-	Limit int
+	Limit int `json:"limit"`
 }
 
 // WithDefaults fills zero fields.
@@ -89,7 +89,7 @@ FROM (
       AND SrcCI != '' AND DstCI != '' AND SrcCI != DstCI
       AND Proto IN (6, 17, 132) AND SrcPort != 0 AND DstPort != 0
 )
-GROUP BY srv_dst, client_ref, server_ref, Proto, port
+GROUP BY client_ref, server_ref, Proto, port
 HAVING flows >= %[6]d AND days_seen >= %[7]d
 ORDER BY bytes DESC
 LIMIT %[8]d`,

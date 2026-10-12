@@ -267,9 +267,9 @@ per day of raw flows after compression at 1:1000 sampling on 100G links — depe
 |---|---|---|---|
 | Umbrella | `network-flow` connector preset and "Umbrella Flow" in "Connect source" | 4 | done (branch `claude/akvorado-elasticflow-integration-onlhht`) |
 | Umbrella | "Umbrella Flow address" setting and "Traffic" links on incident and CI cards (modelled on Grafana) | 4 | done (same branch) |
-| Umbrella | **API tokens / service accounts** (none today) so Flow can read services, teams and visibility scopes and propose CMDB relations | 5 | open |
-| Inventory DB | `kind: flow` integration, chips and sparklines; `snmp_index` custom field on interfaces | 2, 5 | open |
-| Inventory DB | (optional) webhook to Flow on DCIM / IPAM changes instead of polling | 2 | open |
+| Umbrella | **API tokens / service accounts** so Flow can read services, teams and visibility scopes and propose CMDB relations | 5 | done (same branch); verified end to end (`app/README.md`) |
+| Inventory DB | `kind: flow` integration, chips and sparklines; `snmp_index` custom field on interfaces | 2, 5 | done (same branch); verified end to end |
+| Inventory DB | (optional) webhook to Flow on DCIM / IPAM changes instead of polling | 2 | done: signed hook + early sync (integrations.md §2.2); verified end to end |
 
 ## 8. Open questions
 
