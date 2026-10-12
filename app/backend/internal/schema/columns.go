@@ -38,7 +38,7 @@ var Columns = []Column{
 	{Name: "SamplingRate", Type: "UInt64", Kind: KindUint},
 	{Name: "FlowType", Type: "LowCardinality(String)", Kind: KindString, Dimension: true, Rollup: true},
 
-	{Name: "ExporterAddress", Type: "LowCardinality(IPv6)", Kind: KindIP, Dimension: true, Rollup: true},
+	{Name: "ExporterAddress", Type: "IPv6", Kind: KindIP, Dimension: true, Rollup: true},
 	{Name: "ExporterName", Type: "LowCardinality(String)", Kind: KindString, Dimension: true, Rollup: true},
 	{Name: "ExporterRef", Type: "LowCardinality(String)", Kind: KindString, Dimension: true, Rollup: true},
 	{Name: "ExporterSite", Type: "LowCardinality(String)", Kind: KindString, Dimension: true, Rollup: true},
@@ -68,7 +68,7 @@ var Columns = []Column{
 	{Name: "DstAddr", Type: "IPv6", Kind: KindIP, Dimension: true, Reverse: "SrcAddr"},
 	{Name: "SrcNetMask", Type: "UInt8", Kind: KindUint, Reverse: "DstNetMask"},
 	{Name: "DstNetMask", Type: "UInt8", Kind: KindUint, Reverse: "SrcNetMask"},
-	{Name: "NextHop", Type: "LowCardinality(IPv6)", Kind: KindIP, Dimension: true, Rollup: true},
+	{Name: "NextHop", Type: "IPv6", Kind: KindIP, Dimension: true, Rollup: true},
 	{Name: "SrcAS", Type: "UInt32", Kind: KindUint, Dimension: true, Rollup: true, Reverse: "DstAS"},
 	{Name: "DstAS", Type: "UInt32", Kind: KindUint, Dimension: true, Rollup: true, Reverse: "SrcAS"},
 	{Name: "SrcNetPrefix", Type: "LowCardinality(String)", Kind: KindPrefix, Dimension: true, Rollup: true, Reverse: "DstNetPrefix"},
