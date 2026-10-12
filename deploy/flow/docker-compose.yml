@@ -1,0 +1,224 @@
+# Umbrella Flow: the whole stack in one command.
+#   cp .env.example .env   # set the passwords
+#   docker compose up -d
+# Then open http://<host>:8080 and finish the setup wizard: the setup code is in
+#   docker compose logs flow | grep setup_code
+# Profiles: --profile demo (synthetic NetFlow / IPFIX / sFlow), --profile geoip (MaxMind updates).
+# Joining the shared network "umbrella": COMPOSE_FILE=docker-compose.yml:docker-compose.umbrella.yml in .env.
+name: umbrella-flow
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+services:
+  flow:
+    image: ${FLOW_IMAGE:-umbrella-flow:latest}
+    pull_policy: ${FLOW_PULL_POLICY:-build}
+    build:
+      context: ../../app
+      args:
+        VERSION: ${FLOW_VERSION:-dev}
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-UTC}
+      FLOW_ROLE: all
+      FLOW_SECURE_COOKIES: ${FLOW_SECURE_COOKIES:-false}
+      FLOW_TRUSTED_PROXIES: ${FLOW_TRUSTED_PROXIES:-}
+      FLOW_STARTUP_WAIT: ${FLOW_STARTUP_WAIT:-2m}
+      FLOW_SETUP_TOKEN: ${FLOW_SETUP_TOKEN:-}
+      # The wizard is prefilled with the bundled services; passwords are only
+      # openbao:// references (openbao-init puts the values from .env there).
+      FLOW_SETUP_DEFAULTS_LANGUAGE: ${FLOW_LANGUAGE:-ru}
+      FLOW_SETUP_DEFAULTS_TIMEZONE: ${TZ:-UTC}
+      FLOW_SETUP_DEFAULTS_PUBLIC_URL: ${FLOW_PUBLIC_URL:-}
+      FLOW_SETUP_DEFAULTS_OPENBAO_ADDR: http://openbao:8200
+      FLOW_SETUP_DEFAULTS_OPENBAO_MOUNT: flow
+      FLOW_SETUP_DEFAULTS_OPENBAO_AUTH: approle
+      FLOW_SETUP_DEFAULTS_OPENBAO_ROLE_ID_FILE: /run/openbao/role_id
+      FLOW_SETUP_DEFAULTS_OPENBAO_SECRET_ID_FILE: /run/openbao/secret_id
+      FLOW_SETUP_DEFAULTS_POSTGRES_HOST: postgres
+      FLOW_SETUP_DEFAULTS_POSTGRES_PORT: "5432"
+      FLOW_SETUP_DEFAULTS_POSTGRES_DATABASE: flow
+      FLOW_SETUP_DEFAULTS_POSTGRES_USERNAME: flow
+      FLOW_SETUP_DEFAULTS_POSTGRES_SSLMODE: disable
+      FLOW_SETUP_DEFAULTS_POSTGRES_PASSWORD_REF: openbao://flow/postgres#password
+      FLOW_SETUP_DEFAULTS_CLICKHOUSE_ADDR: clickhouse:9000
+      FLOW_SETUP_DEFAULTS_CLICKHOUSE_DATABASE: flow
+      FLOW_SETUP_DEFAULTS_CLICKHOUSE_USERNAME: flow
+      FLOW_SETUP_DEFAULTS_CLICKHOUSE_PASSWORD_REF: openbao://flow/clickhouse#password
+      FLOW_SETUP_DEFAULTS_NATS_URL: nats://nats:4222
+      FLOW_SETUP_DEFAULTS_NATS_TOKEN_REF: openbao://flow/nats#token
+      FLOW_SETUP_DEFAULTS_NETFLOW_ADDR: ":2055"
+      FLOW_SETUP_DEFAULTS_SFLOW_ADDR: ":6343"
+      FLOW_SETUP_DEFAULTS_GEOIP_DATABASES: ${FLOW_GEOIP_DATABASES:-}
+      FLOW_SETUP_DEFAULTS_INVENTORY_URL: ${FLOW_INVENTORY_URL:-}
+      FLOW_SETUP_DEFAULTS_UMBRELLA_INGEST_URL: ${FLOW_UMBRELLA_INGEST_URL:-}
+    ports:
+      - "${FLOW_HTTP_BIND:-0.0.0.0}:${FLOW_HTTP_PORT:-8080}:8080/tcp"
+      - "${FLOW_NETFLOW_PORT:-2055}:2055/udp"
+      - "${FLOW_SFLOW_PORT:-6343}:6343/udp"
+    volumes:
+      - flow-data:/data
+      - openbao-approle:/run/openbao:ro
+      - geoip:/geoip:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      openbao-init:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/flow", "-healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging: *logging
+
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:17-alpine}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: flow
+      POSTGRES_USER: flow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+      TZ: ${TZ:-UTC}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    shm_size: 256mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flow -d flow"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    logging: *logging
+
+  clickhouse:
+    image: ${CLICKHOUSE_IMAGE:-clickhouse/clickhouse-server:25.8}
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: flow
+      CLICKHOUSE_USER: flow
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?set CLICKHOUSE_PASSWORD in .env}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+      TZ: ${TZ:-UTC}
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - clickhouse-logs:/var/log/clickhouse-server
+      - ./clickhouse/config.d/flow.xml:/etc/clickhouse-server/config.d/flow.xml:ro
+      - ./clickhouse/users.d/flow.xml:/etc/clickhouse-server/users.d/flow.xml:ro
+    ports:
+      # HTTP for Grafana / clickhouse-client, only on this host unless CLICKHOUSE_BIND says otherwise.
+      - "${CLICKHOUSE_BIND:-127.0.0.1}:${CLICKHOUSE_HTTP_PORT:-8123}:8123"
+    mem_limit: ${CLICKHOUSE_MEMORY_LIMIT:-4g}
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    cap_add: [SYS_NICE, IPC_LOCK]
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --user flow --password \"$$CLICKHOUSE_PASSWORD\" --query 'SELECT 1' >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+    logging: *logging
+
+  nats:
+    image: ${NATS_IMAGE:-nats:2.11-alpine}
+    restart: unless-stopped
+    command: ["-c", "/etc/nats/nats.conf"]
+    environment:
+      NATS_TOKEN: ${NATS_TOKEN:?set NATS_TOKEN in .env}
+    volumes:
+      - ./nats/nats.conf:/etc/nats/nats.conf:ro
+      - nats-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8222/healthz?js-enabled-only=true"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    logging: *logging
+
+  # Secret store: every Flow secret (passwords, tokens, password hashes, session keys).
+  openbao:
+    image: ${OPENBAO_IMAGE:-openbao/openbao:2.7.1}
+    restart: unless-stopped
+    entrypoint: ["bao", "server", "-config=/openbao/config/openbao.hcl"]
+    volumes:
+      - ./openbao/openbao.hcl:/openbao/config/openbao.hcl:ro
+      - openbao-data:/openbao/file
+    ports:
+      - "${OPENBAO_BIND:-127.0.0.1}:${OPENBAO_PORT:-8200}:8200"
+    logging: *logging
+
+  # Initialises OpenBao once, unseals it (also after restarts), creates the KV v2
+  # mount "flow" and the AppRole "flow", writes role_id / secret_id for Flow and
+  # seeds the service passwords from .env into OpenBao (only when absent).
+  openbao-init:
+    image: ${OPENBAO_IMAGE:-openbao/openbao:2.7.1}
+    restart: unless-stopped
+    user: "0"
+    entrypoint: ["/bin/sh", "-c", "tr -d '\\r' < /config/init.sh > /tmp/init.sh && exec /bin/sh /tmp/init.sh"]
+    environment:
+      BAO_ADDR: http://openbao:8200
+      WATCH: ${OPENBAO_AUTO_UNSEAL:-true}
+      SEED_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      SEED_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      SEED_NATS_TOKEN: ${NATS_TOKEN}
+    volumes:
+      - ./openbao/init.sh:/config/init.sh:ro
+      - ./openbao/flow-policy.hcl:/config/flow-policy.hcl:ro
+      # Unseal keys and the root token (init.txt): back this folder up and keep it private.
+      - ./secrets/openbao:/state
+      - openbao-approle:/approle
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/openbao-ready"]
+      interval: 3s
+      retries: 100
+      start_period: 5s
+    depends_on: [openbao]
+    logging: *logging
+
+  # --profile demo: synthetic NetFlow v9 / IPFIX / sFlow traffic into the collector.
+  flow-demo:
+    image: ${FLOW_IMAGE:-umbrella-flow:latest}
+    pull_policy: never
+    profiles: [demo]
+    restart: unless-stopped
+    command: ["demo", "-target", "flow:2055"]
+    depends_on:
+      flow:
+        condition: service_healthy
+    logging: *logging
+
+  # --profile geoip: MaxMind GeoLite2 databases, refreshed every GEOIPUPDATE_FREQUENCY hours.
+  geoipupdate:
+    image: ${GEOIPUPDATE_IMAGE:-ghcr.io/maxmind/geoipupdate:v7.1.1}
+    profiles: [geoip]
+    restart: unless-stopped
+    environment:
+      GEOIPUPDATE_ACCOUNT_ID: ${GEOIPUPDATE_ACCOUNT_ID:-}
+      GEOIPUPDATE_LICENSE_KEY: ${GEOIPUPDATE_LICENSE_KEY:-}
+      GEOIPUPDATE_EDITION_IDS: ${GEOIPUPDATE_EDITION_IDS:-GeoLite2-ASN GeoLite2-City GeoLite2-Country}
+      GEOIPUPDATE_FREQUENCY: ${GEOIPUPDATE_FREQUENCY:-72}
+    volumes:
+      - geoip:/usr/share/GeoIP
+    logging: *logging
+
+volumes:
+  flow-data:
+  postgres-data:
+  clickhouse-data:
+  clickhouse-logs:
+  nats-data:
+  openbao-data:
+  openbao-approle:
+  geoip:

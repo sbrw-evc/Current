@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (go vet, go test)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      clickhouse:
+        image: clickhouse/clickhouse-server:25.8
+        env:
+          CLICKHOUSE_SKIP_USER_SETUP: "1"
+        ports: ["9000:9000", "8123:8123"]
+        options: >-
+          --ulimit nofile=262144:262144
+          --health-cmd "clickhouse-client --query 'SELECT 1'"
+          --health-interval 5s --health-timeout 5s --health-retries 30
+    env:
+      FLOW_TEST_POSTGRES: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+      FLOW_TEST_CLICKHOUSE: 127.0.0.1:9000
+    defaults:
+      run:
+        working-directory: app/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: app/backend/go.mod
+          cache-dependency-path: app/backend/go.sum
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        run: go test -race -count=1 ./...
+      - name: build
+        run: go build -o /tmp/flow ./cmd/flow && /tmp/flow -version
+
+  web:
+    name: Web (typecheck, test, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/web/package-lock.json
+      - run: npm ci
+      - name: typecheck
+        run: npm run typecheck
+      - name: test
+        run: npm test
+      - name: build
+        run: npm run build
+
+  image:
+    name: Docker image and Compose
+    runs-on: ubuntu-latest
+    needs: [backend, web]
+    steps:
+      - uses: actions/checkout@v4
+      - name: compose config
+        working-directory: deploy/flow
+        run: |
+          cp .env.example .env
+          docker compose config -q
+          docker compose --profile demo --profile geoip config -q
+          COMPOSE_FILE=docker-compose.yml:docker-compose.umbrella.yml docker compose config -q
+      - name: build image
+        working-directory: app
+        run: docker build -t umbrella-flow:ci .
+      - name: smoke
+        run: docker run --rm umbrella-flow:ci -version
