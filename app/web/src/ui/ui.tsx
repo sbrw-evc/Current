@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, Eye, EyeOff, Info, Loader2, Minus, Moon, P
 import { AnimatePresence, motion, type HTMLMotionProps, type Transition } from 'motion/react'
 import { useLocale, useT } from '../i18n'
 import { useTheme } from '../theme'
+import { Link } from 'react-router-dom'
 import { originOf } from '../lib/fx'
 import { Select } from './select'
 
@@ -276,16 +277,25 @@ export function Card({ title, actions, children, className, pad = true }: { titl
   )
 }
 
-export function Tile({ label, value, sub, icon, tone }: { label: string; value: ReactNode; sub?: ReactNode; icon?: ReactNode; tone?: Tone }) {
-  return (
-    <div className={`card tile ${tone ? `tile-${tone}` : ''}`}>
+// Tile is a counter card; with `to` the whole card opens the page with the details.
+export function Tile({ label, value, sub, icon, tone, to }: { label: string; value: ReactNode; sub?: ReactNode; icon?: ReactNode; tone?: Tone; to?: string }) {
+  const body = (
+    <>
       <div className="tile-head">
         <span className="tile-label">{label}</span>
         {icon && <span className="tile-icon">{icon}</span>}
       </div>
       <div className="tile-value">{value}</div>
       {sub && <div className="tile-sub muted">{sub}</div>}
-    </div>
+    </>
+  )
+  const cls = `card tile ${tone ? `tile-${tone}` : ''}`
+  return to ? (
+    <Link to={to} className={`${cls} tile-link`}>
+      {body}
+    </Link>
+  ) : (
+    <div className={cls}>{body}</div>
   )
 }
 

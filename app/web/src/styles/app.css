@@ -249,7 +249,233 @@ a.btn {
   color: var(--warn);
 }
 
+/* A tile that opens the page with the details. */
+
+a.tile-link {
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+a.tile-link:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+a.tile-link:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
 /* Home */
+
+/* Needs attention: one clickable row per problem, the most urgent first. */
+
+.att-card {
+  padding: 16px 16px 8px;
+}
+
+.att-card .card-title {
+  margin: 0 0 6px;
+}
+
+.att-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.att-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 8px;
+  margin: 0 -8px;
+  border-radius: var(--radius);
+  color: inherit;
+  text-decoration: none;
+}
+
+.att-list li + li {
+  border-top: 1px solid var(--border);
+}
+
+.att-row:hover {
+  background: var(--surface-2);
+}
+
+.att-row:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.att-icon {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+.att-error .att-icon {
+  background: var(--error-soft);
+  color: var(--error);
+}
+
+.att-warn .att-icon {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.att-info .att-icon {
+  background: var(--info-soft);
+  color: var(--info);
+}
+
+.att-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.att-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.att-go {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* First steps: Umbrella's onboarding checklist (app/web/src/app/onboarding/onboarding.css). */
+
+.ob-card {
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ob-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ob-head h2 {
+  margin: 0 0 4px;
+  font-size: 1.1rem;
+}
+
+.ob-head p {
+  margin: 0;
+  max-width: 70ch;
+}
+
+.ob-head-actions {
+  flex-wrap: nowrap;
+}
+
+.ob-count {
+  white-space: nowrap;
+}
+
+.ob-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--border);
+  overflow: hidden;
+}
+
+.ob-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.ob-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ob-step {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.ob-step:first-child {
+  border-top: 0;
+}
+
+.ob-icon {
+  color: var(--muted);
+}
+
+.ob-icon-done {
+  color: var(--ok);
+}
+
+.ob-step-done .ob-name {
+  color: var(--muted);
+}
+
+.ob-name {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ob-opt {
+  font-weight: 400;
+}
+
+.ob-action {
+  text-align: right;
+}
+
+.ob-action .btn {
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .ob-head {
+    flex-direction: column;
+  }
+  .ob-step,
+  .att-row {
+    grid-template-columns: auto 1fr;
+  }
+  .ob-action,
+  .att-go {
+    grid-column: 2;
+    text-align: left;
+  }
+}
+
 
 .top-grid {
   display: grid;

@@ -12,6 +12,7 @@ import { useSession } from '../shell/session'
 import { useTheme } from '../theme'
 import { Banner, Card, Loading, Tile } from '../ui/ui'
 import { visualizeLink, DEFAULT_STATE } from './visualize/state'
+import { AttentionCard, FirstSteps, HealthChip } from './home/HomePanels'
 
 const strings: Dict = {
   en: {
@@ -70,14 +71,18 @@ export function HomePage() {
   const { can } = useSession()
   const summary = useQuery({ queryKey: ['w', 'summary'], queryFn: ({ signal }) => get<Summary>('/api/widgets/summary', signal), refetchInterval: 15e3 })
   const s = summary.data
+  const viz = can('visualize:view')
+  const external = (dir: 'In' | 'Out') => visualizeLink({ ...DEFAULT_STATE, range: { preset: '24h' }, filter: `${dir}IfBoundary = 'external'` })
   return (
-    <Page id="home" subtitle={t('home.sub')} wide>
+    <Page id="home" subtitle={t('home.sub')} actions={<HealthChip />} wide>
       {summary.error && <Banner kind="error" title={t('err.network')} />}
+      <FirstSteps />
+      <AttentionCard />
       <div className="tiles">
         <Tile label={t('tile.fps')} icon={<Gauge size={16} />} value={s ? formatCount(s.flows_per_second, locale) : '—'} sub={t('tile.fps.sub')} />
-        <Tile label={t('tile.exporters')} icon={<Router size={16} />} value={s ? num(s.exporters, locale) : '—'} sub={t('tile.exporters.sub')} />
-        <Tile label={t('tile.in')} icon={<ArrowDownToLine size={16} />} tone="info" value={s ? formatBps(s.bps_in_external, locale) : '—'} sub={t('tile.in.sub')} />
-        <Tile label={t('tile.out')} icon={<ArrowUpFromLine size={16} />} tone="orange" value={s ? formatBps(s.bps_out_external, locale) : '—'} sub={t('tile.out.sub')} />
+        <Tile label={t('tile.exporters')} icon={<Router size={16} />} value={s ? num(s.exporters, locale) : '—'} sub={t('tile.exporters.sub')} to={can('exporters:view') ? '/exporters' : undefined} />
+        <Tile label={t('tile.in')} icon={<ArrowDownToLine size={16} />} tone="info" value={s ? formatBps(s.bps_in_external, locale) : '—'} sub={t('tile.in.sub')} to={viz ? external('In') : undefined} />
+        <Tile label={t('tile.out')} icon={<ArrowUpFromLine size={16} />} tone="orange" value={s ? formatBps(s.bps_out_external, locale) : '—'} sub={t('tile.out.sub')} to={viz ? external('Out') : undefined} />
       </div>
       <Card
         title={t('graph.title')}
