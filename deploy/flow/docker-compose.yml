@@ -32,25 +32,28 @@ services:
       FLOW_SETUP_TOKEN: ${FLOW_SETUP_TOKEN:-}
       # The wizard is prefilled with the bundled services; passwords are only
       # openbao:// references (openbao-init puts the values from .env there).
+      # The hosts are the flow-* aliases, not the service names: joined to the
+      # shared "umbrella" network, Flow could otherwise reach Umbrella's own
+      # postgres or openbao container under the same name.
       FLOW_SETUP_DEFAULTS_LANGUAGE: ${FLOW_LANGUAGE:-ru}
       FLOW_SETUP_DEFAULTS_TIMEZONE: ${TZ:-UTC}
       FLOW_SETUP_DEFAULTS_PUBLIC_URL: ${FLOW_PUBLIC_URL:-}
-      FLOW_SETUP_DEFAULTS_OPENBAO_ADDR: http://openbao:8200
+      FLOW_SETUP_DEFAULTS_OPENBAO_ADDR: http://flow-openbao:8200
       FLOW_SETUP_DEFAULTS_OPENBAO_MOUNT: flow
       FLOW_SETUP_DEFAULTS_OPENBAO_AUTH: approle
       FLOW_SETUP_DEFAULTS_OPENBAO_ROLE_ID_FILE: /run/openbao/role_id
       FLOW_SETUP_DEFAULTS_OPENBAO_SECRET_ID_FILE: /run/openbao/secret_id
-      FLOW_SETUP_DEFAULTS_POSTGRES_HOST: postgres
+      FLOW_SETUP_DEFAULTS_POSTGRES_HOST: flow-postgres
       FLOW_SETUP_DEFAULTS_POSTGRES_PORT: "5432"
       FLOW_SETUP_DEFAULTS_POSTGRES_DATABASE: flow
       FLOW_SETUP_DEFAULTS_POSTGRES_USERNAME: flow
       FLOW_SETUP_DEFAULTS_POSTGRES_SSLMODE: disable
       FLOW_SETUP_DEFAULTS_POSTGRES_PASSWORD_REF: openbao://flow/postgres#password
-      FLOW_SETUP_DEFAULTS_CLICKHOUSE_ADDR: clickhouse:9000
+      FLOW_SETUP_DEFAULTS_CLICKHOUSE_ADDR: flow-clickhouse:9000
       FLOW_SETUP_DEFAULTS_CLICKHOUSE_DATABASE: flow
       FLOW_SETUP_DEFAULTS_CLICKHOUSE_USERNAME: flow
       FLOW_SETUP_DEFAULTS_CLICKHOUSE_PASSWORD_REF: openbao://flow/clickhouse#password
-      FLOW_SETUP_DEFAULTS_NATS_URL: nats://nats:4222
+      FLOW_SETUP_DEFAULTS_NATS_URL: nats://flow-nats:4222
       FLOW_SETUP_DEFAULTS_NATS_TOKEN_REF: openbao://flow/nats#token
       FLOW_SETUP_DEFAULTS_NETFLOW_ADDR: ":2055"
       FLOW_SETUP_DEFAULTS_SFLOW_ADDR: ":6343"
@@ -101,6 +104,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 30
+    networks:
+      default:
+        aliases: [flow-postgres]
     logging: *logging
 
   clickhouse:
@@ -135,14 +141,17 @@ services:
       timeout: 5s
       retries: 60
       start_period: 10s
+    networks:
+      default:
+        aliases: [flow-clickhouse]
     logging: *logging
 
   nats:
     image: ${NATS_IMAGE:-nats:2.11-alpine}
     restart: unless-stopped
-    command: ["-c", "/etc/nats/nats.conf"]
-    environment:
-      NATS_TOKEN: ${NATS_TOKEN:?set NATS_TOKEN in .env}
+    # The token is a command-line flag, not a config variable: the config parser
+    # would read a token such as 12345 as a number and refuse to start.
+    command: ["-c", "/etc/nats/nats.conf", "--auth", "${NATS_TOKEN:?set NATS_TOKEN in .env}"]
     volumes:
       - ./nats/nats.conf:/etc/nats/nats.conf:ro
       - nats-data:/data
@@ -151,6 +160,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 30
+    networks:
+      default:
+        aliases: [flow-nats]
     logging: *logging
 
   # Secret store: every Flow secret (passwords, tokens, password hashes, session keys).
@@ -163,6 +175,9 @@ services:
       - openbao-data:/openbao/file
     ports:
       - "${OPENBAO_BIND:-127.0.0.1}:${OPENBAO_PORT:-8200}:8200"
+    networks:
+      default:
+        aliases: [flow-openbao]
     logging: *logging
 
   # Initialises OpenBao once, unseals it (also after restarts), creates the KV v2

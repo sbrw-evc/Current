@@ -125,6 +125,10 @@ Then:
 With the demo profile the graphs fill within a minute: three exporters (`edge-01`, `edge-02`, `dc-sw-01`) appear on the
 Exporters page and in Visualize.
 
+**On a host that already runs Umbrella Monitoring**, its OpenBao already holds port 8200: set `OPENBAO_PORT=8201`
+(or another free port) in `.env` before the first start. Check the other published ports the same way (8080, 8123,
+3000, 2055 and 6343).
+
 **Keep `deploy/flow/secrets/openbao/init.txt` safe.** It holds OpenBao's unseal keys and root token; without it the
 secrets, and so the installation, cannot be recovered.
 
@@ -278,6 +282,9 @@ docs/
 | No `setup_code` in the log | Flow waits for its dependencies: `docker compose ps` must show `openbao-init`, `postgres`, `clickhouse` and `nats` healthy. The code is also kept in the `flow-data` volume (`/data/setup-token`), and `FLOW_SETUP_TOKEN` sets a fixed one. |
 | `clickhouse` keeps restarting | not enough memory for the container: give Docker more memory or lower `CLICKHOUSE_MEMORY_LIMIT` in `.env`. |
 | Port 8080, 2055 or 6343 is busy | change `FLOW_HTTP_PORT`, `FLOW_NETFLOW_PORT` or `FLOW_SFLOW_PORT` in `.env`. |
+| `openbao` fails with "port is already allocated" | another OpenBao or Vault (often Umbrella Monitoring's) uses 8200 on the host: set `OPENBAO_PORT=8201` in `.env`. The port is only for the OpenBao UI on the host; Flow reaches OpenBao inside the Compose network either way. |
+| `nats` stays unhealthy, log shows a parse or nil pointer error | older checkouts read an all-digit `NATS_TOKEN` (such as `12345`) as a number: `git pull`, or use a token with a letter in it. |
+| Flow joined to the `umbrella` network talks to the wrong database | an installation set up before the `flow-*` host aliases has `postgres`, `clickhouse`, `nats` and `openbao` as hosts, and Umbrella's containers may answer to the same names. Change them to `flow-postgres`, `flow-clickhouse`, `flow-nats` and `flow-openbao` in `flow.json` (the `flow-data` volume) and restart `flow`, or stay off the shared network. |
 | Exporters show up under the wrong address | something between the router and Flow rewrites the UDP source address (NAT, a load balancer with SNAT). Keep the original source; on Linux the default Docker setup does. |
 | Flows arrive but without names, sites or boundaries | connect Inventory DB (Integrations → Inventory DB) and check that each exporter's source address is the device's primary IP. |
 | Graphs show bytes too low | the exporter does not report its sampling rate: set it on the Exporters page. |
