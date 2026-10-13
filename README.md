@@ -1,13 +1,12 @@
 # Umbrella Flow
 
-Network traffic analysis for NetFlow v5 / v9, IPFIX and sFlow, with the capabilities of
-[Akvorado](https://github.com/akvorado/akvorado) and ElastiFlow, built into the Umbrella family:
+Network traffic analysis for NetFlow v5 / v9, IPFIX and sFlow, built into the Umbrella family:
 
 - **[Umbrella Monitoring](https://github.com/sbrw-evc/Umbrella-Monitoring)** gets traffic incidents (link overload,
   DDoS, anomalies, silent exporters, threat contacts) on the right CI, and a "Traffic" link from every incident.
-- **[Inventory DB](https://github.com/sbrw-evc/Inventory-DB)** (NetBox-style DCIM / IPAM) is the enrichment source:
-  exporter names, sites, roles, interfaces, boundaries, providers and networks come from it instead of hand-written
-  YAML, and its device, interface and circuit pages show traffic from Flow.
+- **[Inventory DB](https://github.com/sbrw-evc/Inventory-DB)** (DCIM / IPAM) is the enrichment source: exporter
+  names, sites, roles, interfaces, boundaries, providers and networks come from it with no hand-written mapping, and
+  its device, interface and circuit pages show traffic from Flow.
 
 One Go binary, a React console, flows in ClickHouse, configuration in PostgreSQL, every secret in OpenBao. It is
 deployed with Docker Compose (one command) or a Helm chart, and configured in a first-run setup wizard.
@@ -16,7 +15,7 @@ deployed with Docker Compose (one command) or a Helm chart, and configured in a 
 
 ## Contents
 
-- [Features](#features)
+- [Key features](#key-features)
 - [Architecture](#architecture)
 - [Quick start (Docker)](#quick-start-docker)
 - [Sending traffic to Flow](#sending-traffic-to-flow)
@@ -30,51 +29,34 @@ deployed with Docker Compose (one command) or a Helm chart, and configured in a 
 - [Troubleshooting](#troubleshooting)
 - [License](#license)
 
-## Features
+## Key features
 
-**Collection**
-
-- NetFlow v5 / v9, IPFIX (UDP 2055) and sFlow v5 (UDP 6343), option templates for interface names and sampling rates,
-  sampling overrides per exporter or interface.
-- Cloud flow logs over HTTPS: AWS VPC Flow Logs (CloudWatch Logs, Kinesis Data Firehose), Azure NSG / VNet flow logs,
-  GCP VPC flow logs over Pub/Sub push.
-- BMP receiver (RFC 7854, TCP 10179): AS paths, communities, large communities and next hops from the routers' BGP
-  tables, including VPNv4 / VPNv6, labeled unicast and EVPN IP routes; sessions are shared between enricher replicas
-  over NATS JetStream.
-- gNMI (`Get` or `Subscribe`, mutual TLS) and SNMP v2c / v3 as fallback sources of interface names and speeds for
-  devices that are not in Inventory DB.
-
-**Enrichment**
-
-- Exporters, interfaces, circuits, prefixes, VRFs, tenants and IP addresses from Inventory DB (scheduled sync plus a
-  signed change hook), so each flow carries site, role, boundary (internal / external), provider, network and the CI
-  reference.
-- GeoIP and ASN (MaxMind GeoLite2 or IPinfo Lite MMDB), applications by port, reverse DNS (asynchronous, cached),
-  threat intelligence from public blocklists (FireHOL, Spamhaus DROP, abuse.ch).
-- Classifiers in CEL (the expression language of Umbrella's connectors) with a live preview.
-
-**Analysis**
-
-- Visualize: any dimensions, top N with "Other", stacked / lines / grid / sankey graphs, bidirectional mode, bps / pps /
-  % utilisation, 95th percentile, a filter language with completion (`SrcAS = 65000 AND InIfBoundary = external`),
-  saved views and shareable links.
-- Raw flow search, an overview of what needs attention, an exporters page, dependency discovery between CIs.
-- Automatic resolution choice over raw flows and 1 min / 5 min / 1 h aggregates with their own retention.
-
-**Detection and incidents**
-
-- Rules for link utilisation, circuit commit (95th percentile against `commit_rate`), volumetric and SYN DDoS, weekly
-  baseline anomalies, traffic drops, silent exporters and threat contacts.
-- Events go to Umbrella's `network-flow` connector with the Inventory DB `source_ref`, so the incident lands on the
-  right CI; firing and resolved events survive restarts.
-- Per-interface utilisation on `/metrics` for Umbrella's Rule Engine, and a Grafana "CI traffic" dashboard.
-
-**Platform**
-
-- First-run setup wizard with a check for every step; no restart needed when it finishes.
-- Local users, LDAP / AD and Microsoft Entra ID sign-in, `<page>:<function>` roles, visibility limited to a user's
-  Umbrella services, API tokens for service accounts, an audit log.
-- Russian and English UI, light and dark themes, a phone layout.
+- **Every flow source in one place.** NetFlow v5 / v9, IPFIX, sFlow v5 and cloud flow logs (AWS, Azure, GCP), with
+  sampling rates learned from option templates or set per exporter and interface.
+- **Flows that already know the network.** Each flow carries the exporter's site and role, interface names and
+  speeds, internal / external boundary, provider, network, tenant and CI, taken from Inventory DB and kept in sync
+  through a signed change hook.
+- **Routing and device data.** A built-in BMP receiver adds AS paths, communities and next hops (including VPN, labeled
+  unicast and EVPN routes); gNMI and SNMP fill interface data for devices outside Inventory DB.
+- **More context per address.** GeoIP and ASN, applications by port, reverse DNS, threat intelligence from public
+  blocklists, and custom CEL classifiers with a live preview.
+- **Answers in a few clicks.** Visualize by any dimension as stacked, lines, grid or sankey graphs, in and out on one
+  graph, bps / pps / % utilisation and the 95th percentile, with a filter language that completes as you type
+  (`SrcAS = 65000 AND InIfBoundary = external`), saved views and shareable links; raw flow search; an overview of what
+  needs attention.
+- **Incidents, not just graphs.** Rules for link utilisation, circuit commit, volumetric and SYN DDoS, baseline
+  anomalies, traffic drops, silent exporters and threat contacts raise Umbrella incidents on the right CI and resolve
+  them when traffic is back to normal.
+- **Traffic where engineers already look.** Traffic chips, sparklines and circuit 95th percentile in Inventory DB, a
+  "Traffic" link from Umbrella incidents, per-interface metrics on `/metrics` and a "CI traffic" dashboard.
+- **CMDB from real traffic.** Steady CI-to-CI flows become dependency proposals on Umbrella's CMDB map.
+- **Fast storage, long history.** Raw flows plus 1 min / 5 min / 1 h aggregates in ClickHouse, with the resolution
+  picked for the requested period and separate retention for each level.
+- **Secure by default.** Every secret in OpenBao, local users, LDAP / AD and Entra ID sign-in, page-level roles,
+  visibility limited to a user's Umbrella services, API tokens and an audit log.
+- **Up in one command.** One image for every role, a Docker Compose stack or a Helm chart, a first-run setup wizard
+  with a check at every step, horizontal scaling by role.
+- **Russian and English UI**, light and dark themes, a phone layout.
 
 | Visualize (sankey) | Exporters |
 |---|---|
@@ -103,7 +85,7 @@ UDP load balancer, enrichers as a JetStream consumer group.
 
 | Component | Choice |
 |---|---|
-| Backend | Go 1.26, goflow2 for flow decoding, own BMP / BGP decoder, cel-go, pgx, goose |
+| Backend | Go 1.26, own BMP / BGP decoder, CEL, pgx, goose |
 | Web console | React 19, TypeScript, Vite, TanStack Query, react-router 7, Apache ECharts, CodeMirror 6 |
 | Flow storage | ClickHouse 25.8 LTS (raw flows 15 days, aggregates 30 days / 90 days / 2 years by default) |
 | Configuration | PostgreSQL 17 |
@@ -255,7 +237,7 @@ CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs on every pull req
 checks and the image build. Work goes to a branch from `main` and is merged by pull request once CI is green.
 
 Conventions: documentation and code comments are in English, the UI is bilingual (RU / EN). Dependencies must be
-open source with permissive licences; no code is copied from Akvorado (AGPL-3.0) or ElastiFlow.
+open source with permissive licences.
 
 ## Repository layout
 
