@@ -8,11 +8,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/netip"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	gpb "github.com/openconfig/gnmi/proto/gnmi"
 	"google.golang.org/grpc"
@@ -90,6 +93,13 @@ func dial(a netip.Addr, p Profile, c Credentials) (*grpc.ClientConn, error) {
 			}
 			cfg.RootCAs = pool
 		}
+		if c.Cert != "" || c.Key != "" {
+			cert, err := tls.X509KeyPair([]byte(c.Cert), []byte(c.Key))
+			if err != nil {
+				return nil, fmt.Errorf("profile %q: client certificate: %w", p.Name, err)
+			}
+			cfg.Certificates = []tls.Certificate{cert}
+		}
 		tc = credentials.NewTLS(cfg)
 	}
 	port := p.Port
@@ -101,6 +111,21 @@ func dial(a netip.Addr, p Profile, c Credentials) (*grpc.ClientConn, error) {
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(64<<20)))
 }
 
+// withAuth adds the username / password metadata of a profile.
+func withAuth(ctx context.Context, p Profile, c Credentials) context.Context {
+	if p.Username != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, "username", p.Username, "password", c.Password)
+	}
+	return ctx
+}
+
+func encoding(p Profile) gpb.Encoding {
+	if p.Encoding == EncodingJSON {
+		return gpb.Encoding_JSON
+	}
+	return gpb.Encoding_JSON_IETF
+}
+
 func getGNMI(ctx context.Context, a netip.Addr, p Profile, c Credentials, s Settings) (map[uint32]Interface, error) {
 	conn, err := dial(a, p, c)
 	if err != nil {
@@ -108,13 +133,8 @@ func getGNMI(ctx context.Context, a netip.Addr, p Profile, c Credentials, s Sett
 	}
 	defer conn.Close()
 	cl := gpb.NewGNMIClient(conn)
-	if p.Username != "" {
-		ctx = metadata.AppendToOutgoingContext(ctx, "username", p.Username, "password", c.Password)
-	}
-	enc := gpb.Encoding_JSON_IETF
-	if p.Encoding == EncodingJSON {
-		enc = gpb.Encoding_JSON
-	}
+	ctx = withAuth(ctx, p, c)
+	enc := encoding(p)
 	d := newDecoder()
 	for i, q := range queries {
 		resp, err := get(ctx, cl, q.path, enc, s)
@@ -138,6 +158,148 @@ func getGNMI(ctx context.Context, a netip.Addr, p Profile, c Credentials, s Sett
 		return nil, errors.New("the device returned no interfaces with an ifindex")
 	}
 	return ifs, nil
+}
+
+// ErrSubscribeUnsupported: the device refused the Subscribe RPC or its
+// subscription list; the poller reads it with Get instead.
+var ErrSubscribeUnsupported = errors.New("the device does not support gNMI Subscribe for these paths")
+
+// subscribeGNMI keeps a Subscribe stream (STREAM mode, TARGET_DEFINED
+// subscriptions of the polled leaves) open until ctx ends or the stream
+// fails. update receives the whole interface table once the device has sent
+// its initial state (sync_response), then after every batch of changes.
+func subscribeGNMI(ctx context.Context, a netip.Addr, p Profile, c Credentials, s Settings, update func(map[uint32]Interface)) error {
+	conn, err := dial(a, p, c)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	cl := gpb.NewGNMIClient(conn)
+	ctx = withAuth(ctx, p, c)
+	enc := encoding(p)
+	for {
+		err := subscribeOnce(ctx, cl, enc, s, update)
+		// A device without JSON_IETF support is asked again with JSON.
+		if errors.Is(err, errEncoding) && enc == gpb.Encoding_JSON_IETF {
+			enc = gpb.Encoding_JSON
+			continue
+		}
+		if errors.Is(err, errEncoding) {
+			return fmt.Errorf("%w (%v)", ErrSubscribeUnsupported, errors.Unwrap(err))
+		}
+		return err
+	}
+}
+
+// errEncoding wraps a rejection of the subscription before any data.
+var errEncoding = errors.New("subscription rejected")
+
+func subscribeOnce(ctx context.Context, cl gpb.GNMIClient, enc gpb.Encoding, s Settings, update func(map[uint32]Interface)) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	st, err := cl.Subscribe(ctx)
+	if err != nil {
+		return grpcError(err)
+	}
+	list := &gpb.SubscriptionList{Mode: gpb.SubscriptionList_STREAM, Encoding: enc}
+	for _, q := range queries {
+		list.Subscription = append(list.Subscription, &gpb.Subscription{Path: q.path, Mode: gpb.SubscriptionMode_TARGET_DEFINED})
+	}
+	if err := st.Send(&gpb.SubscribeRequest{Request: &gpb.SubscribeRequest_Subscribe{Subscribe: list}}); err != nil {
+		return grpcError(err)
+	}
+	type recv struct {
+		r   *gpb.SubscribeResponse
+		err error
+	}
+	ch := make(chan recv, 64)
+	go func() {
+		for {
+			r, err := st.Recv()
+			select {
+			case ch <- recv{r, err}:
+			case <-ctx.Done():
+				return
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	d := newDecoder()
+	synced, got := false, false
+	// A device that never sends sync_response is taken as synced after a while.
+	syncWait := time.NewTimer(3 * s.timeout())
+	defer syncWait.Stop()
+	publish := func() error {
+		ifs := d.interfaces()
+		if len(ifs) == 0 {
+			return errors.New("the device returned no interfaces with an ifindex")
+		}
+		update(ifs)
+		return nil
+	}
+	handle := func(x recv) (bool, error) {
+		if x.err != nil {
+			if errors.Is(x.err, io.EOF) {
+				return false, errors.New("the device closed the subscription")
+			}
+			if !got {
+				switch status.Code(x.err) {
+				case codes.Unimplemented:
+					return false, fmt.Errorf("%w: %w", ErrSubscribeUnsupported, grpcError(x.err))
+				case codes.InvalidArgument:
+					return false, fmt.Errorf("%w: %w", errEncoding, grpcError(x.err))
+				}
+			}
+			return false, grpcError(x.err)
+		}
+		got = true
+		switch r := x.r.GetResponse().(type) {
+		case *gpb.SubscribeResponse_Update:
+			d.notification(r.Update)
+			return synced, nil
+		case *gpb.SubscribeResponse_SyncResponse:
+			synced = true
+			return true, nil
+		}
+		return false, nil
+	}
+	for {
+		var changed bool
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-syncWait.C:
+			if !synced {
+				synced, changed = true, true
+			}
+		case x := <-ch:
+			c, err := handle(x)
+			if err != nil {
+				return err
+			}
+			changed = c
+			// Coalesce what is already queued into one table update.
+			for drained := false; !drained; {
+				select {
+				case x := <-ch:
+					c, err := handle(x)
+					if err != nil {
+						return err
+					}
+					changed = changed || c
+				default:
+					drained = true
+				}
+			}
+		}
+		if changed && synced {
+			if err := publish(); err != nil {
+				return err
+			}
+		}
+	}
 }
 
 func get(ctx context.Context, cl gpb.GNMIClient, path *gpb.Path, enc gpb.Encoding, s Settings) (*gpb.GetResponse, error) {
@@ -184,6 +346,9 @@ type decoder struct{ rows map[rowKey]*row }
 func newDecoder() *decoder { return &decoder{rows: map[rowKey]*row{}} }
 
 func (d *decoder) notification(n *gpb.Notification) {
+	for _, p := range n.GetDelete() {
+		d.remove(append(append([]*gpb.PathElem{}, n.GetPrefix().GetElem()...), p.GetElem()...))
+	}
 	for _, u := range n.GetUpdate() {
 		elems := append(append([]*gpb.PathElem{}, n.GetPrefix().GetElem()...), u.GetPath().GetElem()...)
 		v, err := typedValue(u.GetVal())
@@ -268,9 +433,10 @@ func appendElem(elems []*gpb.PathElem, e *gpb.PathElem) []*gpb.PathElem {
 	return append(append(make([]*gpb.PathElem, 0, len(elems)+1), elems...), e)
 }
 
-// leaf records a scalar at a full path.
-func (d *decoder) leaf(elems []*gpb.PathElem, v any) {
-	key := rowKey{sub: -1}
+// locate splits a full path into its interface row and the path below it;
+// ok is false for paths outside one named interface.
+func locate(elems []*gpb.PathElem) (key rowKey, rest []string, ok bool) {
+	key = rowKey{sub: -1}
 	i := -1
 	for j, e := range elems {
 		if local(e.GetName()) == "interface" && e.GetKey()["name"] != "" {
@@ -278,28 +444,41 @@ func (d *decoder) leaf(elems []*gpb.PathElem, v any) {
 		}
 	}
 	if i < 0 || key.name == "*" {
-		return
+		return key, nil, false
 	}
-	rest := make([]string, 0, len(elems)-i)
+	rest = make([]string, 0, len(elems)-i)
 	for j := i + 1; j < len(elems); j++ {
 		n := local(elems[j].GetName())
 		if n == "subinterface" {
 			idx, err := strconv.ParseInt(elems[j].GetKey()["index"], 10, 64)
 			if err != nil || idx < 0 {
-				return
+				return key, nil, false
 			}
 			key.sub, rest = idx, rest[:0]
 			continue
 		}
 		rest = append(rest, n)
 	}
+	return key, rest, true
+}
+
+// leaf records a scalar at a full path (nil clears it).
+func (d *decoder) leaf(elems []*gpb.PathElem, v any) {
+	key, rest, ok := locate(elems)
+	if !ok {
+		return
+	}
 	r := d.rows[key]
 	if r == nil {
+		if v == nil {
+			return
+		}
 		r = &row{}
 		d.rows[key] = r
 	}
 	switch strings.Join(rest, "/") {
 	case "state/ifindex":
+		r.hasIndex = false
 		if n, ok := scalarUint(v); ok && n > 0 && n <= 0xffffffff {
 			r.ifindex, r.hasIndex = uint32(n), true
 		}
@@ -311,6 +490,51 @@ func (d *decoder) leaf(elems []*gpb.PathElem, v any) {
 		r.negSpeed = SpeedBits(scalarText(v))
 	case "aggregation/state/lag-speed":
 		r.lagMbs, _ = scalarUint(v)
+	}
+}
+
+// leafPaths are the leaves read below an interface or subinterface row.
+var leafPaths = [][]string{
+	{"state", "ifindex"}, {"state", "description"}, {"ethernet", "state", "port-speed"},
+	{"ethernet", "state", "negotiated-port-speed"}, {"aggregation", "state", "lag-speed"},
+}
+
+// remove applies a Subscribe delete: a whole interface (with its
+// subinterfaces), a subinterface, or the leaves below a container.
+func (d *decoder) remove(elems []*gpb.PathElem) {
+	key, rest, ok := locate(elems)
+	if !ok {
+		// The whole interface list (or more) is gone.
+		if len(elems) <= 2 && (len(elems) == 0 || local(elems[0].GetName()) == "interfaces") {
+			clear(d.rows)
+		}
+		return
+	}
+	if len(rest) == 1 && rest[0] == "subinterfaces" && key.sub < 0 {
+		for k := range d.rows {
+			if k.name == key.name && k.sub >= 0 {
+				delete(d.rows, k)
+			}
+		}
+		return
+	}
+	if len(rest) == 0 {
+		for k := range d.rows {
+			if k.name == key.name && (key.sub < 0 || k.sub == key.sub) {
+				delete(d.rows, k)
+			}
+		}
+		return
+	}
+	base := elems[:len(elems)-len(rest)]
+	for _, lp := range leafPaths {
+		if len(lp) >= len(rest) && slices.Equal(lp[:len(rest)], rest) {
+			full := append([]*gpb.PathElem{}, base...)
+			for _, n := range lp {
+				full = append(full, elem(n))
+			}
+			d.leaf(full, nil)
+		}
 	}
 }
 

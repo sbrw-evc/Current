@@ -9,17 +9,19 @@ const view: GnmiView = {
   ttl_minutes: 360,
   timeout_seconds: 10,
   concurrency: 8,
-  profiles: [{ id: 'pa', name: 'core', prefixes: ['10.0.0.0/8'], port: 57400, username: 'flow', tls: true, encoding: 'json_ietf', password_set: true, ca_set: true }],
+  profiles: [{ id: 'pa', name: 'core', prefixes: ['10.0.0.0/8'], port: 57400, username: 'flow', tls: true, encoding: 'json_ietf', mode: 'get', password_set: true, ca_set: true, cert_set: true }],
   encodings: ['json_ietf', 'json'],
+  modes: ['get', 'subscribe'],
 }
 
 const pem = '-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----'
+const keyPem = '-----BEGIN EC PRIVATE KEY-----\nMHcC\n-----END EC PRIVATE KEY-----'
 
 describe('gNMI settings', () => {
   it('keeps saved secrets and sends typed ones only', () => {
     const d = toGnmiDraft(view)
     expect(validateGnmi(d)).toEqual([])
-    expect(gnmiBody(d).profiles[0]).toEqual({ id: 'pa', name: 'core', prefixes: ['10.0.0.0/8'], port: 57400, tls: true, encoding: 'json_ietf', username: 'flow', skip_verify: false })
+    expect(gnmiBody(d).profiles[0]).toEqual({ id: 'pa', name: 'core', prefixes: ['10.0.0.0/8'], port: 57400, tls: true, encoding: 'json_ietf', mode: 'get', username: 'flow', skip_verify: false })
     d.profiles[0].password = 'new'
     d.profiles[0].ca_pem = ` ${pem}\n`
     expect(gnmiBody(d).profiles[0]).toMatchObject({ password: 'new', ca_pem: pem })
@@ -50,5 +52,21 @@ describe('gNMI settings', () => {
     d.devices = 'router1'
     d.ttl_minutes = 10
     expect(validateGnmi(d)).toEqual(expect.arrayContaining(['gnmi.err.ca', 'gnmi.err.port', 'gnmi.err.dup', 'gnmi.err.device', 'gnmi.err.ttl']))
+  })
+  it('sends the client certificate and key together', () => {
+    const d = toGnmiDraft(view)
+    const p = d.profiles[0]
+    p.mode = 'subscribe'
+    p.cert_pem = pem
+    expect(validateGnmi(d)).toEqual(['gnmi.err.pair'])
+    expect(gnmiBody(d).profiles[0]).not.toHaveProperty('cert_pem')
+    p.key_pem = `${keyPem}\n`
+    expect(validateGnmi(d)).toEqual([])
+    expect(gnmiBody(d).profiles[0]).toMatchObject({ mode: 'subscribe', cert_pem: pem, key_pem: keyPem })
+    p.key_pem = 'nope'
+    expect(validateGnmi(d)).toEqual(['gnmi.err.key'])
+    p.cert_pem = p.key_pem = ''
+    p.cert_remove = true
+    expect(gnmiBody(d).profiles[0]).toMatchObject({ cert_pem: '', key_pem: '' })
   })
 })

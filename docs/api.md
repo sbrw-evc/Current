@@ -511,17 +511,30 @@ port speed (OpenConfig `SPEED_10MB` … `SPEED_800GB` identities mapped to bits/
 `lag-speed` × 10⁶. Requests use JSON_IETF (a device answering `InvalidArgument` / `Unimplemented` is asked again with
 JSON) or JSON per profile. Credentials: optional `username` / `password` sent as the `username` / `password` gRPC
 metadata of every request (the gNMI convention), TLS on / off (TLS 1.2+; without TLS the password travels in clear
-text), `skip_verify`, an optional `server_name` the device certificate must carry (default: the address) and an
-optional PEM CA bundle (default: the system roots). Polled devices, profiles by prefix, interval / TTL and retries
-after a failure work as for SNMP below (`timeout_seconds` default 10, per request). Secrets live in OpenBao at
-`gnmi/<profile id>/{password,ca}` (key `value`); the settings hold only references. Settings key `gnmi`, permissions
-`settings.gnmi:view` / `settings.gnmi:edit`. Metrics `flow_gnmi_polls_total{result}`, `flow_gnmi_devices`; status
-component `gnmi`.
+text), `skip_verify`, an optional `server_name` the device certificate must carry (default: the address), an
+optional PEM CA bundle (default: the system roots) and, for devices that require mutual TLS, a PEM client certificate
+and its private key (PKCS #1, PKCS #8 or SEC 1; both or neither). Polled devices, profiles by prefix, interval / TTL and
+retries after a failure work as for SNMP below (`timeout_seconds` default 10, per request).
+
+Profile `mode`: `get` (default) polls as above every refresh period; `subscribe` keeps one gNMI `Subscribe` stream per
+device open instead (`STREAM` list, one `TARGET_DEFINED` subscription per path above, the profile's encoding with the
+same JSON fallback). The device's initial state (up to `sync_response`, or after 3 × `timeout_seconds` without one)
+replaces its interface table, then each batch of updates and deletes (a whole interface with its subinterfaces, a
+subinterface, or leaves) is applied as it arrives; the data of an open stream never expires. A stream that fails is
+opened again after max(interval / 4, 1 min) and its data is kept for the TTL meanwhile; a device answering
+`Unimplemented` (or `InvalidArgument` with both encodings) before any data is polled with `Get` until its profile
+changes. Streams do not count against `concurrency`. With several enricher replicas, each replica opens its own
+stream.
+
+Secrets live in OpenBao at `gnmi/<profile id>/{password,ca,cert,key}` (key `value`); the settings hold only
+references. Settings key `gnmi`, permissions `settings.gnmi:view` / `settings.gnmi:edit`. Metrics
+`flow_gnmi_polls_total{result}` (a stream counts once when it delivers its initial state, and on each failure),
+`flow_gnmi_devices`, `flow_gnmi_streams`; status component `gnmi`.
 
 | Method | Path | |
 |---|---|---|
-| GET | `/api/settings/gnmi` | `{enabled, poll_exporters, devices: [addr], interval_minutes, ttl_minutes, timeout_seconds (10), concurrency (8), profiles: [{id, name, prefixes, port (57400), username?, tls, skip_verify?, server_name?, encoding: "json_ietf"\|"json", password_set, ca_set}], encodings, status?: {enabled, devices: [{address, profile, interfaces, polled?, error?, configured}], failing}}` — `status` when the poller runs in this process |
-| PUT | `/api/settings/gnmi` | the same fields; per profile the write-only `password` and `ca_pem` (omitted = keep, `""` = remove; a password is required with a `username`, the CA must be PEM). A profile without a user name drops its password, one without TLS its CA. A profile without a known `id` gets a new one; removed profiles' secrets are deleted. → as GET; 400 `gnmi_invalid` |
+| GET | `/api/settings/gnmi` | `{enabled, poll_exporters, devices: [addr], interval_minutes, ttl_minutes, timeout_seconds (10), concurrency (8), profiles: [{id, name, prefixes, port (57400), username?, tls, skip_verify?, server_name?, encoding: "json_ietf"\|"json", mode: "get"\|"subscribe", password_set, ca_set, cert_set}], encodings, modes, status?: {enabled, devices: [{address, profile, interfaces, polled?, error?, configured, mode, streaming}], failing}}` — `status` when the poller runs in this process |
+| PUT | `/api/settings/gnmi` | the same fields; per profile the write-only `password`, `ca_pem`, `cert_pem` and `key_pem` (omitted = keep, `""` = remove; a password is required with a `username`, the CA must be PEM, the client certificate and key are sent together and must match). A profile without a user name drops its password, one without TLS its CA and client certificate. A profile without a known `id` gets a new one; removed profiles' secrets are deleted. → as GET; 400 `gnmi_invalid` |
 | POST | `/api/settings/gnmi/test` | `{address, profile}` (a profile as in PUT; secrets not given are taken from the saved profile of the same `id`) → `{ok, error?, details?: {interfaces, sample: [{index, name, descr, speed}]}}` |
 
 ## SNMP

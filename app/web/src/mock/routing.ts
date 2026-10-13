@@ -45,7 +45,7 @@ const snmpView = (): SnmpView => ({
     : null,
 })
 
-const gnmi: Omit<GnmiView, 'encodings' | 'status'> = {
+const gnmi: Omit<GnmiView, 'encodings' | 'modes' | 'status'> = {
   enabled: true,
   poll_exporters: true,
   devices: [],
@@ -54,28 +54,29 @@ const gnmi: Omit<GnmiView, 'encodings' | 'status'> = {
   timeout_seconds: 10,
   concurrency: 8,
   profiles: [
-    { id: 'g-dc', name: 'DC fabric', prefixes: ['10.0.1.0/24'], port: 57400, username: 'flow', tls: true, skip_verify: false, server_name: '', encoding: 'json_ietf', password_set: true, ca_set: true },
-    { id: 'g-lab', name: 'Lab (no TLS)', prefixes: ['10.0.200.0/24'], port: 6030, username: '', tls: false, encoding: 'json', password_set: false, ca_set: false },
+    { id: 'g-dc', name: 'DC fabric', prefixes: ['10.0.1.0/24'], port: 57400, username: 'flow', tls: true, skip_verify: false, server_name: '', encoding: 'json_ietf', mode: 'subscribe', password_set: true, ca_set: true, cert_set: true },
+    { id: 'g-lab', name: 'Lab (no TLS)', prefixes: ['10.0.200.0/24'], port: 6030, username: '', tls: false, encoding: 'json', mode: 'get', password_set: false, ca_set: false, cert_set: false },
   ],
 }
 
 const gnmiView = (): GnmiView => ({
   ...gnmi,
   encodings: ['json_ietf', 'json'],
+  modes: ['get', 'subscribe'],
   status: gnmi.enabled
     ? {
         enabled: true,
         failing: 1,
         devices: [
-          { address: '10.0.1.11', profile: 'DC fabric', interfaces: 66, polled: ago(4), configured: false },
-          { address: '10.0.1.12', profile: 'DC fabric', interfaces: 66, polled: ago(4), configured: false },
-          { address: '10.0.200.5', profile: 'Lab (no TLS)', interfaces: 0, error: 'Unavailable: connection error: desc = "transport: Error while dialing: dial tcp 10.0.200.5:6030: i/o timeout"', configured: false },
+          { address: '10.0.1.11', profile: 'DC fabric', interfaces: 66, polled: ago(0.5), configured: false, mode: 'subscribe', streaming: true },
+          { address: '10.0.1.12', profile: 'DC fabric', interfaces: 66, polled: ago(4), configured: false, mode: 'subscribe', streaming: true },
+          { address: '10.0.200.5', profile: 'Lab (no TLS)', interfaces: 0, mode: 'get', streaming: false, error: 'Unavailable: connection error: desc = "transport: Error while dialing: dial tcp 10.0.200.5:6030: i/o timeout"', configured: false },
         ],
       }
     : null,
 })
 
-type GnmiProfileIn = GnmiView['profiles'][number] & { password?: string | null; ca_pem?: string | null }
+type GnmiProfileIn = GnmiView['profiles'][number] & { password?: string | null; ca_pem?: string | null; cert_pem?: string | null; key_pem?: string | null }
 
 const bmp: Omit<BmpView, 'status'> = { enabled: true, policy: 'prefer-post', routers: ['10.0.0.0/24'], as_providers: ['routing', 'flow', 'geoip'] }
 
@@ -118,14 +119,19 @@ export function routingMock(method: string, p: string, body: unknown, query?: UR
         skip_verify: pr.tls ? !!pr.skip_verify : false,
         server_name: pr.tls ? (pr.server_name ?? '') : '',
         encoding: pr.encoding || 'json_ietf',
+        mode: pr.mode || 'get',
         password_set: user !== '' && set(pr.password, old?.password_set),
         ca_set: !!pr.tls && set(pr.ca_pem, old?.ca_set),
+        cert_set: !!pr.tls && set(pr.cert_pem, old?.cert_set),
+        pair: (pr.cert_pem == null) === (pr.key_pem == null) && (pr.cert_pem ?? '') !== '' === ((pr.key_pem ?? '') !== ''),
       }
     })
+    const unpaired = profiles.find((pr) => !pr.pair)
+    if (unpaired) return fail(400, 'gnmi_invalid', `profile "${unpaired.name}": the client certificate and its key go together`)
     if (profiles.some((pr) => !pr.name?.trim())) return fail(400, 'gnmi_invalid', 'every profile needs a name')
     const noPw = profiles.find((pr) => pr.username && !pr.password_set)
     if (noPw) return fail(400, 'gnmi_invalid', `profile "${noPw.name}": the password is required with a user name`)
-    Object.assign(gnmi, { ...b, profiles })
+    Object.assign(gnmi, { ...b, profiles: profiles.map(({ pair: _, ...pr }) => pr) })
     return ok(gnmiView())
   }
   if (p === '/api/settings/gnmi/test') {

@@ -2,6 +2,7 @@
 import { splitList, validAddress, validPrefixOrAddress } from './SnmpModel'
 
 export type GnmiEncoding = 'json_ietf' | 'json'
+export type GnmiMode = 'get' | 'subscribe'
 
 export type GnmiProfileView = {
   id: string
@@ -13,11 +14,22 @@ export type GnmiProfileView = {
   skip_verify?: boolean
   server_name?: string
   encoding: GnmiEncoding
+  mode: GnmiMode
   password_set: boolean
   ca_set: boolean
+  cert_set: boolean
 }
 
-export type GnmiDeviceStatus = { address: string; profile?: string; interfaces: number; polled?: string; error?: string; configured: boolean }
+export type GnmiDeviceStatus = {
+  address: string
+  profile?: string
+  interfaces: number
+  polled?: string
+  error?: string
+  configured: boolean
+  mode?: GnmiMode
+  streaming?: boolean
+}
 
 export type GnmiView = {
   enabled: boolean
@@ -29,10 +41,12 @@ export type GnmiView = {
   concurrency: number
   profiles: GnmiProfileView[]
   encodings: GnmiEncoding[]
+  modes: GnmiMode[]
   status?: { enabled: boolean; devices: GnmiDeviceStatus[]; failing: number } | null
 }
 
-// A profile being edited: secrets are write-only ('' = keep the saved one; ca_remove drops the saved CA).
+// A profile being edited: secrets are write-only ('' = keep the saved one; ca_remove drops the saved CA,
+// cert_remove the saved client certificate and key).
 export type GnmiProfileDraft = Omit<GnmiProfileView, 'prefixes'> & {
   prefixes: string
   username: string
@@ -41,10 +55,13 @@ export type GnmiProfileDraft = Omit<GnmiProfileView, 'prefixes'> & {
   password: string
   ca_pem: string
   ca_remove: boolean
+  cert_pem: string
+  key_pem: string
+  cert_remove: boolean
   key: string
 }
 
-export type GnmiDraft = Omit<GnmiView, 'devices' | 'profiles' | 'encodings' | 'status'> & { devices: string; profiles: GnmiProfileDraft[] }
+export type GnmiDraft = Omit<GnmiView, 'devices' | 'profiles' | 'encodings' | 'modes' | 'status'> & { devices: string; profiles: GnmiProfileDraft[] }
 
 export const GNMI_PORT = 57400
 
@@ -62,11 +79,16 @@ export function newGnmiProfile(): GnmiProfileDraft {
     skip_verify: false,
     server_name: '',
     encoding: 'json_ietf',
+    mode: 'get',
     password_set: false,
     ca_set: false,
+    cert_set: false,
     password: '',
     ca_pem: '',
     ca_remove: false,
+    cert_pem: '',
+    key_pem: '',
+    cert_remove: false,
   }
 }
 
@@ -87,14 +109,20 @@ export function toGnmiDraft(v: GnmiView): GnmiDraft {
       skip_verify: !!p.skip_verify,
       server_name: p.server_name ?? '',
       encoding: p.encoding || 'json_ietf',
+      mode: p.mode || 'get',
+      cert_set: !!p.cert_set,
       password: '',
       ca_pem: '',
       ca_remove: false,
+      cert_pem: '',
+      key_pem: '',
+      cert_remove: false,
     })),
   }
 }
 
 const pemCert = /-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/
+const pemKey = /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----[\s\S]+?-----END (?:[A-Z]+ )?PRIVATE KEY-----/
 
 // validateGnmi returns i18n keys of the problems (empty = valid).
 export function validateGnmi(d: GnmiDraft): string[] {
@@ -107,6 +135,9 @@ export function validateGnmi(d: GnmiDraft): string[] {
     if (p.port < 1 || p.port > 65535) out.add('gnmi.err.port')
     if (p.username.trim() && !p.password_set && !p.password) out.add('gnmi.err.password')
     if (p.tls && p.ca_pem.trim() && !pemCert.test(p.ca_pem)) out.add('gnmi.err.ca')
+    if (p.tls && (p.cert_pem.trim() !== '') !== (p.key_pem.trim() !== '')) out.add('gnmi.err.pair')
+    if (p.tls && p.cert_pem.trim() && !pemCert.test(p.cert_pem)) out.add('gnmi.err.cert')
+    if (p.tls && p.key_pem.trim() && !pemKey.test(p.key_pem)) out.add('gnmi.err.key')
   }
   const names = d.profiles.map((p) => p.name.trim().toLowerCase())
   if (new Set(names).size !== names.length) out.add('gnmi.err.dup')
@@ -123,13 +154,16 @@ export type GnmiProfileBody = {
   skip_verify?: boolean
   server_name?: string
   encoding: GnmiEncoding
+  mode: GnmiMode
   password?: string
   ca_pem?: string
+  cert_pem?: string
+  key_pem?: string
 }
 
 // gnmiProfileBody: secrets are sent only when typed or removed (absent = keep the saved one).
 export function gnmiProfileBody(p: GnmiProfileDraft): GnmiProfileBody {
-  const b: GnmiProfileBody = { id: p.id, name: p.name.trim(), prefixes: splitList(p.prefixes), port: p.port, tls: p.tls, encoding: p.encoding }
+  const b: GnmiProfileBody = { id: p.id, name: p.name.trim(), prefixes: splitList(p.prefixes), port: p.port, tls: p.tls, encoding: p.encoding, mode: p.mode }
   const user = p.username.trim()
   if (user) {
     b.username = user
@@ -140,6 +174,13 @@ export function gnmiProfileBody(p: GnmiProfileDraft): GnmiProfileBody {
     if (p.server_name.trim()) b.server_name = p.server_name.trim()
     if (p.ca_pem.trim()) b.ca_pem = p.ca_pem.trim()
     else if (p.ca_remove) b.ca_pem = ''
+    if (p.cert_pem.trim() && p.key_pem.trim()) {
+      b.cert_pem = p.cert_pem.trim()
+      b.key_pem = p.key_pem.trim()
+    } else if (p.cert_remove) {
+      b.cert_pem = ''
+      b.key_pem = ''
+    }
   }
   return b
 }
