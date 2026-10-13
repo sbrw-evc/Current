@@ -23,16 +23,19 @@ type RouteInfo struct {
 }
 
 // RoutingSource looks up routes; the BMP RIB implements it (via wiring).
+// rd is the route distinguisher of the VRF the flow entered ("65000:1"),
+// empty for the global routing table.
 type RoutingSource interface {
-	LookupRoute(addr netip.Addr) (RouteInfo, bool)
+	LookupRoute(rd string, addr netip.Addr) (RouteInfo, bool)
 }
 
-// route looks up the route of a (source or destination) address.
-func (e *Enricher) route(a netip.Addr, n *netInfo) {
+// route looks up the route of a (source or destination) address in the
+// routing table of rd.
+func (e *Enricher) route(rd string, a netip.Addr, n *netInfo) {
 	if e.cfg.Routing == nil {
 		return
 	}
-	n.rt, n.rtOK = e.cfg.Routing.LookupRoute(a)
+	n.rt, n.rtOK = e.cfg.Routing.LookupRoute(rd, a)
 }
 
 // applyDstRoute fills the BGP columns of the destination and the next hop

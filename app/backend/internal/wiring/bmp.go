@@ -47,6 +47,9 @@ type BMP struct {
 	applied string
 	lastErr string
 	enr     *enrich.Enricher
+
+	rds  sync.Map // VRF route distinguisher text → bmp RD
+	nrds atomic.Int32
 }
 
 // NewBMP builds the component; Run applies the settings.
@@ -66,16 +69,36 @@ func NewBMP(st *store.Store, listen string, reg prometheus.Registerer, log *slog
 }
 
 // LookupRoute implements enrich.RoutingSource.
-func (b *BMP) LookupRoute(a netip.Addr) (enrich.RouteInfo, bool) {
+func (b *BMP) LookupRoute(rd string, a netip.Addr) (enrich.RouteInfo, bool) {
 	if !b.enabled.Load() {
 		return enrich.RouteInfo{}, false
 	}
-	r, ok := b.RIB.Lookup(a)
+	r, ok := b.RIB.LookupRD(b.parseRD(rd), a)
 	if !ok {
 		return enrich.RouteInfo{}, false
 	}
 	return enrich.RouteInfo{OriginAS: r.OriginAS(), ASPath: r.ASPath, Communities: r.Communities,
 		LargeCommunities: r.LargeText, NextHop: r.NextHop}, true
+}
+
+// parseRD converts the route distinguisher of an Inventory DB VRF; unset or
+// invalid ones select the global table. Results are cached: the enricher
+// asks for the same few VRFs for every flow.
+func (b *BMP) parseRD(s string) uint64 {
+	if s == "" {
+		return 0
+	}
+	if v, ok := b.rds.Load(s); ok {
+		return v.(uint64)
+	}
+	rd, err := bmp.ParseRD(s)
+	if err != nil {
+		rd = 0
+	}
+	if b.nrds.Add(1) <= 4096 {
+		b.rds.Store(s, rd)
+	}
+	return rd
 }
 
 // attach gives the enricher whose AS provider order follows the settings.
@@ -270,8 +293,8 @@ func (r *Routing) SNMPStatus() any { return r.SNMP.Status(context.Background()) 
 func (r *Routing) BMPStatus() any { return r.BMP.Status(context.Background()) }
 
 // BMPLookup implements app.RoutingService.
-func (r *Routing) BMPLookup(a netip.Addr) (any, bool) {
-	rt, ok := r.BMP.RIB.Lookup(a)
+func (r *Routing) BMPLookup(rd uint64, a netip.Addr) (any, bool) {
+	rt, ok := r.BMP.RIB.LookupRD(rd, a)
 	if !ok {
 		return nil, false
 	}
@@ -287,7 +310,11 @@ func (r *Routing) BMPLookup(a netip.Addr) (any, bool) {
 	if path == nil {
 		path = []uint32{}
 	}
-	return map[string]any{"prefix": rt.Prefix.String(), "origin_as": rt.OriginAS(), "as_path": path, "communities": comms,
+	rdText := ""
+	if rt.RD != 0 {
+		rdText = bmp.FormatRD(rt.RD)
+	}
+	return map[string]any{"prefix": rt.Prefix.String(), "rd": rdText, "origin_as": rt.OriginAS(), "as_path": path, "communities": comms,
 		"large_communities": large, "next_hop": addrText(rt.NextHop), "peer": map[string]any{"router": rt.Peer.Router,
 			"address": rt.Peer.Address, "as": rt.Peer.AS, "post_policy": rt.Peer.Post}}, true
 }

@@ -1,19 +1,34 @@
 package enrich
 
 import (
+	"bytes"
 	"context"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
 	"github.com/sbrw-evc/network/app/backend/internal/flow"
+	"github.com/sbrw-evc/network/app/backend/internal/inventory"
 )
 
 type fakeRoutes map[netip.Addr]RouteInfo
 
-func (r fakeRoutes) LookupRoute(a netip.Addr) (RouteInfo, bool) {
+func (r fakeRoutes) LookupRoute(rd string, a netip.Addr) (RouteInfo, bool) {
+	if rd != "" {
+		return RouteInfo{}, false
+	}
 	v, ok := r[a.Unmap()]
 	return v, ok
+}
+
+// vrfRoutes records the route distinguishers looked up.
+type vrfRoutes struct{ rds []string }
+
+func (r *vrfRoutes) LookupRoute(rd string, _ netip.Addr) (RouteInfo, bool) {
+	r.rds = append(r.rds, rd)
+	return RouteInfo{}, false
 }
 
 type staticIf map[uint32][3]any
@@ -61,6 +76,46 @@ func TestRoutingProvider(t *testing.T) {
 	_ = e.SetASProviders(nil)
 	if _, err := New(&capture{}, Config{ASProviders: []string{"nope"}}); err == nil {
 		t.Fatal("unknown provider accepted by New")
+	}
+}
+
+// Routes are looked up in the VRF of the input interface, which takes the
+// VRF of its address in Inventory DB.
+func TestRoutingVRF(t *testing.T) {
+	dir := t.TempDir()
+	ents, err := os.ReadDir("../inventory/testdata")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, de := range ents {
+		b, err := os.ReadFile(filepath.Join("../inventory/testdata", de.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if de.Name() == "ipam_ip-addresses.json" {
+			// 10.1.0.1/24 on xe-0/0/2 goes into VRF prod (65000:1).
+			b = bytes.Replace(b, []byte(`"address":"10.1.0.1/24","vrf":null`), []byte(`"address":"10.1.0.1/24","vrf":{"id":1,"name":"prod","rd":"65000:1"}`), 1)
+		}
+		if err := os.WriteFile(filepath.Join(dir, de.Name()), b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	snap, err := inventory.LoadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inv := &staticInv{}
+	inv.p.Store(snap)
+	routes := &vrfRoutes{}
+	e, _ := newTestEnricher(t, Config{Inventory: inv, Routing: routes})
+	in := &flow.Flow{ExporterAddress: edge, InIf: 8, OutIf: 7, SrcAddr: vmAddr, DstAddr: google, Bytes: 1}
+	out := &flow.Flow{ExporterAddress: edge, OutIf: 8, SrcAddr: vmAddr, DstAddr: google, Bytes: 1}
+	glob := &flow.Flow{ExporterAddress: edge, InIf: 7, OutIf: 8, SrcAddr: vmAddr, DstAddr: google, Bytes: 1}
+	if err := e.Put(context.Background(), []*flow.Flow{in, out, glob}); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"65000:1", "65000:1", "65000:1", "65000:1", "", ""}; !slices.Equal(routes.rds, want) {
+		t.Fatalf("lookups in %q, want %q", routes.rds, want)
 	}
 }
 

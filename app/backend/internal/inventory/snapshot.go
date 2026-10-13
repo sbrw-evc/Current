@@ -69,6 +69,10 @@ type Interface struct {
 	Mode    string   `json:"mode"`
 	VLAN    uint16   `json:"vlan,omitempty"` // untagged VLAN id
 	Tags    []string `json:"tags"`
+	// VRF of the interface (its own, else that of its IP addresses) and the
+	// route distinguisher of that VRF, used for BMP L3VPN route lookups.
+	VRF string `json:"vrf,omitempty"`
+	RD  string `json:"rd,omitempty"`
 
 	Boundary     string `json:"boundary"` // flow.Boundary*
 	Connectivity string `json:"connectivity"`
@@ -381,8 +385,10 @@ func build(r *raw, snmpField string, at time.Time) *Snapshot {
 		return siteInfo{name: x.name(), slug: x.Slug}
 	}
 	vrfs := map[int]string{}
+	vrfRD := map[int]string{}
 	for _, v := range r.vrfs {
 		vrfs[v.ID] = v.Name
+		vrfRD[v.ID] = v.RD
 	}
 	vrfName := func(x *ref) string {
 		if x == nil {
@@ -392,6 +398,17 @@ func build(r *raw, snmpField string, at time.Time) *Snapshot {
 			return n
 		}
 		return x.name()
+	}
+	setVRF := func(it *Interface, x *ref) {
+		if x == nil || x.ID == 0 {
+			return
+		}
+		it.VRF = vrfName(x)
+		if rd, ok := vrfRD[x.ID]; ok {
+			it.RD = rd
+		} else {
+			it.RD = x.RD
+		}
 	}
 	vlans := map[int]rawVLAN{}
 	for _, v := range r.vlans {
@@ -581,7 +598,25 @@ func build(r *raw, snmpField string, at time.Time) *Snapshot {
 		if idx, ok := cfUint(ri.CustomFields, snmpField); ok {
 			it.IfIndex = idx
 		}
+		setVRF(it, ri.VRF)
 		s.ifaces[ri.ID] = it
+	}
+	// Interfaces without their own VRF take the VRF of an assigned address
+	// (the lowest address id wins, for stable results).
+	ipVRF := map[int]*rawIPAddress{}
+	for i := range r.addresses {
+		ip := &r.addresses[i]
+		if ip.AssignedObjectType != "dcim.interface" || ip.AssignedObjectID == nil || ip.VRF == nil {
+			continue
+		}
+		if old, ok := ipVRF[*ip.AssignedObjectID]; !ok || ip.ID < old.ID {
+			ipVRF[*ip.AssignedObjectID] = ip
+		}
+	}
+	for id, ip := range ipVRF {
+		if it := s.ifaces[id]; it != nil && it.VRF == "" {
+			setVRF(it, ip.VRF)
+		}
 	}
 
 	// Edge classification. Circuit terminations name the interfaces they

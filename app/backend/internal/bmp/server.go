@@ -115,6 +115,7 @@ func ParseRouters(in []string) ([]netip.Prefix, error) {
 type Metrics struct {
 	messages *prometheus.CounterVec
 	errors   *prometheus.CounterVec
+	skipped  *prometheus.CounterVec
 	sessions prometheus.Gauge
 }
 
@@ -125,6 +126,8 @@ func NewMetrics(reg prometheus.Registerer, rib *RIB) (*Metrics, error) {
 			Help: "BMP messages received by type."}, []string{"type"}),
 		errors: prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "flow", Subsystem: "bmp", Name: "errors_total",
 			Help: "BMP decoding errors and rejected connections."}, []string{"kind"}),
+		skipped: prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "flow", Subsystem: "bmp", Name: "skipped_total",
+			Help: "Route Monitoring messages not added to the RIB: Adj-RIB-Out, or excluded by the policy setting."}, []string{"reason"}),
 		sessions: prometheus.NewGauge(prometheus.GaugeOpts{Namespace: "flow", Subsystem: "bmp", Name: "sessions",
 			Help: "Connected BMP routers."}),
 	}
@@ -135,10 +138,12 @@ func NewMetrics(reg prometheus.Registerer, rib *RIB) (*Metrics, error) {
 		return prometheus.NewGaugeFunc(prometheus.GaugeOpts{Namespace: "flow", Subsystem: "bmp", Name: name, Help: help},
 			func() float64 { return f(rib.Stats()) })
 	}
-	cs := []prometheus.Collector{m.messages, m.errors, m.sessions,
+	cs := []prometheus.Collector{m.messages, m.errors, m.skipped, m.sessions,
 		stat("prefixes_v4", "IPv4 prefixes in the RIB.", func(s Stats) float64 { return float64(s.PrefixesV4) }),
 		stat("prefixes_v6", "IPv6 prefixes in the RIB.", func(s Stats) float64 { return float64(s.PrefixesV6) }),
 		stat("routes", "Routes in the RIB (prefixes × peers).", func(s Stats) float64 { return float64(s.Routes) }),
+		stat("vpn_prefixes", "L3VPN prefixes in the RIB (all route distinguishers).", func(s Stats) float64 { return float64(s.VPNPrefixes) }),
+		stat("vrfs", "Route distinguishers with routes in the RIB.", func(s Stats) float64 { return float64(s.VRFs) }),
 		stat("peers", "BGP peers with an Adj-RIB-In.", func(s Stats) float64 { return float64(s.Peers) }),
 		stat("attribute_sets", "Distinct interned path attribute sets.", func(s Stats) float64 { return float64(s.AttrSets) }),
 		stat("rib_bytes", "Estimated memory held by the RIB.", func(s Stats) float64 { return float64(s.Bytes) }),
@@ -434,8 +439,15 @@ func (s *Server) handle(st *sessionState, typ byte, body []byte) (done bool, err
 		delete(st.caps, base)
 		s.rib.RemovePeer(k)
 	case MsgRouteMonitoring:
+		// Adj-RIB-Out describes what the router sends, not where traffic
+		// goes; mixing it with Adj-RIB-In would invent paths.
+		if h.out() {
+			s.m.skipped.WithLabelValues("adj_rib_out").Inc()
+			return false, nil
+		}
 		o := s.opts.Load()
 		if (o.policy == PolicyPost && !h.post()) || (o.policy == PolicyPre && h.post()) {
+			s.m.skipped.WithLabelValues("policy").Inc()
 			return false, nil
 		}
 		bt, ub, _, err := bgpMessage(rest)
@@ -449,7 +461,7 @@ func (s *Server) handle(st *sessionState, typ byte, body []byte) (done bool, err
 		if err != nil {
 			return false, err
 		}
-		s.rib.apply(k, u)
+		s.rib.apply(k, h.rd, u)
 	}
 	return false, nil
 }

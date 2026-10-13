@@ -1,4 +1,4 @@
-import type { BmpRoute, BmpView } from '../pages/settings/BmpModel'
+import { validRD, type BmpRoute, type BmpView } from '../pages/settings/BmpModel'
 import type { SnmpView } from '../pages/settings/SnmpModel'
 
 // Mock handlers of Settings → SNMP and Settings → BMP (VITE_MOCK=1), shaped like
@@ -52,11 +52,12 @@ const bmpView = (): BmpView => ({
     ? {
         enabled: true,
         listen: ':10179',
-        rib: { prefixes_v4: 1012345, prefixes_v6: 212345, routes: 2449380, attribute_sets: 412000, peers: 2, bytes: 318 << 20 },
+        rib: { prefixes_v4: 1012345, prefixes_v6: 212345, vpn_prefixes: 4210, vrfs: 1, routes: 2453590, attribute_sets: 412000, peers: 2, bytes: 318 << 20 },
         sessions: [{ router: '10.0.0.1', sys_name: 'edge-msk-1', sys_descr: 'Cisco IOS XR', since: ago(3 * 1440), peers_up: 2, messages: 9_812_331, errors: 0 }],
         peers: [
           { router: '10.0.0.1', address: '203.0.113.1', as: 9002, post_policy: true, routes: 1224690, since: ago(3 * 1440), last_update: ago(0.2) },
           { router: '10.0.0.1', address: '2001:db8::1', as: 9002, post_policy: true, routes: 1224690, since: ago(3 * 1440), last_update: ago(0.3) },
+          { router: '10.0.0.1', address: '10.255.0.2', as: 65000, post_policy: true, routes: 4210, since: ago(3 * 1440), last_update: ago(1) },
         ],
       }
     : null,
@@ -111,10 +112,13 @@ export function routingMock(method: string, p: string, body: unknown, query?: UR
     const a = (query?.get('address') ?? '').trim()
     if (!isAddr(a)) return fail(400, 'invalid_address', 'address must be an IP address')
     if (!bmp.enabled) return fail(501, 'not_implemented', 'the BMP routing table (it runs with the enricher)')
-    if (a.startsWith('10.') || a.startsWith('192.168.')) return fail(404, 'no_route', 'no route covers ' + a)
+    const rd = (query?.get('rd') ?? '').trim()
+    if (rd && !validRD(rd)) return fail(400, 'invalid_rd', `route distinguisher "${rd}": want admin:number`)
+    if (!rd && (a.startsWith('10.') || a.startsWith('192.168.'))) return fail(404, 'no_route', 'no route covers ' + a)
     const v6 = a.includes(':')
     const route: BmpRoute = {
       prefix: v6 ? '2a00:1450::/32' : `${a.split('.').slice(0, 2).join('.')}.0.0/16`,
+      rd: rd === '65000:1' ? rd : '',
       origin_as: 15169,
       as_path: [9002, 3356, 15169],
       communities: ['9002:64601', '65000:100'],

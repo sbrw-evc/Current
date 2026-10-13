@@ -8,7 +8,7 @@ import { Page } from '../../shell/Page'
 import { useSession } from '../../shell/session'
 import { notify } from '../../ui/notify'
 import { Banner, Button, Card, Chip, Field, formatDate, Input, Loading, Rows, Segmented, Switch, Textarea } from '../../ui/ui'
-import { AS_PROVIDERS, body, move, toDraft, toggle, validate, type BmpDraft, type BmpPolicy, type BmpRoute, type BmpView } from './BmpModel'
+import { AS_PROVIDERS, body, move, toDraft, toggle, validate, validRD, type BmpDraft, type BmpPolicy, type BmpRoute, type BmpView } from './BmpModel'
 import { validAddress } from './SnmpModel'
 
 // Settings → BMP (docs/api.md, "BMP"): routers stream their BGP Adj-RIB-In to Flow (TCP 10179); the
@@ -44,6 +44,8 @@ const strings: Dict = {
     'bmp.v6': 'IPv6 prefixes',
     'bmp.routes': 'Routes',
     'bmp.peers': 'BGP peers',
+    'bmp.vpn': 'VPN prefixes',
+    'bmp.vrfs': 'VRFs (RDs)',
     'bmp.memory': 'Memory (estimate)',
     'bmp.sessions': 'Routers',
     'bmp.sessions.none': 'No router connected.',
@@ -57,6 +59,9 @@ const strings: Dict = {
     'bmp.col.routes': 'Routes',
     'bmp.lookup': 'Route lookup',
     'bmp.lookup.address': 'Address',
+    'bmp.lookup.rd': 'RD (empty: global table)',
+    'bmp.lookup.table': 'Table',
+    'bmp.lookup.global': 'global',
     'bmp.lookup.run': 'Look up',
     'bmp.lookup.prefix': 'Prefix',
     'bmp.lookup.path': 'AS path',
@@ -95,6 +100,8 @@ const strings: Dict = {
     'bmp.v6': 'Префиксов IPv6',
     'bmp.routes': 'Маршрутов',
     'bmp.peers': 'BGP-соседей',
+    'bmp.vpn': 'Префиксов VPN',
+    'bmp.vrfs': 'VRF (RD)',
     'bmp.memory': 'Память (оценка)',
     'bmp.sessions': 'Маршрутизаторы',
     'bmp.sessions.none': 'Ни один маршрутизатор не подключён.',
@@ -108,6 +115,9 @@ const strings: Dict = {
     'bmp.col.routes': 'Маршрутов',
     'bmp.lookup': 'Поиск маршрута',
     'bmp.lookup.address': 'Адрес',
+    'bmp.lookup.rd': 'RD (пусто — глобальная таблица)',
+    'bmp.lookup.table': 'Таблица',
+    'bmp.lookup.global': 'глобальная',
     'bmp.lookup.run': 'Найти',
     'bmp.lookup.prefix': 'Префикс',
     'bmp.lookup.path': 'AS-путь',
@@ -225,6 +235,12 @@ function StatusCard({ view }: { view: BmpView }) {
           [
             ['bmp.v4', num(st.rib.prefixes_v4, locale)],
             ['bmp.v6', num(st.rib.prefixes_v6, locale)],
+            ...(st.rib.vrfs
+              ? ([
+                  ['bmp.vpn', num(st.rib.vpn_prefixes ?? 0, locale)],
+                  ['bmp.vrfs', num(st.rib.vrfs, locale)],
+                ] as const)
+              : []),
             ['bmp.routes', num(st.rib.routes, locale)],
             ['bmp.peers', num(st.rib.peers, locale)],
             ['bmp.memory', formatBytes(st.rib.bytes, locale)],
@@ -280,10 +296,13 @@ function StatusCard({ view }: { view: BmpView }) {
             </thead>
             <tbody>
               {st.peers.map((p) => (
-                <tr key={`${p.router}-${p.address}-${p.post_policy}`}>
+                <tr key={`${p.router}-${p.rd ?? ''}-${p.address}-${p.post_policy}`}>
                   <td>
                     <code>{p.address}</code>
-                    <div className="cell-sub muted">{p.router}</div>
+                    <div className="cell-sub muted">
+                      {p.router}
+                      {p.rd && ` · RD ${p.rd}`}
+                    </div>
                   </td>
                   <td className="num">AS{p.as}</td>
                   <td>{p.post_policy ? 'post-policy' : 'pre-policy'}</td>
@@ -301,7 +320,14 @@ function StatusCard({ view }: { view: BmpView }) {
 function LookupCard() {
   const t = useT(strings)
   const [addr, setAddr] = useState('')
-  const lookup = useMutation({ mutationFn: () => get<BmpRoute>(`/api/bmp/lookup?address=${encodeURIComponent(addr.trim())}`) })
+  const [rd, setRD] = useState('')
+  const lookup = useMutation({
+    mutationFn: () => {
+      const q = new URLSearchParams({ address: addr.trim() })
+      if (rd.trim()) q.set('rd', rd.trim())
+      return get<BmpRoute>(`/api/bmp/lookup?${q}`)
+    },
+  })
   const r = lookup.data
   return (
     <Card title={t('bmp.lookup')}>
@@ -313,7 +339,8 @@ function LookupCard() {
         }}
       >
         <Input aria-label={t('bmp.lookup.address')} value={addr} placeholder="8.8.8.8" onChange={(e) => setAddr(e.target.value)} />
-        <Button type="submit" busy={lookup.isPending} disabled={!validAddress(addr.trim())}>
+        <Input aria-label={t('bmp.lookup.rd')} title={t('bmp.lookup.rd')} value={rd} placeholder="RD 65000:1" onChange={(e) => setRD(e.target.value)} />
+        <Button type="submit" busy={lookup.isPending} disabled={!validAddress(addr.trim()) || (rd.trim() !== '' && !validRD(rd))}>
           {!lookup.isPending && <Search size={15} />}
           {t('bmp.lookup.run')}
         </Button>
@@ -323,6 +350,7 @@ function LookupCard() {
         <Rows
           rows={[
             [t('bmp.lookup.prefix'), <code key="p">{r.prefix}</code>],
+            [t('bmp.lookup.table'), r.rd ? `RD ${r.rd}` : t('bmp.lookup.global')],
             [t('bmp.lookup.path'), r.as_path.length ? r.as_path.map((a) => `AS${a}`).join(' ') : '—'],
             [t('bmp.lookup.communities'), r.communities.join(' ') || '—'],
             [t('bmp.lookup.large'), r.large_communities.join(' ') || '—'],

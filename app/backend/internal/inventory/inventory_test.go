@@ -305,6 +305,30 @@ func TestTrieOverlapsAndVRF(t *testing.T) {
 	}
 }
 
+func TestInterfaceVRF(t *testing.T) {
+	five, six := 5, 6
+	r := &raw{
+		devices: []rawDevice{{ID: 1, Name: "pe1"}},
+		vrfs:    []rawVRF{{ID: 1, Name: "red", RD: "65000:1"}, {ID: 2, Name: "blue", RD: "65000:2"}},
+		interfaces: []rawInterface{
+			{ID: 5, Device: &ref{ID: 1}, Name: "ge-0/0/1"},
+			{ID: 6, Device: &ref{ID: 1}, Name: "ge-0/0/2", VRF: &ref{ID: 2}},
+			{ID: 7, Device: &ref{ID: 1}, Name: "ge-0/0/3"},
+		},
+		addresses: []rawIPAddress{
+			{ID: 1, Address: "10.0.0.1/30", VRF: &ref{ID: 1}, AssignedObjectType: "dcim.interface", AssignedObjectID: &five},
+			{ID: 2, Address: "10.0.0.5/30", VRF: &ref{ID: 1}, AssignedObjectType: "dcim.interface", AssignedObjectID: &six},
+		},
+	}
+	s := build(r, "snmp_index", time.Now())
+	for name, want := range map[string]string{"ge-0/0/1": "red 65000:1", "ge-0/0/2": "blue 65000:2", "ge-0/0/3": " "} {
+		it, ok := s.InterfaceByName(1, name)
+		if !ok || it.VRF+" "+it.RD != want {
+			t.Errorf("%s = %+v, want %s", name, it, want)
+		}
+	}
+}
+
 // Integration test against a running Inventory DB seeded like testdata:
 // FLOW_TEST_INVENTORY_URL=http://localhost:8091 FLOW_TEST_INVENTORY_TOKEN=nc_...
 func TestIntegration(t *testing.T) {
