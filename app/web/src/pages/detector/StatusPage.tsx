@@ -53,7 +53,7 @@ export default function StatusPage() {
                   <p className="muted empty-pad">{t('status.noalerts')}</p>
                 ) : (
                   <div className="table-wrap">
-                    <table className="data-table det-table">
+                    <table className="data-table det-table m-cards">
                       <thead>
                         <tr>
                           <th>{t('col.state')}</th>
@@ -77,7 +77,7 @@ export default function StatusPage() {
           </div>
           <Card title={t('status.rules')} pad={false}>
             <div className="table-wrap">
-              <table className="data-table det-table">
+              <table className="data-table det-table m-cards">
                 <thead>
                   <tr>
                     <th>{t('col.rule')}</th>
@@ -91,7 +91,7 @@ export default function StatusPage() {
                 <tbody>
                   {rules.map((r) => (
                     <tr key={r.rule.id} className={r.rule.enabled ? '' : 'det-rule-off'}>
-                      <td>
+                      <td className="m-name">
                         <div className="cell-main">{can('detector:edit') ? <Link className="det-name-link" to={`/detector/rules/${encodeURIComponent(r.rule.id)}`}>{r.rule.name || r.rule.id}</Link> : r.rule.name || r.rule.id}</div>
                         <div className="cell-sub">{t(`kind.${r.rule.kind}`)}</div>
                       </td>
@@ -111,10 +111,10 @@ export default function StatusPage() {
                           {r.error && <span className="det-error-text">{r.error}</span>}
                         </div>
                       </td>
-                      <td>{r.last_eval ? <span title={formatDate(r.last_eval, locale)}>{relativeTime(r.last_eval, locale, now)}</span> : <span className="muted">{t('never')}</span>}</td>
-                      <td className="num">{r.last_eval ? t('ms', { n: num(r.duration_ms, locale) }) : '—'}</td>
-                      <td className="muted">{r.rule.enabled && r.next_eval ? <span title={formatDate(r.next_eval, locale)}>{new Date(r.next_eval).toLocaleTimeString(locale === 'ru' ? 'ru-RU' : 'en-GB')}</span> : '—'}</td>
-                      <td className="num">{num(r.groups, locale)}</td>
+                      <td data-label={t('col.lasteval')}>{r.last_eval ? <span title={formatDate(r.last_eval, locale)}>{relativeTime(r.last_eval, locale, now)}</span> : <span className="muted">{t('never')}</span>}</td>
+                      <td className="num" data-label={t('col.duration')}>{r.last_eval ? t('ms', { n: num(r.duration_ms, locale) }) : '—'}</td>
+                      <td className="muted" data-label={t('col.next')}>{r.rule.enabled && r.next_eval ? <span title={formatDate(r.next_eval, locale)}>{new Date(r.next_eval).toLocaleTimeString(locale === 'ru' ? 'ru-RU' : 'en-GB')}</span> : '—'}</td>
+                      <td className="num" data-label={t('col.groups')}>{num(r.groups, locale)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -136,15 +136,15 @@ function AlertRow({ a, rule, now, visualize }: { a: AlertState; rule?: Rule; now
       <td>
         <StateChip state={a.state} />
       </td>
-      <td className="det-rule-col">
+      <td className="det-rule-col m-name">
         <div className="cell-main det-alert-title">{title}</div>
         <div className="cell-sub">
           <span>{rule?.name ?? a.rule_id}</span>
           {rule && <SeverityChip severity={a.event?.severity || rule.severity} />}
         </div>
       </td>
-      <td className="num">{alertValue(rule?.kind, a.value, locale)}</td>
-      <td>
+      <td className="num" data-label={t('col.value')}>{alertValue(rule?.kind, a.value, locale)}</td>
+      <td data-label={t('col.since')}>
         <span title={formatDate(a.since, locale)}>{relativeTime(a.since, locale, now)}</span>
         {a.last_sent && <div className="cell-sub">{`${t('col.sent')}: ${relativeTime(a.last_sent, locale, now)}`}</div>}
       </td>

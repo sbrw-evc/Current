@@ -146,7 +146,7 @@ export default function ExportersPage() {
           <p className="muted empty-pad">{list.length ? t('exp.nomatch') : t('exp.empty')}</p>
         ) : (
           <div className="table-wrap">
-            <table className="data-table exp-table">
+            <table className="data-table exp-table m-cards">
               <thead>
                 <tr>
                   <th className="expand-col" aria-label="" />
@@ -167,26 +167,26 @@ export default function ExportersPage() {
                   return (
                     <Fragment key={e.address}>
                       <tr className={`clickable ${isOpen ? 'expanded' : ''}`} onClick={() => toggle(e.address)}>
-                        <td className="expand-col">
+                        <td className="expand-col m-hide">
                           <motion.span className="pop-icon muted" animate={{ rotate: isOpen ? 90 : 0 }} transition={spring} aria-label={t('expand')}>
                             <ChevronRight size={16} />
                           </motion.span>
                         </td>
-                        <td>
+                        <td className="m-name">
                           <div className="cell-main">{e.name || e.address}</div>
                           <div className="cell-sub">
                             <span className="mono">{e.address}</span>
                             {e.ref ? <Chip tone="ok">{t('exp.inventory')}</Chip> : <Chip tone="warn">{t('exp.noinventory')}</Chip>}
                           </div>
                         </td>
-                        <td>{e.site || '—'}</td>
-                        <td>{e.role ? <Chip tone="info" dot={false}>{e.role}</Chip> : '—'}</td>
-                        <td className="num">{num(e.flows_per_second, locale)}</td>
-                        <td className="mono">{e.sampling_rates.map((r) => `1:${r}`).join(', ')}</td>
-                        <td>
+                        <td data-label={t('col.site')}>{e.site || '—'}</td>
+                        <td data-label={t('col.role')}>{e.role ? <Chip tone="info" dot={false}>{e.role}</Chip> : '—'}</td>
+                        <td className="num" data-label={t('col.fps')}>{num(e.flows_per_second, locale)}</td>
+                        <td className="mono" data-label={t('col.sampling')}>{e.sampling_rates.map((r) => `1:${r}`).join(', ')}</td>
+                        <td data-label={t('col.seen')}>
                           <Chip tone={stale ? 'warn' : 'ok'}>{relativeTime(e.last_seen, locale, now)}</Chip>
                         </td>
-                        <td className="num">{e.interfaces.length}</td>
+                        <td className="num" data-label={t('col.ifs')}>{e.interfaces.length}</td>
                         {visualize && (
                           <td className="actions-col" onClick={(ev) => ev.stopPropagation()}>
                             <Link className="btn btn-ghost btn-sm" to={ifLink(e)}>
