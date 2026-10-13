@@ -35,6 +35,7 @@ type observation struct {
 // evalCtx is the context of one rule evaluation.
 type evalCtx struct {
 	rule   Rule
+	lang   string // of the titles
 	fr     filter.Result
 	now    time.Time
 	active map[string]*AlertState // states of the rule by key
@@ -177,7 +178,7 @@ func (d *Detector) evalUtilization(ctx context.Context, e evalCtx) ([]observatio
 				"interface_description": r.descr, "speed_bps": fmt.Sprint(r.speed), "bps": fmt.Sprintf("%.0f", r.bps),
 				"circuit": r.circuit, "boundary": r.boundary,
 			},
-			vars:       map[string]string{"threshold_text": formatRate(th, "%"), "bps_text": formatRate(r.bps, "bps")},
+			vars:       map[string]string{"threshold_text": formatRate(th, "%", e.lang), "bps_text": formatRate(r.bps, "bps", e.lang)},
 			linkFilter: andFilters(e.rule.Filter, ifaceFilter(r.exporter, r.ifname, r.dir)),
 			linkDims:   []string{"SrcAS", "DstAS"},
 		})
@@ -265,8 +266,8 @@ func (d *Detector) evalCommit(ctx context.Context, e evalCtx) ([]observation, er
 				"exporter": dev, "exporter_address": a.exporter, "interface": a.ifname, "direction": a.dir,
 				"circuit": a.circuit, "p95_bps": fmt.Sprintf("%.0f", a.p95), "commit_bps": fmt.Sprint(commit),
 			},
-			vars: map[string]string{"p95_text": formatRate(a.p95, "bps"), "commit_text": formatRate(float64(commit), "bps"),
-				"threshold_text": formatRate(th, "%")},
+			vars: map[string]string{"p95_text": formatRate(a.p95, "bps", e.lang), "commit_text": formatRate(float64(commit), "bps", e.lang),
+				"threshold_text": formatRate(th, "%", e.lang)},
 			linkFilter: andFilters(e.rule.Filter, ifaceFilter(a.exporter, a.ifname, a.dir)),
 			linkDims:   []string{"SrcAS", "DstAS"},
 			linkBefore: 24 * time.Hour,
@@ -366,7 +367,7 @@ func (d *Detector) evalDDoS(ctx context.Context, e evalCtx, syn bool) ([]observa
 			o.hold = o.breach
 			labels["syn_pps"] = fmt.Sprintf("%.0f", r.syn)
 			labels["syn_ratio"] = trimFloat(ratio*100, 1) + " %"
-			vars["threshold_text"] = formatRate(th.Ratio*100, "%")
+			vars["threshold_text"] = formatRate(th.Ratio*100, "%", e.lang)
 			o.linkFilter = andFilters(e.rule.Filter, "DstAddr = "+r.addr+" AND Proto = 6")
 			o.linkDims = []string{"SrcAddr", "DstPort"}
 			o.linkUnits = "pps"
@@ -386,8 +387,8 @@ func (d *Detector) evalDDoS(ctx context.Context, e evalCtx, syn bool) ([]observa
 			}
 			labels["baseline_bps"] = fmt.Sprintf("%.0f", bl[0])
 			labels["baseline_pps"] = fmt.Sprintf("%.0f", bl[1])
-			vars["threshold_text"] = formatRate(th.BPS, "bps")
-			vars["pps_text"] = formatRate(r.pps, "pps")
+			vars["threshold_text"] = formatRate(th.BPS, "bps", e.lang)
+			vars["pps_text"] = formatRate(r.pps, "pps", e.lang)
 			o.linkFilter = andFilters(e.rule.Filter, "DstAddr = "+r.addr)
 			o.linkDims = []string{"SrcAddr", "Proto", "DstPort"}
 		}
@@ -436,9 +437,9 @@ type groupRow struct {
 
 func groupKey(vals []string) string { return strings.Join(vals, "\x1f") }
 
-func groupText(dims, vals []string) string {
+func groupText(dims, vals []string, lang string) string {
 	if len(dims) == 0 {
-		return "весь трафик"
+		return allTraffic.in(lang)
 	}
 	parts := make([]string, len(vals))
 	for i, v := range vals {
@@ -470,7 +471,7 @@ func (d *Detector) groupRows(ctx context.Context, q string) ([]groupRow, error) 
 // groupObservation fills the CI, labels and link of a dimensions group.
 func groupObservation(e evalCtx, vals []string, name, ref, addr string) observation {
 	dims := e.rule.Dimensions
-	o := observation{key: groupKey(vals), group: groupText(dims, vals), labels: map[string]string{}, vars: map[string]string{}}
+	o := observation{key: groupKey(vals), group: groupText(dims, vals, e.lang), labels: map[string]string{}, vars: map[string]string{}}
 	var eqs []string
 	idx := map[string]string{}
 	for i, dim := range dims {
@@ -634,7 +635,7 @@ func (d *Detector) evalBaseline(ctx context.Context, e evalCtx) ([]observation, 
 		o.hold = o.breach
 		o.labels["expected_bps"] = fmt.Sprintf("%.0f", expected)
 		o.labels["baseline_weeks"] = fmt.Sprint(len(samples))
-		o.vars["expected_text"] = formatRate(expected, "bps")
+		o.vars["expected_text"] = formatRate(expected, "bps", e.lang)
 		out = append(out, o)
 	}
 	return out, nil
@@ -675,7 +676,7 @@ func (d *Detector) evalCustom(ctx context.Context, e evalCtx) ([]observation, er
 			o.breach = v > th
 		}
 		o.hold = o.breach
-		o.vars["threshold_text"] = formatRate(th, metric)
+		o.vars["threshold_text"] = formatRate(th, metric, e.lang)
 		if metric == "pps" {
 			o.linkUnits = "pps"
 		}
@@ -785,7 +786,7 @@ func (d *Detector) evalSilent(ctx context.Context, e evalCtx) ([]observation, er
 			breach: breach, hold: breach,
 			ci: dev, ref: x.ref, ip: x.addr,
 			labels:     map[string]string{"exporter": dev, "exporter_address": x.addr, "last_seen": rfc3339(x.last)},
-			vars:       map[string]string{"threshold_text": formatRate(silence.Minutes(), "min")},
+			vars:       map[string]string{"threshold_text": formatRate(silence.Minutes(), "min", e.lang)},
 			linkFilter: "ExporterAddress = " + x.addr,
 			linkDims:   []string{"ExporterName", "InIfName"},
 			linkBefore: 2 * time.Hour,

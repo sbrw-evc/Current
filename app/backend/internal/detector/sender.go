@@ -288,8 +288,8 @@ type configError struct{ *retryError }
 
 // TestEvent is the event the "Send test event" button sends: the Umbrella
 // label umbrella_test=true keeps its incident away from PagerDuty and
-// backup notification.
-func TestEvent(ci string) Event {
+// backup notification. lang is the title language ("ru" | "en").
+func TestEvent(ci, lang string) Event {
 	var b [6]byte
 	_, _ = rand.Read(b[:])
 	nonce := hex.EncodeToString(b[:])
@@ -302,7 +302,7 @@ func TestEvent(ci string) Event {
 		Signal:   "umbrella_test",
 		Method:   "USE",
 		Severity: "warning",
-		Title:    "Тестовое событие Umbrella Flow",
+		Title:    testEvent.in(normLang(lang)),
 		CI:       ci,
 		Labels:   map[string]string{"umbrella_test": "true", "source": "umbrella-flow"},
 		StartsAt: rfc3339(time.Now()),
@@ -311,22 +311,22 @@ func TestEvent(ci string) Event {
 
 // SendTest posts one test event to url with the token (no retries, no
 // outbox) — for the setup wizard and the settings page, before the
-// settings are saved.
-func SendTest(ctx context.Context, client *http.Client, url string, token TokenFunc, ci string) (Event, error) {
+// settings are saved. lang is the title language ("ru" | "en").
+func SendTest(ctx context.Context, client *http.Client, url string, token TokenFunc, ci, lang string) (Event, error) {
 	if url == "" {
 		return Event{}, errors.New("umbrella: ingest URL is empty")
 	}
 	cfg := SenderConfig{URL: url, Token: token, Client: client}.withDefaults()
-	ev := TestEvent(ci)
+	ev := TestEvent(ci, lang)
 	return ev, unwrapErr(post(ctx, cfg, []Event{ev}))
 }
 
 // SendTest sends a test event to the configured target.
-func (s *Sender) SendTest(ctx context.Context, ci string) (Event, error) {
+func (s *Sender) SendTest(ctx context.Context, ci, lang string) (Event, error) {
 	s.mu.Lock()
 	cfg := s.cfg
 	s.mu.Unlock()
-	return SendTest(ctx, cfg.Client, cfg.URL, cfg.Token, ci)
+	return SendTest(ctx, cfg.Client, cfg.URL, cfg.Token, ci, lang)
 }
 
 func unwrapErr(err error) error {

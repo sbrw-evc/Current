@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -131,6 +132,7 @@ type Detector struct {
 	tokenRef string
 	umbrella string // JSON of the applied settings
 	rulesAt  time.Time
+	lang     atomic.Value // string: language of the event titles (general settings)
 }
 
 // NewDetector builds the detector.
@@ -149,10 +151,9 @@ func NewDetector(ctx context.Context, cfg DetectorConfig) (*Detector, error) {
 		return nil, err
 	}
 	d.rulesAt = at
-	var general setup.General
-	_, _ = cfg.Store.Setting(ctx, setup.SettingGeneral, &general)
+	general := d.reloadGeneral(ctx)
 	dc := detector.Config{Conn: cfg.Conn, Storage: cfg.Storage, Rules: rules, Sender: d.Sender,
-		State: PGState{cfg.Store}, PublicURL: general.PublicURL, Logger: d.log, Metrics: cfg.Metrics}
+		State: PGState{cfg.Store}, PublicURL: general.PublicURL, Language: d.language, Logger: d.log, Metrics: cfg.Metrics}
 	if cfg.Collector != nil {
 		dc.Exporters = ExportersFromCollector(cfg.Collector)
 	}
@@ -197,6 +198,22 @@ func (d *Detector) reloadUmbrella(ctx context.Context) error {
 	return nil
 }
 
+// reloadGeneral reads the general settings and keeps their language for the
+// event titles.
+func (d *Detector) reloadGeneral(ctx context.Context) setup.General {
+	var g setup.General
+	if _, err := d.st.Setting(ctx, setup.SettingGeneral, &g); err != nil && ctx.Err() == nil {
+		d.log.Warn("general settings not loaded", "err", err)
+	}
+	d.lang.Store(g.Language)
+	return g
+}
+
+func (d *Detector) language() string {
+	s, _ := d.lang.Load().(string)
+	return s
+}
+
 func (d *Detector) reloadRules(ctx context.Context, force bool) error {
 	rules, at, err := StoredRules(ctx, d.st)
 	if err != nil {
@@ -222,6 +239,8 @@ func (d *Detector) Reload(ctx context.Context, what string) error {
 		return d.reloadUmbrella(ctx)
 	case app.ReloadDetector:
 		return d.reloadRules(ctx, true)
+	case app.ReloadGeneral:
+		d.reloadGeneral(ctx)
 	}
 	return nil
 }
@@ -243,6 +262,7 @@ func (d *Detector) Run(ctx context.Context) {
 				if err := d.reloadRules(ctx, false); err != nil && ctx.Err() == nil {
 					d.log.Warn("detector rules not reloaded", "err", err)
 				}
+				d.reloadGeneral(ctx)
 			}
 		}
 	}()
@@ -336,7 +356,9 @@ func (a *DetectorAPI) Status(ctx context.Context) (any, error) {
 
 // SendTest implements app.DetectorService.
 func (a *DetectorAPI) SendTest(ctx context.Context, url, token string) (any, error) {
-	return detector.SendTest(ctx, nil, url, func(context.Context) (string, error) { return token, nil }, "umbrella-flow")
+	var g setup.General
+	_, _ = a.Store.Setting(ctx, setup.SettingGeneral, &g)
+	return detector.SendTest(ctx, nil, url, func(context.Context) (string, error) { return token, nil }, "umbrella-flow", g.Language)
 }
 
 var _ app.DetectorService = (*DetectorAPI)(nil)

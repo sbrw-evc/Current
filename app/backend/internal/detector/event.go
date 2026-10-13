@@ -65,18 +65,18 @@ func renderTitle(tpl string, vars map[string]string) string {
 	return strings.Join(strings.Fields(out), " ")
 }
 
-// formatRate formats a value for event titles (Russian units, as in the
-// Umbrella preset samples) with SI prefixes, e.g. "4.2 Gbit/s" in Russian.
-func formatRate(v float64, unit string) string {
+// formatRate formats a value for event titles in lang with SI prefixes,
+// e.g. "4.2 Гбит/с" or "4.2 Gbit/s".
+func formatRate(v float64, unit, lang string) string {
 	switch unit {
 	case "bps":
-		return siPrefix(v, []string{"бит/с", "кбит/с", "Мбит/с", "Гбит/с", "Тбит/с"})
+		return siPrefix(v, strings.Split(unitsBPS.in(lang), "|"))
 	case "pps":
-		return siPrefix(v, []string{"пак/с", "тыс. пак/с", "млн пак/с", "млрд пак/с"})
+		return siPrefix(v, strings.Split(unitsPPS.in(lang), "|"))
 	case "%":
 		return trimFloat(v, 1) + " %"
 	case "min":
-		return trimFloat(v, 0) + " мин"
+		return trimFloat(v, 0) + " " + unitMinutes.in(lang)
 	}
 	return trimFloat(v, 2)
 }

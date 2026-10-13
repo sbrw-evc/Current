@@ -92,6 +92,7 @@ const (
 	ReloadGeoIP       = "geoip"    // settings key geoip: {databases}
 	ReloadUmbrella    = "umbrella" // settings key umbrella: {enabled, ingest_url, token_ref}
 	ReloadDetector    = "detector" // detection rules (table detector_rules)
+	ReloadGeneral     = "general"  // settings key general (language of the detector event titles)
 )
 
 // DetectorService is the traffic detector (internal/detector) as seen by the

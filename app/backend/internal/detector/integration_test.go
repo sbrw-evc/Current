@@ -535,3 +535,23 @@ func TestCustomRuleAndOutbox(t *testing.T) {
 		t.Fatalf("%v", evs[0])
 	}
 }
+
+func TestTitleInEnglish(t *testing.T) {
+	e := newEnv(t)
+	H := e.base
+	var fs []*flow.Flow
+	for m := 0; m < 10; m++ {
+		fs = append(fs, edgeFlow(H.Add(time.Duration(m)*time.Minute), uint64(80e6*60/8), 1000))
+	}
+	e.insert(fs)
+	// The Russian default title, as saved by earlier versions.
+	rule := Rule{ID: "as-traffic", Name: "AS traffic", Enabled: true, Kind: KindCustom, Signal: "red.traffic.as",
+		Dimensions: []string{"SrcAS"}, Filter: "SrcAS = 64500", Thresholds: Thresholds{BPS: 50e6},
+		Window: Duration(5 * time.Minute), Title: defaultTitles[KindCustom].ru}
+	d := e.detector([]Rule{rule}, func(c *Config) { c.Language = func() string { return LangEN } })
+	evs := e.tick(d, H.Add(6*time.Minute+30*time.Second))
+	only(t, evs, 1)
+	if evs[0]["title"] != "AS traffic: 64500: 80 Mbit/s" {
+		t.Fatalf("%v", evs[0]["title"])
+	}
+}
