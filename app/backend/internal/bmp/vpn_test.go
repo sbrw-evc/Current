@@ -158,7 +158,7 @@ func evpnPrefixRoute(rd uint64, p string) []byte {
 	v = append(v, byte(pfx.Bits()))
 	v = append(v, pfx.Addr().AsSlice()...)
 	v = append(v, make([]byte, len(pfx.Addr().AsSlice()))...) // gateway
-	v = append(v, 0x00, 0x06, 0x41)                            // label
+	v = append(v, 0x00, 0x06, 0x41)                           // label
 	return append([]byte{evpnIPPrefix, byte(len(v))}, v...)
 }
 
