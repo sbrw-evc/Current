@@ -87,6 +87,7 @@ export default function SetupWizard({ defaults }: { defaults: SetupDefaults }) {
 
   const set = {
     obToken: !!d.openbao?.token_set,
+    obRole: !!d.openbao?.role_id_set,
     obSecret: !!d.openbao?.secret_id_set,
     pg: !!d.postgres?.password_set,
     ch: !!d.clickhouse?.password_set,
@@ -440,13 +441,13 @@ export default function SetupWizard({ defaults }: { defaults: SetupDefaults }) {
                       <SecretField label={t('ob.token')} value={ob.token} onChange={(token) => setOb({ ...ob, token })} isSet={set.obToken} />
                     ) : (
                       <div className="grid-2">
-                        <Field label={t('ob.roleId')}>{(id) => <Input id={id} value={ob.role_id} spellCheck={false} autoComplete="off" onChange={(e) => setOb({ ...ob, role_id: e.target.value })} />}</Field>
+                        <SecretField label={t('ob.roleId')} value={ob.role_id} onChange={(role_id) => setOb({ ...ob, role_id })} isSet={set.obRole} />
                         <SecretField label={t('ob.secretId')} value={ob.secret_id} onChange={(secret_id) => setOb({ ...ob, secret_id })} isSet={set.obSecret} />
                       </div>
                     )}
                     {checkView('openbao')}
                     {errorBanner}
-                    {footer({ test: 'openbao', testDisabled: !ob.addr.trim() || (ob.auth === 'token' ? !ob.token && !set.obToken : !ob.role_id.trim() || (!ob.secret_id && !set.obSecret)) })}
+                    {footer({ test: 'openbao', testDisabled: !ob.addr.trim() || (ob.auth === 'token' ? !ob.token && !set.obToken : (!ob.role_id.trim() && !set.obRole) || (!ob.secret_id && !set.obSecret)) })}
                   </div>
                 )}
 

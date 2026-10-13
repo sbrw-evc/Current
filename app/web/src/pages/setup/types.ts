@@ -20,7 +20,7 @@ export type SetupDefaults = {
   theme?: SetupTheme
   timezone?: string
   public_url?: string
-  openbao?: Partial<Omit<OpenBao, 'token' | 'secret_id'>> & { token_set?: boolean; secret_id_set?: boolean }
+  openbao?: Partial<Omit<OpenBao, 'token' | 'secret_id'>> & { token_set?: boolean; role_id_set?: boolean; secret_id_set?: boolean }
   postgres?: Partial<Omit<Postgres, 'password' | 'attach_existing'>> & { password_set?: boolean }
   clickhouse?: Partial<Omit<ClickHouse, 'password'>> & { password_set?: boolean; retention?: Partial<Retention> }
   nats?: Partial<Nats>

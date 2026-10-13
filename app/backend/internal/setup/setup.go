@@ -342,8 +342,15 @@ func (m *Module) openbaoConfig(in *OpenBaoInput) config.OpenBao {
 		o = config.OpenBao{Addr: o.Addr, Mount: o.Mount, Namespace: o.Namespace, CACert: o.CACert, SkipVerify: o.SkipVerify,
 			Auth: config.AuthToken, Token: in.Token}
 	case in.RoleID != "" || in.SecretID != "":
-		o = config.OpenBao{Addr: o.Addr, Mount: o.Mount, Namespace: o.Namespace, CACert: o.CACert, SkipVerify: o.SkipVerify,
-			Auth: config.AuthAppRole, RoleID: in.RoleID, SecretID: in.SecretID}
+		n := config.OpenBao{Addr: o.Addr, Mount: o.Mount, Namespace: o.Namespace, CACert: o.CACert, SkipVerify: o.SkipVerify,
+			Auth: config.AuthAppRole, RoleID: in.RoleID, SecretID: in.SecretID, AppRolePath: o.AppRolePath}
+		if n.RoleID == "" {
+			n.RoleIDFile = o.RoleIDFile
+		}
+		if n.SecretID == "" {
+			n.SecretIDFile = o.SecretIDFile
+		}
+		o = n
 	case in.Auth != "" && in.Auth != o.Auth:
 		o.Auth, o.Token, o.TokenFile, o.RoleIDFile, o.SecretIDFile = in.Auth, "", "", "", ""
 	}
