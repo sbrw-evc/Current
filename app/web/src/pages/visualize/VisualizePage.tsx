@@ -19,6 +19,8 @@ import { SankeyTable, SeriesTable } from './ResultTable'
 import { SavedViews } from './SavedViews'
 import { decodeState, encodeState, GRAPHS, toRequest, UNITS, visualizeLink, type VisState } from './state'
 import { visStrings } from './strings'
+import { Sheet } from '../../shell/mobile/Sheet'
+import { useMobile } from '../../shell/mobile/useMobile'
 
 const PANEL_KEY = 'flow.visualize.panel'
 
@@ -37,6 +39,9 @@ export default function VisualizePage() {
       return true
     }
   })
+  // On the phone the options open in a bottom sheet (Umbrella's filters sheet).
+  const mobile = useMobile()
+  const [sheet, setSheet] = useState(false)
   useEffect(() => setDraft(committed), [committed])
   useEffect(() => {
     try {
@@ -74,6 +79,73 @@ export default function VisualizePage() {
   }
 
   const columns = schema.data?.columns ?? []
+  const options = (
+    <>
+      <div className="opt-section">
+        <span className="opt-label">{t('opt.range')}</span>
+        <TimeRange value={draft.range} onChange={(range) => set({ range })} />
+      </div>
+      <div className="opt-section">
+        <span className="opt-label">{t('opt.graph')}</span>
+        <Segmented<GraphType> label={t('opt.graph')} value={draft.graph} onChange={(graph) => set({ graph })} options={GRAPHS.map((g) => ({ value: g, label: t(`graph.${g}`) }))} />
+      </div>
+      <div className="opt-section">
+        <span className="opt-label">{t('opt.units')}</span>
+        <div className="chip-row">
+          {UNITS.map((u) => (
+            <button key={u} type="button" title={t(`units.${u}.t`)} className={`chip ${draft.units === u ? 'on' : ''}`} onClick={() => set({ units: u as Units })}>
+              {t(`units.${u}`)}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="opt-section">
+        <span className="opt-label">{t('opt.dims')}</span>
+        <Dimensions value={draft.dimensions} onChange={(dimensions) => set({ dimensions })} columns={columns} />
+        {draft.graph === 'sankey' && draft.dimensions.length < 2 && <p className="hint warn-text">{t('opt.dims.sankey')}</p>}
+      </div>
+      <div className="opt-row">
+        <div className="opt-section">
+          <span className="opt-label">{t('opt.limit')}</span>
+          <Stepper value={draft.limit} min={1} max={50} onChange={(limit) => set({ limit })} label={t('opt.limit')} />
+        </div>
+        <div className="opt-section opt-grow">
+          <span className="opt-label">&nbsp;</span>
+          <Switch checked={draft.bidirectional && draft.graph !== 'sankey'} disabled={draft.graph === 'sankey'} onChange={(bidirectional) => set({ bidirectional })} label={t('opt.bidi')} />
+        </div>
+      </div>
+      <div className="opt-section">
+        <span className="opt-label">{t('opt.filter')}</span>
+        <FilterEditor value={draft.filter} onChange={(filter) => set({ filter })} onSubmit={() => status.valid && apply()} onStatus={setStatus} placeholder={t('opt.filter.ph')} />
+        <FilterLine status={status} filter={draft.filter} />
+      </div>
+      <div className="opt-apply">
+        <Button
+          variant="primary"
+          onClick={() => {
+            apply()
+            setSheet(false)
+          }}
+          disabled={!status.valid}
+          busy={result.isFetching}
+        >
+          {!result.isFetching && <Play size={15} />}
+          {t('opt.apply')}
+        </Button>
+        {dirty && <span className="hint">{t('opt.dirty')}</span>}
+      </div>
+      <div className="opt-section opt-views">
+        <SavedViews
+          current={committed}
+          onLoad={(s) => {
+            setDraft(s)
+            apply(s)
+            setSheet(false)
+          }}
+        />
+      </div>
+    </>
+  )
   return (
     <Page
       id="visualize"
@@ -81,8 +153,8 @@ export default function VisualizePage() {
       subtitle={t('vis.sub')}
       actions={
         <>
-          {!panel && (
-            <Button variant="secondary" onClick={() => setPanel(true)}>
+          {(mobile || !panel) && (
+            <Button variant="secondary" onClick={() => (mobile ? setSheet(true) : setPanel(true))}>
               <SlidersHorizontal size={16} /> {t('opt.show')}
             </Button>
           )}
@@ -92,9 +164,14 @@ export default function VisualizePage() {
         </>
       }
     >
-      <div className={`vis-layout ${panel ? '' : 'panel-closed'}`}>
+      {mobile && (
+        <Sheet open={sheet} title={t('opt.title')} onClose={() => setSheet(false)}>
+          <div className="vis-options vis-options-sheet">{options}</div>
+        </Sheet>
+      )}
+      <div className={`vis-layout ${panel && !mobile ? '' : 'panel-closed'}`}>
         <AnimatePresence initial={false}>
-          {panel && (
+          {panel && !mobile && (
             <motion.aside
               className="card vis-options"
               initial={{ opacity: 0, x: -16 }}
@@ -109,60 +186,7 @@ export default function VisualizePage() {
                   <ChevronsLeft size={18} />
                 </button>
               </div>
-              <div className="opt-section">
-                <span className="opt-label">{t('opt.range')}</span>
-                <TimeRange value={draft.range} onChange={(range) => set({ range })} />
-              </div>
-              <div className="opt-section">
-                <span className="opt-label">{t('opt.graph')}</span>
-                <Segmented<GraphType> label={t('opt.graph')} value={draft.graph} onChange={(graph) => set({ graph })} options={GRAPHS.map((g) => ({ value: g, label: t(`graph.${g}`) }))} />
-              </div>
-              <div className="opt-section">
-                <span className="opt-label">{t('opt.units')}</span>
-                <div className="chip-row">
-                  {UNITS.map((u) => (
-                    <button key={u} type="button" title={t(`units.${u}.t`)} className={`chip ${draft.units === u ? 'on' : ''}`} onClick={() => set({ units: u as Units })}>
-                      {t(`units.${u}`)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="opt-section">
-                <span className="opt-label">{t('opt.dims')}</span>
-                <Dimensions value={draft.dimensions} onChange={(dimensions) => set({ dimensions })} columns={columns} />
-                {draft.graph === 'sankey' && draft.dimensions.length < 2 && <p className="hint warn-text">{t('opt.dims.sankey')}</p>}
-              </div>
-              <div className="opt-row">
-                <div className="opt-section">
-                  <span className="opt-label">{t('opt.limit')}</span>
-                  <Stepper value={draft.limit} min={1} max={50} onChange={(limit) => set({ limit })} label={t('opt.limit')} />
-                </div>
-                <div className="opt-section opt-grow">
-                  <span className="opt-label">&nbsp;</span>
-                  <Switch checked={draft.bidirectional && draft.graph !== 'sankey'} disabled={draft.graph === 'sankey'} onChange={(bidirectional) => set({ bidirectional })} label={t('opt.bidi')} />
-                </div>
-              </div>
-              <div className="opt-section">
-                <span className="opt-label">{t('opt.filter')}</span>
-                <FilterEditor value={draft.filter} onChange={(filter) => set({ filter })} onSubmit={() => status.valid && apply()} onStatus={setStatus} placeholder={t('opt.filter.ph')} />
-                <FilterLine status={status} filter={draft.filter} />
-              </div>
-              <div className="opt-apply">
-                <Button variant="primary" onClick={() => apply()} disabled={!status.valid} busy={result.isFetching}>
-                  {!result.isFetching && <Play size={15} />}
-                  {t('opt.apply')}
-                </Button>
-                {dirty && <span className="hint">{t('opt.dirty')}</span>}
-              </div>
-              <div className="opt-section opt-views">
-                <SavedViews
-                  current={committed}
-                  onLoad={(s) => {
-                    setDraft(s)
-                    apply(s)
-                  }}
-                />
-              </div>
+              {options}
             </motion.aside>
           )}
         </AnimatePresence>

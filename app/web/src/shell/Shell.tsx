@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { ApiError, post, setCsrf, setUnauthorizedHandler } from '../api/client'
@@ -9,6 +9,10 @@ import { Sidebar, SidebarResizer, useCollapsed, useSidebarWidth } from './Sideba
 import { SessionProvider, type Session } from './session'
 import { TopBar } from './TopBar'
 import { ScopeBanner } from './ScopeBanner'
+import { DesktopOnly, forcedPages } from './mobile/DesktopOnly'
+import { MobileFrame } from './mobile/MobileFrame'
+import { mobileReady, pageOf } from './mobile/pages'
+import { useMobile } from './mobile/useMobile'
 
 // Shell: checks the setup state and the session, then draws Umbrella's frame (top bar, sidebar,
 // rounded page block) around the current page.
@@ -20,6 +24,7 @@ export function Shell() {
   const me = useMe()
   const [collapsed, toggle] = useCollapsed()
   const [width, setWidth] = useSidebarWidth()
+  const mobile = useMobile()
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
@@ -63,6 +68,16 @@ export function Shell() {
   }
   if (!session) return null
 
+  if (mobile)
+    return (
+      <SessionProvider value={session}>
+        <MobileFrame>
+          <ScopeBanner />
+          <PhonePage />
+        </MobileFrame>
+      </SessionProvider>
+    )
+
   return (
     <SessionProvider value={session}>
       <div className="app-shell">
@@ -78,4 +93,13 @@ export function Shell() {
       </div>
     </SessionProvider>
   )
+}
+
+// PhonePage keeps the pages made for a computer behind a note on the phone (Umbrella's Pages).
+function PhonePage() {
+  const { pathname } = useLocation()
+  const [forced, setForced] = useState(forcedPages)
+  const page = pageOf(pathname)
+  if (page && !mobileReady(page) && !forced.has(page.id)) return <DesktopOnly page={page} onOpen={() => setForced(forcedPages())} />
+  return <Outlet />
 }

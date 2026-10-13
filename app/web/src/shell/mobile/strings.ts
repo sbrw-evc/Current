@@ -1,0 +1,38 @@
+import type { Dict } from '../../i18n'
+
+export const mobileStrings: Dict = {
+  en: {
+    'm.tabs': 'Main sections',
+    'm.tab.home': 'Overview',
+    'm.tab.detector-status': 'Alerts',
+    'm.tab.exporters': 'Exporters',
+    'm.tab.visualize': 'Charts',
+    'm.tab.more': 'More',
+    'm.more.title': 'All sections',
+    'm.more.desktop': 'Better on a computer',
+    'm.more.desktop.hint': 'Search tables, the dependency graph, rule editors and settings',
+    'm.close': 'Close',
+    'm.badge': '{n} firing',
+    'm.desktop.title': 'The «{page}» section is made for a computer',
+    'm.desktop.text': 'The page has wide tables, a graph or long forms that do not fit a phone screen. Open it on a computer, or open it here anyway.',
+    'm.desktop.open': 'Open anyway',
+    'm.desktop.home': 'Overview',
+  },
+  ru: {
+    'm.tabs': 'Основные разделы',
+    'm.tab.home': 'Обзор',
+    'm.tab.detector-status': 'Оповещения',
+    'm.tab.exporters': 'Экспортёры',
+    'm.tab.visualize': 'Графики',
+    'm.tab.more': 'Ещё',
+    'm.more.title': 'Все разделы',
+    'm.more.desktop': 'Удобнее на компьютере',
+    'm.more.desktop.hint': 'Таблицы поиска, граф зависимостей, редакторы правил и настройки',
+    'm.close': 'Закрыть',
+    'm.badge': 'Сработало: {n}',
+    'm.desktop.title': 'Раздел «{page}» сделан для компьютера',
+    'm.desktop.text': 'На странице широкие таблицы, граф или длинные формы, которые не помещаются на экран телефона. Откройте её на компьютере или всё равно откройте здесь.',
+    'm.desktop.open': 'Всё равно открыть',
+    'm.desktop.home': 'На обзор',
+  },
+}
