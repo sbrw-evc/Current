@@ -557,7 +557,11 @@ per-peer RIB held in a compact longest-prefix-match table with interned attribut
 peer's path; Peer Down removes the peer's routes; a closed session removes every route of that router. Loc-RIB
 (RFC 9069) counts as post-policy. Lookups prefer post-policy paths (`policy: prefer-post`, or only `post` / `pre`),
 then the shorter AS path. Adj-RIB-Out (RFC 8671, O flag) is skipped: it describes what the router advertises, not
-where traffic goes. Other address families (labeled unicast, EVPN, flowspec) are ignored.
+where traffic goes. Labeled unicast (SAFI 4, RFC 8277) goes to the unicast tables, the label stack skipped. EVPN
+(AFI 25 / SAFI 70) contributes its IP routes to the table of their route distinguisher: IP prefix routes (type 5,
+RFC 9136) and MAC/IP advertisements carrying an IP address (type 2, as /32 or /128 host routes; their RD is the
+MAC-VRF's, so they match an Inventory DB VRF only when it uses the same RD). Other address families and EVPN route
+types (flowspec, multicast, Ethernet segments...) are ignored.
 
 L3VPN: VPNv4 / VPNv6 routes (SAFI 128, RFC 4364 / RFC 4659: label stack, route distinguisher, next hop with an RD)
 go to one table per route distinguisher, apart from the global table. Unicast routes of an RD instance peer (peer
