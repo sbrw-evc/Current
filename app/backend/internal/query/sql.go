@@ -157,7 +157,7 @@ func dimExpr(name string) string {
 	c, _ := schema.ByName(name)
 	id := quoteIdent(name)
 	if c.Kind == schema.KindIP {
-		return fmt.Sprintf(`replaceRegexpOne(toString(%s), '^::ffff:([0-9.]+)$', '\\1')`, id)
+		return schema.IPText(id)
 	}
 	return "toString(" + id + ")"
 }

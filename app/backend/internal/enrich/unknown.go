@@ -94,7 +94,17 @@ func (t *unknownTracker) merge(b *unknownBatch, now time.Time) {
 		x.LastSeen = now
 		x.Flows += n
 	}
+	// Largest first: the result does not depend on the map order, and
+	// small addresses of the batch evict each other, not the large ones.
+	addrs := make([]UnknownAddress, 0, len(b.addrs))
 	for a, n := range b.addrs {
+		addrs = append(addrs, UnknownAddress{Address: a, Bytes: n})
+	}
+	slices.SortFunc(addrs, func(x, y UnknownAddress) int {
+		return cmp.Or(cmp.Compare(y.Bytes, x.Bytes), x.Address.Compare(y.Address))
+	})
+	for _, ua := range addrs {
+		a, n := ua.Address, ua.Bytes
 		if it := t.addrIdx[a]; it != nil {
 			it.bytes += n
 			heap.Fix(&t.heap, it.index)

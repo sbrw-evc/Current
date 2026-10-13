@@ -146,7 +146,7 @@ func TestTimeSeriesSQL(t *testing.T) {
 	sql := timeSeriesSQL(cfg.Table("flows_1m"), p, []string{"SrcAS", "SrcAddr"}, "Proto = 6", UnitsL2bps, 10)
 	for _, want := range []string{
 		"FROM `db`.`flows_1m`",
-		"[toString(`SrcAS`), replaceRegexpOne(toString(`SrcAddr`), '^::ffff:([0-9.]+)$', '\\\\1')]",
+		"[toString(`SrcAS`), if(startsWith(toString(`SrcAddr`), '::ffff:'), substring(toString(`SrcAddr`), 8), toString(`SrcAddr`))]",
 		"LIMIT 10",
 		"toStartOfInterval(TimeReceived, INTERVAL 60 SECOND) AS t",
 		"(sum(Bytes) + 18 * sum(Packets)) * 8 / 60 AS xps",

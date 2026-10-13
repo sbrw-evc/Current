@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/sbrw-evc/network/app/backend/internal/schema"
 )
 
 // Dependency discovery (docs/integrations.md §3.3): steady CI ↔ CI traffic
@@ -93,8 +95,8 @@ GROUP BY client_ref, server_ref, Proto, port
 HAVING flows >= %[6]d AND days_seen >= %[7]d
 ORDER BY bytes DESC
 LIMIT %[8]d`,
-		"replaceRegexpOne(toString(argMax(if(srv_dst, SrcAddr, DstAddr), Bytes)), '^::ffff:([0-9.]+)$', '\\\\1')",
-		"replaceRegexpOne(toString(argMax(if(srv_dst, DstAddr, SrcAddr), Bytes)), '^::ffff:([0-9.]+)$', '\\\\1')",
+		schema.IPText("argMax(if(srv_dst, SrcAddr, DstAddr), Bytes)"),
+		schema.IPText("argMax(if(srv_dst, DstAddr, SrcAddr), Bytes)"),
 		table, start, end, p.MinFlows, p.MinDays, p.Limit)
 }
 

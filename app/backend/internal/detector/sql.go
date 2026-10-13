@@ -11,7 +11,7 @@ import (
 
 // ipExpr renders an IPv6 column as text, IPv4-mapped addresses unmapped.
 func ipExpr(expr string) string {
-	return fmt.Sprintf(`replaceRegexpOne(toString(%s), '^::ffff:([0-9.]+)$', '\\1')`, expr)
+	return schema.IPText(expr)
 }
 
 // dimExpr is the String expression of a dimension column.
