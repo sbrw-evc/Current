@@ -10,7 +10,7 @@ func TestCatalog(t *testing.T) {
 		ClassifiersView, ClassifiersEdit, UsersView, UsersEdit, RolesView, RolesEdit, StatusView,
 		GeneralView, GeneralEdit, UmbrellaView, UmbrellaEdit, OpenBaoView, OpenBaoTest, DetectorView, DetectorEdit,
 		OpenBaoMigrate, TokensView, TokensEdit, IntegrationsInventoryRead, ScopeUmbrella,
-		SNMPView, SNMPEdit, BMPView, BMPEdit,
+		GNMIView, GNMIEdit, SNMPView, SNMPEdit, BMPView, BMPEdit,
 		RDNSView, RDNSEdit, ThreatView, ThreatEdit, FlowLogsView, FlowLogsEdit}
 	for _, p := range want {
 		if !Valid(p) {

@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	cel.dev/cel-go v0.32.0 // indirect
-	cel.dev/expr v0.25.1 // indirect
+	cel.dev/expr v0.25.2 // indirect
 	github.com/Azure/go-ntlmssp v0.1.1 // indirect
 	github.com/ClickHouse/ch-go v0.74.0 // indirect
 	github.com/ClickHouse/clickhouse-go/v2 v2.49.0 // indirect
@@ -29,6 +29,7 @@ require (
 	github.com/nats-io/nkeys v0.4.16 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/netsampler/goflow2/v2 v2.2.7 // indirect
+	github.com/openconfig/gnmi v0.14.1 // indirect
 	github.com/oschwald/maxminddb-golang/v2 v2.8.0 // indirect
 	github.com/paulmach/orb v0.13.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.33 // indirect
@@ -46,10 +47,12 @@ require (
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/exp v0.0.0-20261011100332-faecfb24eb49 // indirect
+	golang.org/x/net v0.61.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20261005182115-fad411399dd8 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20261005182115-fad411399dd8 // indirect
+	google.golang.org/grpc v1.84.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )
