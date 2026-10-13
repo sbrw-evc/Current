@@ -156,6 +156,10 @@ func (b *JetStream) ensureStream(ctx context.Context) error {
 	return fmt.Errorf("bus: create stream %s: %w", b.cfg.Stream, err)
 }
 
+// JetStream returns the JetStream context (for other streams on the same
+// connection, e.g. BMP replication).
+func (b *JetStream) JetStream() jetstream.JetStream { return b.js }
+
 // Put publishes flows, split into messages of at most MaxFlowsPerMessage,
 // and waits for the server acknowledgements.
 func (b *JetStream) Put(ctx context.Context, flows []*flow.Flow) error {

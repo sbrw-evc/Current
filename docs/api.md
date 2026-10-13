@@ -579,11 +579,22 @@ Settings key `bmp`, permissions `settings.bmp:view` / `settings.bmp:edit`. Metri
 `flow_bmp_errors_total{kind}` (`framing`, `decode`, `rejected`), `flow_bmp_skipped_total{reason}` (`adj_rib_out`,
 `policy`), `flow_bmp_sessions`, `flow_bmp_prefixes_v4`, `flow_bmp_prefixes_v6` (global table),
 `flow_bmp_vpn_prefixes`, `flow_bmp_vrfs`, `flow_bmp_routes`, `flow_bmp_peers`, `flow_bmp_attribute_sets`, `flow_bmp_rib_bytes`
-(estimate); status component `bmp`. With several enricher processes each holds only the routes of its own sessions.
+(estimate), `flow_bmp_replication_records_total{direction}` (`out`, `in`); status component `bmp`.
+
+Several enricher processes (NATS bus): each process publishes the raw BMP messages of its sessions to the JetStream
+stream `FLOW_BMP` (subject `flow.bmp.<router>.<session>`, file storage, 4 GiB) and replays the sessions of the
+others into its own RIB, so every replica enriches with the routes of every router whatever process holds the
+session. A session publishes a start, its messages (batched), a heartbeat every 30 s and an end. When its history
+outgrows its state, it publishes a snapshot (Initiation and Peer Up messages, then synthesized Route Monitoring per
+peer, table and attribute set) and purges its older records, so a process started later replays a bounded history;
+after lost records (NATS unreachable) the next snapshot makes every replica rebuild the router. A router without
+records for 150 s (its process died) is dropped and its subject purged. A router's local session takes precedence
+over replicated ones: send BMP from a router to one station (or one load-balanced address). With the in-process bus
+(single process) there is no replication.
 
 | Method | Path | |
 |---|---|---|
-| GET | `/api/settings/bmp` | `{enabled, policy: prefer-post\|post\|pre, routers: [addr or prefix] (allowed sources, empty = any), as_providers, status?: {enabled, listen, error?, rib: {prefixes_v4, prefixes_v6, vpn_prefixes, vrfs, routes, attribute_sets, peers, bytes}, sessions: [{router, sys_name?, sys_descr?, since, peers_up, messages, errors, last_error?}], peers: [{router, address, as, distinguisher?, rd?, post_policy, routes, since, last_update}]}}` — `status` when the receiver runs in this process |
+| GET | `/api/settings/bmp` | `{enabled, policy: prefer-post\|post\|pre, routers: [addr or prefix] (allowed sources, empty = any), as_providers, status?: {enabled, listen, error?, replication: {enabled, caught_up?, error?, routers?: [{router, peers_up, last_record}]}, rib: {prefixes_v4, prefixes_v6, vpn_prefixes, vrfs, routes, attribute_sets, peers, bytes}, sessions: [{router, sys_name?, sys_descr?, since, peers_up, messages, errors, last_error?}], peers: [{router, address, as, distinguisher?, rd?, post_policy, routes, since, last_update}]}}` — `status` when the receiver runs in this process |
 | PUT | `/api/settings/bmp` | `{enabled, policy, routers, as_providers}` → as GET; 400 `bmp_invalid`; applied at once (same process) or within a minute |
 | GET | `/api/bmp/lookup?address=&rd=` (`settings.bmp:view`) | `rd` (optional) selects a VPN table, as for flows; → `{prefix, rd (table found in, empty = global), origin_as, as_path, communities: ["a:b"], large_communities, next_hop, peer: {router, address, as, post_policy}}`; 400 `invalid_rd`; 404 `no_route`; 501 when the receiver runs in another process |
 

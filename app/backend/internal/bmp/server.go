@@ -7,8 +7,11 @@
 // SrcAS / DstAS.
 //
 // The BGP decoder is written from the RFCs (4271, 4760, 6793, 7911, 1997,
-// 8092, 9069): unicast IPv4 / IPv6 only, other address families are
-// skipped.
+// 8092, 9069, 4364, 4659, 8671): unicast and L3VPN IPv4 / IPv6, other
+// address families are skipped.
+//
+// With several enricher processes, sessions are replicated (replica.go):
+// each process replays the sessions of the others into its own RIB.
 package bmp
 
 import (
@@ -113,10 +116,11 @@ func ParseRouters(in []string) ([]netip.Prefix, error) {
 
 // Metrics of the receiver and the RIB; create them once per process.
 type Metrics struct {
-	messages *prometheus.CounterVec
-	errors   *prometheus.CounterVec
-	skipped  *prometheus.CounterVec
-	sessions prometheus.Gauge
+	messages   *prometheus.CounterVec
+	errors     *prometheus.CounterVec
+	skipped    *prometheus.CounterVec
+	replicated *prometheus.CounterVec
+	sessions   prometheus.Gauge
 }
 
 // NewMetrics registers the BMP metrics (reg may be nil).
@@ -128,6 +132,8 @@ func NewMetrics(reg prometheus.Registerer, rib *RIB) (*Metrics, error) {
 			Help: "BMP decoding errors and rejected connections."}, []string{"kind"}),
 		skipped: prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "flow", Subsystem: "bmp", Name: "skipped_total",
 			Help: "Route Monitoring messages not added to the RIB: Adj-RIB-Out, or excluded by the policy setting."}, []string{"reason"}),
+		replicated: prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "flow", Subsystem: "bmp", Name: "replication_records_total",
+			Help: "Replication records published for local sessions (out) and replayed from other processes (in)."}, []string{"direction"}),
 		sessions: prometheus.NewGauge(prometheus.GaugeOpts{Namespace: "flow", Subsystem: "bmp", Name: "sessions",
 			Help: "Connected BMP routers."}),
 	}
@@ -138,7 +144,7 @@ func NewMetrics(reg prometheus.Registerer, rib *RIB) (*Metrics, error) {
 		return prometheus.NewGaugeFunc(prometheus.GaugeOpts{Namespace: "flow", Subsystem: "bmp", Name: name, Help: help},
 			func() float64 { return f(rib.Stats()) })
 	}
-	cs := []prometheus.Collector{m.messages, m.errors, m.skipped, m.sessions,
+	cs := []prometheus.Collector{m.messages, m.errors, m.skipped, m.replicated, m.sessions,
 		stat("prefixes_v4", "IPv4 prefixes in the RIB.", func(s Stats) float64 { return float64(s.PrefixesV4) }),
 		stat("prefixes_v6", "IPv6 prefixes in the RIB.", func(s Stats) float64 { return float64(s.PrefixesV6) }),
 		stat("routes", "Routes in the RIB (prefixes × peers).", func(s Stats) float64 { return float64(s.Routes) }),
@@ -165,6 +171,12 @@ type Config struct {
 	MaxMessage int    // default DefaultMaxMessage
 	Logger     *slog.Logger
 	Metrics    *Metrics // nil: not counted
+	// Replicator publishes the local sessions for the other processes;
+	// nil: no replication.
+	Replicator Replicator
+	// Replica replays the sessions of other processes into the same RIB;
+	// local sessions of a router take precedence over it.
+	Replica *Replica
 }
 
 type options struct {
@@ -202,6 +214,7 @@ type Server struct {
 	mu       sync.Mutex
 	sessions map[*session]struct{}
 	wg       sync.WaitGroup
+	pubSet
 }
 
 // NewServer returns a server feeding rib; Listen binds it.
@@ -220,7 +233,8 @@ func NewServer(cfg Config, rib *RIB) *Server {
 	if m == nil {
 		m, _ = NewMetrics(nil, rib)
 	}
-	s := &Server{cfg: cfg, rib: rib, log: log.With("component", "bmp"), m: m, sessions: map[*session]struct{}{}}
+	s := &Server{cfg: cfg, rib: rib, log: log.With("component", "bmp"), m: m, sessions: map[*session]struct{}{},
+		pubSet: pubSet{pubs: map[*publisher]struct{}{}}}
 	s.opts.Store(&options{policy: PolicyPreferPost})
 	return s
 }
@@ -263,6 +277,9 @@ func (s *Server) Run(ctx context.Context) error {
 			return err
 		}
 	}
+	if s.cfg.Replicator != nil {
+		go s.heartbeats(ctx)
+	}
 	go func() {
 		<-ctx.Done()
 		_ = s.ln.Close()
@@ -296,6 +313,10 @@ func (s *Server) Run(ctx context.Context) error {
 		s.mu.Unlock()
 		s.m.sessions.Inc()
 		s.wg.Go(func() {
+			if s.cfg.Replica != nil {
+				s.cfg.Replica.localStart(router)
+				defer s.cfg.Replica.localEnd(router)
+			}
 			defer func() {
 				_ = c.Close()
 				s.mu.Lock()
@@ -355,7 +376,11 @@ func (s *Server) Sessions() []Session {
 // serve reads the messages of one session.
 func (s *Server) serve(r io.Reader, ss *session) error {
 	br := bufio.NewReaderSize(r, 64<<10)
-	st := &sessionState{router: ss.info.Router, caps: map[PeerKey]*sessionCaps{}}
+	st := &sessionState{router: ss.info.Router, caps: map[PeerKey]*sessionCaps{}, peerUps: map[PeerKey][]byte{}}
+	pub := s.startPublisher(st)
+	if pub != nil {
+		defer pub.end()
+	}
 	hdr := make([]byte, commonHeaderLen)
 	buf := make([]byte, 0, 4096)
 	for {
@@ -380,6 +405,14 @@ func (s *Server) serve(r io.Reader, ss *session) error {
 		}
 		s.m.messages.WithLabelValues(msgName(typ)).Inc()
 		done, err := s.handle(st, typ, body)
+		if pub != nil {
+			pub.add(typ, hdr, body)
+			// Publish when the next read would wait (or the batch is
+			// large), so that replicas lag by one round trip at most.
+			if br.Buffered() == 0 || len(pub.batch) >= publishBatch || done {
+				pub.flush()
+			}
+		}
 		ss.mu.Lock()
 		ss.info.Messages++
 		ss.info.PeersUp = len(st.caps)
@@ -406,6 +439,10 @@ type sessionState struct {
 	router            netip.Addr
 	caps              map[PeerKey]*sessionCaps // by peer (Post false)
 	sysName, sysDescr string
+	// Raw Initiation and Peer Up messages for replication snapshots
+	// (local sessions with a Replicator only).
+	init    []byte
+	peerUps map[PeerKey][]byte
 }
 
 // handle processes one message body; done ends the session (Termination).

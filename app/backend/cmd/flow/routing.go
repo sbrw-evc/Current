@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/sbrw-evc/network/app/backend/internal/app"
+	"github.com/sbrw-evc/network/app/backend/internal/bus"
 	"github.com/sbrw-evc/network/app/backend/internal/collector"
 	"github.com/sbrw-evc/network/app/backend/internal/secrets"
 	"github.com/sbrw-evc/network/app/backend/internal/store"
@@ -18,12 +19,16 @@ import (
 // (FLOW_BMP_ADDR, default :10179) of the enricher process; all stay idle until
 // their settings enable them.
 func routingExtension(ctx context.Context, ec *wiring.EnricherConfig, st *store.Store, vault *secrets.Client,
-	col *collector.Collector, deps *app.Deps, reg prometheus.Registerer, log *slog.Logger, goRun func(func())) error {
+	col *collector.Collector, b bus.Bus, deps *app.Deps, reg prometheus.Registerer, log *slog.Logger, goRun func(func())) error {
 	r, err := wiring.NewRouting(st, vault, reg, log)
 	if err != nil {
 		return fmt.Errorf("gNMI / SNMP / BMP: %w", err)
 	}
 	r.GNMI.UseCollector(col)
+	// With NATS, enricher replicas share their BMP sessions.
+	if js, ok := b.(*bus.JetStream); ok {
+		r.BMP.UseJetStream(js.JetStream())
+	}
 	r.SNMP.UseCollector(col)
 	ec.Routing = r
 	deps.Routing = r

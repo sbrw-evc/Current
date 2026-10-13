@@ -86,6 +86,7 @@ const bmpView = (): BmpView => ({
         enabled: true,
         listen: ':10179',
         rib: { prefixes_v4: 1012345, prefixes_v6: 212345, vpn_prefixes: 4210, vrfs: 1, routes: 2453590, attribute_sets: 412000, peers: 2, bytes: 318 << 20 },
+        replication: { enabled: true, caught_up: true, routers: [{ router: '10.0.0.2', peers_up: 2, last_record: ago(0.2) }] },
         sessions: [{ router: '10.0.0.1', sys_name: 'edge-msk-1', sys_descr: 'Cisco IOS XR', since: ago(3 * 1440), peers_up: 2, messages: 9_812_331, errors: 0 }],
         peers: [
           { router: '10.0.0.1', address: '203.0.113.1', as: 9002, post_policy: true, routes: 1224690, since: ago(3 * 1440), last_update: ago(0.2) },
