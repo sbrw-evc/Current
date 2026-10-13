@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, KeyRound, LockKeyhole, Plus, PlugZap, Save, Trash2, XCircle } from 'lucide-react'
 import { get, post, put } from '../../api/client'
@@ -9,12 +9,13 @@ import { useSession } from '../../shell/session'
 import { notify } from '../../ui/notify'
 import { SecretField } from '../../ui/SecretField'
 import { Banner, Button, Card, Chip, Field, formatDate, Input, Loading, Select, Stepper, Switch, Textarea } from '../../ui/ui'
-import { gnmiBody, gnmiProfileBody, newGnmiProfile, toGnmiDraft, validateGnmi, type GnmiDraft, type GnmiEncoding, type GnmiProfileDraft, type GnmiView } from './GnmiModel'
+import { gnmiBody, gnmiProfileBody, newGnmiProfile, toGnmiDraft, validateGnmi, type GnmiDraft, type GnmiEncoding, type GnmiMode, type GnmiProfileDraft, type GnmiView } from './GnmiModel'
 import { validAddress } from './SnmpModel'
 
 // Settings → gNMI (docs/api.md, "gNMI"): interface names, descriptions and speeds read over gNMI
-// (OpenConfig) for exporters Inventory DB does not describe. Passwords and CA certificates go to
-// OpenBao and are never shown again.
+// (OpenConfig) for exporters Inventory DB does not describe, polled with Get or streamed with
+// Subscribe. Passwords, CA certificates and client certificates / keys (mutual TLS) go to OpenBao
+// and are never shown again.
 
 const strings: Dict = {
   en: {
@@ -82,6 +83,20 @@ const strings: Dict = {
     'gnmi.err.port': 'The port must be between 1 and 65535',
     'gnmi.err.password': 'A profile with a user name needs its password',
     'gnmi.err.ca': 'The CA certificate must be a PEM certificate',
+    'gnmi.mode': 'Mode',
+    'gnmi.mode.get': 'Get every refresh period',
+    'gnmi.mode.subscribe': 'Subscribe (stream changes)',
+    'gnmi.mode.hint': 'Subscribe keeps one stream open per device and applies changes as they happen; a device refusing it is polled with Get.',
+    'gnmi.cert': 'Client certificate (PEM)',
+    'gnmi.cert.hint': 'For devices that require mutual TLS. Saved to OpenBao with its key and never shown again.',
+    'gnmi.key': 'Client private key (PEM)',
+    'gnmi.cert.set': 'certificate and key set · kept in OpenBao',
+    'gnmi.cert.removed': 'The saved client certificate and key are removed on save.',
+    'gnmi.cert.keep': 'Keep the saved ones',
+    'gnmi.streaming': 'Streaming',
+    'gnmi.err.pair': 'The client certificate and its key go together',
+    'gnmi.err.cert': 'The client certificate must be a PEM certificate',
+    'gnmi.err.key': 'The client key must be a PEM private key',
   },
   ru: {
     'gnmi.sub': 'Имена и скорости интерфейсов по gNMI (OpenConfig) для устройств, которых нет в Inventory DB',
@@ -148,6 +163,20 @@ const strings: Dict = {
     'gnmi.err.port': 'Порт — от 1 до 65535',
     'gnmi.err.password': 'Профилю с пользователем нужен пароль',
     'gnmi.err.ca': 'Сертификат УЦ должен быть в формате PEM',
+    'gnmi.mode': 'Режим',
+    'gnmi.mode.get': 'Get раз в период обновления',
+    'gnmi.mode.subscribe': 'Subscribe (поток изменений)',
+    'gnmi.mode.hint': 'Subscribe держит открытым один поток на устройство и применяет изменения сразу; устройство, которое его не поддерживает, опрашивается через Get.',
+    'gnmi.cert': 'Клиентский сертификат (PEM)',
+    'gnmi.cert.hint': 'Для устройств, требующих взаимного TLS. Сохраняется в OpenBao вместе с ключом и больше не показывается.',
+    'gnmi.key': 'Закрытый ключ клиента (PEM)',
+    'gnmi.cert.set': 'сертификат и ключ заданы · хранятся в OpenBao',
+    'gnmi.cert.removed': 'Сохранённые клиентский сертификат и ключ будут удалены при сохранении.',
+    'gnmi.cert.keep': 'Оставить сохранённые',
+    'gnmi.streaming': 'Поток',
+    'gnmi.err.pair': 'Клиентский сертификат и его ключ задаются вместе',
+    'gnmi.err.cert': 'Клиентский сертификат должен быть в формате PEM',
+    'gnmi.err.key': 'Ключ клиента должен быть закрытым ключом в формате PEM',
   },
 }
 
@@ -172,47 +201,126 @@ export default function GnmiPage() {
   )
 }
 
-// CaField: a write-only multi-line PEM (a password input would drop its line breaks).
-function CaField({ p, onChange }: { p: GnmiProfileDraft; onChange: (v: Partial<GnmiProfileDraft>) => void }) {
+// PemField: write-only multi-line PEM inputs (a password input would drop their line breaks). Saved
+// values show as a chip with Replace / Remove; values typed here replace them on save.
+function PemField({
+  label,
+  hint,
+  setText,
+  keepText,
+  removedText,
+  isSet,
+  removed,
+  editing: typed,
+  onRemove,
+  onKeep,
+  children,
+}: {
+  label: string
+  hint: string
+  setText: string
+  keepText: string
+  removedText: string
+  isSet: boolean
+  removed: boolean
+  editing: boolean
+  onRemove: (v: boolean) => void
+  onKeep: () => void
+  children: (id: string) => ReactNode
+}) {
   const t = useT(strings)
   const [replacing, setReplacing] = useState(false)
-  const editing = !p.ca_set || replacing || p.ca_pem !== ''
+  const editing = !isSet || replacing || typed
   return (
-    <Field label={t('gnmi.ca')} optional={t('gnmi.optional')} hint={p.ca_remove ? t('gnmi.ca.removed') : t('gnmi.ca.hint')}>
+    <Field label={label} optional={t('gnmi.optional')} hint={removed ? removedText : hint}>
       {(id) =>
         editing ? (
           <div className="stack">
-            <Textarea id={id} rows={4} value={p.ca_pem} spellCheck={false} placeholder="-----BEGIN CERTIFICATE-----" onChange={(e) => onChange({ ca_pem: e.target.value, ca_remove: false })} />
-            {p.ca_set && (
+            {children(id)}
+            {isSet && (
               <button
                 type="button"
                 className="link-button"
                 onClick={() => {
-                  onChange({ ca_pem: '' })
+                  onKeep()
                   setReplacing(false)
                 }}
               >
-                {t('gnmi.ca.keep')}
+                {keepText}
               </button>
             )}
           </div>
         ) : (
           <div className="secret-set">
-            {!p.ca_remove && (
+            {!removed && (
               <Chip tone="ok">
-                <LockKeyhole size={12} /> {t('gnmi.ca.set')}
+                <LockKeyhole size={12} /> {setText}
               </Chip>
             )}
             <button id={id} type="button" className="btn btn-secondary btn-sm" onClick={() => setReplacing(true)}>
               <KeyRound size={14} /> {t('gnmi.ca.replace')}
             </button>
-            <button type="button" className="link-button" onClick={() => onChange({ ca_remove: !p.ca_remove })}>
-              {p.ca_remove ? t('gnmi.ca.keep') : t('gnmi.ca.remove')}
+            <button type="button" className="link-button" onClick={() => onRemove(!removed)}>
+              {removed ? keepText : t('gnmi.ca.remove')}
             </button>
           </div>
         )
       }
     </Field>
+  )
+}
+
+function CaField({ p, onChange }: { p: GnmiProfileDraft; onChange: (v: Partial<GnmiProfileDraft>) => void }) {
+  const t = useT(strings)
+  return (
+    <PemField
+      label={t('gnmi.ca')}
+      hint={t('gnmi.ca.hint')}
+      setText={t('gnmi.ca.set')}
+      keepText={t('gnmi.ca.keep')}
+      removedText={t('gnmi.ca.removed')}
+      isSet={p.ca_set}
+      removed={p.ca_remove}
+      editing={p.ca_pem !== ''}
+      onRemove={(v) => onChange({ ca_remove: v })}
+      onKeep={() => onChange({ ca_pem: '' })}
+    >
+      {(id) => <Textarea id={id} rows={4} value={p.ca_pem} spellCheck={false} placeholder="-----BEGIN CERTIFICATE-----" onChange={(e) => onChange({ ca_pem: e.target.value, ca_remove: false })} />}
+    </PemField>
+  )
+}
+
+// ClientCertField: the client certificate and its key for mutual TLS, set and removed together.
+function ClientCertField({ p, onChange }: { p: GnmiProfileDraft; onChange: (v: Partial<GnmiProfileDraft>) => void }) {
+  const t = useT(strings)
+  return (
+    <PemField
+      label={t('gnmi.cert')}
+      hint={t('gnmi.cert.hint')}
+      setText={t('gnmi.cert.set')}
+      keepText={t('gnmi.cert.keep')}
+      removedText={t('gnmi.cert.removed')}
+      isSet={p.cert_set}
+      removed={p.cert_remove}
+      editing={p.cert_pem !== '' || p.key_pem !== ''}
+      onRemove={(v) => onChange({ cert_remove: v })}
+      onKeep={() => onChange({ cert_pem: '', key_pem: '' })}
+    >
+      {(id) => (
+        <>
+          <Textarea id={id} rows={4} value={p.cert_pem} spellCheck={false} placeholder="-----BEGIN CERTIFICATE-----" onChange={(e) => onChange({ cert_pem: e.target.value, cert_remove: false })} />
+          <Textarea
+            aria-label={t('gnmi.key')}
+            rows={4}
+            value={p.key_pem}
+            spellCheck={false}
+            autoComplete="off"
+            placeholder="-----BEGIN PRIVATE KEY-----"
+            onChange={(e) => onChange({ key_pem: e.target.value, cert_remove: false })}
+          />
+        </>
+      )}
+    </PemField>
   )
 }
 
@@ -281,6 +389,17 @@ function GnmiForm({ view, editable }: { view: GnmiView; editable: boolean }) {
                     </Select>
                   )}
                 </Field>
+                <Field label={t('gnmi.mode')} hint={t('gnmi.mode.hint')}>
+                  {(id) => (
+                    <Select id={id} value={p.mode} onChange={(e) => setProfile(i, { mode: e.target.value as GnmiMode })}>
+                      {view.modes.map((m) => (
+                        <option key={m} value={m}>
+                          {t(`gnmi.mode.${m}`)}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                </Field>
                 {editable && (
                   <button type="button" className="icon-btn" aria-label="delete" onClick={() => set({ profiles: draft.profiles.filter((_, j) => j !== i) })}>
                     <Trash2 size={15} />
@@ -308,6 +427,7 @@ function GnmiForm({ view, editable }: { view: GnmiView; editable: boolean }) {
                       <CaField p={p} onChange={(v) => setProfile(i, v)} />
                     </>
                   )}
+                  <ClientCertField p={p} onChange={(v) => setProfile(i, v)} />
                 </>
               )}
             </div>
@@ -414,7 +534,9 @@ function GnmiForm({ view, editable }: { view: GnmiView; editable: boolean }) {
                     </td>
                     <td>{d.profile ?? '—'}</td>
                     <td className="num">{num(d.interfaces, locale)}</td>
-                    <td>{d.error ? <Chip tone="error">{t('gnmi.test.fail')}</Chip> : d.polled ? formatDate(d.polled, locale) : '—'}</td>
+                    <td>
+                      {d.error ? <Chip tone="error">{t('gnmi.test.fail')}</Chip> : d.streaming ? <Chip tone="ok">{t('gnmi.streaming')}</Chip> : d.polled ? formatDate(d.polled, locale) : '—'}
+                    </td>
                   </tr>
                 ))}
               </tbody>

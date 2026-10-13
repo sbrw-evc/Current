@@ -6,18 +6,22 @@
 //
 // Each device is read with gNMI Get requests of the OpenConfig
 // /interfaces/interface/state and subinterface leaves (ifindex, description)
-// and of the Ethernet / aggregate speeds. Devices are the exporters seen by the
-// collector / enricher (when PollExporters is set) and the configured
-// Devices; each one is polled with the first credential profile whose
-// prefixes contain it. Results are cached and refreshed every Interval; they
-// are kept for TTL when a device stops answering. Credentials (password, CA
-// certificate) live in OpenBao: the settings hold only openbao:// references.
+// and of the Ethernet / aggregate speeds, or (profile mode "subscribe") with
+// one long-lived Subscribe stream of the same leaves that delivers changes as
+// they happen. Devices are the exporters seen by the collector / enricher
+// (when PollExporters is set) and the configured Devices; each one is polled
+// with the first credential profile whose prefixes contain it. Get results
+// are refreshed every Interval; data is kept for TTL when a device stops
+// answering. Credentials (password, CA certificate, client certificate and
+// key for mutual TLS) live in OpenBao: the settings hold only openbao://
+// references.
 package gnmi
 
 import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strings"
 	"time"
 )
@@ -30,6 +34,18 @@ const (
 
 // Encodings are the accepted encoding names.
 var Encodings = []string{EncodingJSONIETF, EncodingJSON}
+
+// Modes of reading a device.
+const (
+	// ModeGet polls with Get requests every refresh period.
+	ModeGet = "get"
+	// ModeSubscribe keeps a Subscribe stream (STREAM, TARGET_DEFINED) open;
+	// a device refusing it is polled with Get.
+	ModeSubscribe = "subscribe"
+)
+
+// Modes are the accepted mode names.
+var Modes = []string{ModeGet, ModeSubscribe}
 
 // DefaultPort is the usual gNMI port (Nokia SR OS / SR Linux, Arista, gnmic).
 const DefaultPort = 57400
@@ -66,14 +82,25 @@ type Profile struct {
 	SkipVerify bool   `json:"skip_verify,omitempty"` // do not check the device certificate
 	CARef      string `json:"ca_ref,omitempty"`      // PEM CA bundle, openbao:// reference; empty = system roots
 	ServerName string `json:"server_name,omitempty"` // expected certificate name; empty = the address
+	// Client certificate and private key (PEM, openbao:// references) for
+	// mutual TLS; both or neither.
+	CertRef string `json:"cert_ref,omitempty"`
+	KeyRef  string `json:"key_ref,omitempty"`
 
 	// Encoding of the Get requests: json_ietf (default) or json. A device
 	// rejecting json_ietf is asked again with json.
 	Encoding string `json:"encoding"`
+	// Mode: get (default) or subscribe.
+	Mode string `json:"mode"`
 }
 
 // Normalize fills defaults and validates (credentials are not checked).
 func (s Settings) Normalize() (Settings, error) {
+	// Work on copies: the caller keeps its slices.
+	s.Devices, s.Profiles = slices.Clone(s.Devices), slices.Clone(s.Profiles)
+	for i := range s.Profiles {
+		s.Profiles[i].Prefixes = slices.Clone(s.Profiles[i].Prefixes)
+	}
 	if s.IntervalMinutes == 0 {
 		s.IntervalMinutes = 30
 	}
@@ -138,8 +165,18 @@ func (s Settings) Normalize() (Settings, error) {
 		default:
 			return s, fmt.Errorf("profile %q: encoding must be %s or %s", p.Name, EncodingJSONIETF, EncodingJSON)
 		}
+		switch p.Mode {
+		case "":
+			p.Mode = ModeGet
+		case ModeGet, ModeSubscribe:
+		default:
+			return s, fmt.Errorf("profile %q: mode must be %s or %s", p.Name, ModeGet, ModeSubscribe)
+		}
 		if !p.TLS {
 			p.SkipVerify, p.ServerName = false, ""
+		}
+		if (p.CertRef == "") != (p.KeyRef == "") {
+			return s, fmt.Errorf("profile %q: the client certificate and its key go together", p.Name)
 		}
 	}
 	return s, nil
@@ -178,5 +215,6 @@ func (s Settings) interval() time.Duration { return time.Duration(s.IntervalMinu
 func (s Settings) ttl() time.Duration      { return time.Duration(s.TTLMinutes) * time.Minute }
 func (s Settings) timeout() time.Duration  { return time.Duration(s.TimeoutSeconds) * time.Second }
 
-// SecretPath is the OpenBao path of a profile secret (password, ca).
+// SecretPath is the OpenBao path of a profile secret (password, ca, cert,
+// key).
 func SecretPath(profileID, what string) string { return "gnmi/" + profileID + "/" + what }
