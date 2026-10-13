@@ -362,7 +362,7 @@ func BenchmarkLookup(b *testing.B) {
 		a := netip.AddrFrom4([4]byte{byte(i >> 16), byte(i >> 8), byte(i), 0})
 		u.announced = append(u.announced, netip.PrefixFrom(a, 16+i%9).Masked())
 	}
-	rib.apply(k, u)
+	rib.apply(k, 0, u)
 	addr := netip.MustParseAddr("10.20.30.40")
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { body, move, toDraft, toggle, validate } from './BmpModel'
+import { body, move, toDraft, toggle, validate, validRD } from './BmpModel'
 
 describe('BMP settings', () => {
   it('round-trips and validates', () => {
@@ -15,5 +15,14 @@ describe('BMP settings', () => {
     expect(move(['routing', 'flow'], 0, -1)).toEqual(['routing', 'flow'])
     expect(toggle(['routing'], 'geoip')).toEqual(['routing', 'geoip'])
     expect(toggle(['routing', 'geoip'], 'routing')).toEqual(['geoip'])
+  })
+})
+
+describe('validRD', () => {
+  it('accepts the three RD types', () => {
+    for (const s of ['65000:100', '192.0.2.1:7', '4200000000:12', ' 0:0 ']) expect(validRD(s), s).toBe(true)
+  })
+  it('rejects malformed or out of range values', () => {
+    for (const s of ['', '65000', ':1', 'x:1', '192.0.2.1:70000', '300.0.0.1:1', '4200000000:70000', '5000000000:1']) expect(validRD(s), s).toBe(false)
   })
 })

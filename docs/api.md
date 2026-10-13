@@ -525,7 +525,16 @@ sessions, ADD-PATH when both OPENs of the Peer Up negotiate it, COMMUNITIES, LAR
 per-peer RIB held in a compact longest-prefix-match table with interned attribute sets. Withdrawals remove the
 peer's path; Peer Down removes the peer's routes; a closed session removes every route of that router. Loc-RIB
 (RFC 9069) counts as post-policy. Lookups prefer post-policy paths (`policy: prefer-post`, or only `post` / `pre`),
-then the shorter AS path. Other address families (VPN, labeled, flowspec) are ignored.
+then the shorter AS path. Adj-RIB-Out (RFC 8671, O flag) is skipped: it describes what the router advertises, not
+where traffic goes. Other address families (labeled unicast, EVPN, flowspec) are ignored.
+
+L3VPN: VPNv4 / VPNv6 routes (SAFI 128, RFC 4364 / RFC 4659: label stack, route distinguisher, next hop with an RD)
+go to one table per route distinguisher, apart from the global table. Unicast routes of an RD instance peer (peer
+type 1) or a VRF Loc-RIB (peer type 3) go to the table of their peer distinguisher. The enricher looks a flow up
+in the VRF of its input interface (else its output interface): the interface's own `vrf` (NetBox) or, in
+Inventory DB, the VRF of an IP address assigned to it, whose `rd` (`65000:1`, `192.0.2.1:1`, `4200000000:1`)
+selects the table. When no route with that RD is known the global table is used; a known RD without a covering
+route gives no route.
 
 The enricher fills, from the route of `DstAddr`, the raw-table columns `DstASPath` (`Array(UInt32)`),
 `DstCommunities` (`Array(UInt32)`, `as << 16 | value`) and `DstLargeCommunities` (`Array(String)`, `"a:b:c"`), and
@@ -536,15 +545,16 @@ local route (empty path) gives none, so the next provider applies. Array columns
 `IN` / `NOTIN` any / none of the values (ClickHouse `has` / `hasAny`). Raw flow search returns them as JSON arrays.
 
 Settings key `bmp`, permissions `settings.bmp:view` / `settings.bmp:edit`. Metrics `flow_bmp_messages_total{type}`,
-`flow_bmp_errors_total{kind}` (`framing`, `decode`, `rejected`), `flow_bmp_sessions`, `flow_bmp_prefixes_v4`,
-`flow_bmp_prefixes_v6`, `flow_bmp_routes`, `flow_bmp_peers`, `flow_bmp_attribute_sets`, `flow_bmp_rib_bytes`
+`flow_bmp_errors_total{kind}` (`framing`, `decode`, `rejected`), `flow_bmp_skipped_total{reason}` (`adj_rib_out`,
+`policy`), `flow_bmp_sessions`, `flow_bmp_prefixes_v4`, `flow_bmp_prefixes_v6` (global table),
+`flow_bmp_vpn_prefixes`, `flow_bmp_vrfs`, `flow_bmp_routes`, `flow_bmp_peers`, `flow_bmp_attribute_sets`, `flow_bmp_rib_bytes`
 (estimate); status component `bmp`. With several enricher processes each holds only the routes of its own sessions.
 
 | Method | Path | |
 |---|---|---|
-| GET | `/api/settings/bmp` | `{enabled, policy: prefer-post\|post\|pre, routers: [addr or prefix] (allowed sources, empty = any), as_providers, status?: {enabled, listen, error?, rib: {prefixes_v4, prefixes_v6, routes, attribute_sets, peers, bytes}, sessions: [{router, sys_name?, sys_descr?, since, peers_up, messages, errors, last_error?}], peers: [{router, address, as, distinguisher?, post_policy, routes, since, last_update}]}}` — `status` when the receiver runs in this process |
+| GET | `/api/settings/bmp` | `{enabled, policy: prefer-post\|post\|pre, routers: [addr or prefix] (allowed sources, empty = any), as_providers, status?: {enabled, listen, error?, rib: {prefixes_v4, prefixes_v6, vpn_prefixes, vrfs, routes, attribute_sets, peers, bytes}, sessions: [{router, sys_name?, sys_descr?, since, peers_up, messages, errors, last_error?}], peers: [{router, address, as, distinguisher?, rd?, post_policy, routes, since, last_update}]}}` — `status` when the receiver runs in this process |
 | PUT | `/api/settings/bmp` | `{enabled, policy, routers, as_providers}` → as GET; 400 `bmp_invalid`; applied at once (same process) or within a minute |
-| GET | `/api/bmp/lookup?address=` (`settings.bmp:view`) | `{prefix, origin_as, as_path, communities: ["a:b"], large_communities, next_hop, peer: {router, address, as, post_policy}}`; 404 `no_route`; 501 when the receiver runs in another process |
+| GET | `/api/bmp/lookup?address=&rd=` (`settings.bmp:view`) | `rd` (optional) selects a VPN table, as for flows; → `{prefix, rd (table found in, empty = global), origin_as, as_path, communities: ["a:b"], large_communities, next_hop, peer: {router, address, as, post_policy}}`; 400 `invalid_rd`; 404 `no_route`; 501 when the receiver runs in another process |
 
 ## Incident link
 

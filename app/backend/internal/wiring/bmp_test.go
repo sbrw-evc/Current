@@ -24,13 +24,13 @@ func TestRoutingComponents(t *testing.T) {
 		t.Fatal("routing / SNMP not configured in the enricher")
 	}
 	// Disabled BMP gives no routes; SNMP disabled gives no names.
-	if _, ok := ec.Routing.LookupRoute(netip.MustParseAddr("8.8.8.8")); ok {
+	if _, ok := ec.Routing.LookupRoute("", netip.MustParseAddr("8.8.8.8")); ok {
 		t.Fatal("route while BMP is disabled")
 	}
 	if _, _, _, ok := ec.IfNames.Lookup(netip.MustParseAddr("192.0.2.1"), 1); ok {
 		t.Fatal("SNMP name while disabled")
 	}
-	if _, ok := r.BMPLookup(netip.MustParseAddr("8.8.8.8")); ok {
+	if _, ok := r.BMPLookup(0, netip.MustParseAddr("8.8.8.8")); ok {
 		t.Fatal("lookup in an empty RIB")
 	}
 	st, ok := r.BMPStatus().(map[string]any)

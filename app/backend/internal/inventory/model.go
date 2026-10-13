@@ -182,6 +182,7 @@ type rawInterface struct {
 	Description            string         `json:"description"`
 	Mode                   choice         `json:"mode"`
 	UntaggedVLAN           *ref           `json:"untagged_vlan"`
+	VRF                    *ref           `json:"vrf"` // NetBox 3.3+; Inventory DB derives it from addresses
 	Cable                  *ref           `json:"cable"`
 	LinkPeers              []peer         `json:"link_peers"`
 	LinkPeersType          string         `json:"link_peers_type"`

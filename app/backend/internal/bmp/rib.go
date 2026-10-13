@@ -27,6 +27,9 @@ type Route struct {
 	// LargeText are the large communities formatted as "a:b:c".
 	LargeText []string
 	Peer      PeerKey
+	// RD is the route distinguisher of the table the route was found in
+	// (0: global).
+	RD uint64
 }
 
 // attrSet is an interned set of path attributes shared by many routes.
@@ -120,22 +123,32 @@ type peerState struct {
 	last   time.Time
 }
 
-// RIB holds the Adj-RIB-In of every monitored peer in two LPM tables.
+// table is the routing table of one route distinguisher.
+type table struct {
+	v4 *lpm[uint32]
+	v6 *lpm[[16]byte]
+}
+
+func newTable() *table { return &table{v4: newLPM[uint32](32), v6: newLPM[[16]byte](128)} }
+
+func (t *table) empty() bool { return t.v4.n == 0 && t.v6.n == 0 }
+
+// RIB holds the Adj-RIB-In of every monitored peer in LPM tables: one for
+// the global routing table (RD 0) and one per VPN route distinguisher.
 // It is safe for concurrent use.
 type RIB struct {
-	mu    sync.RWMutex
-	v4    *lpm[uint32]
-	v6    *lpm[[16]byte]
-	attrs map[string]*attrSet
-	peers []*peerState // index = peer id; nil = free
-	ids   map[PeerKey]uint32
-	bytes int // estimated size of the attribute sets
-	now   func() time.Time
+	mu     sync.RWMutex
+	tables map[uint64]*table
+	attrs  map[string]*attrSet
+	peers  []*peerState // index = peer id; nil = free
+	ids    map[PeerKey]uint32
+	bytes  int // estimated size of the attribute sets
+	now    func() time.Time
 }
 
 // NewRIB returns an empty RIB.
 func NewRIB() *RIB {
-	return &RIB{v4: newLPM[uint32](32), v6: newLPM[[16]byte](128), attrs: map[string]*attrSet{},
+	return &RIB{tables: map[uint64]*table{0: newTable()}, attrs: map[string]*attrSet{},
 		ids: map[PeerKey]uint32{}, now: time.Now}
 }
 
@@ -242,36 +255,60 @@ func (r *RIB) replace(ps []path, peer uint32, s *attrSet) ([]path, int) {
 	return append(out, path{peer: peer, attrs: s}), delta
 }
 
-func (r *RIB) setPath(p netip.Prefix, peer uint32, s *attrSet) int {
+// setPath sets or removes a path in the table of rd; empty VPN tables are
+// dropped.
+func (r *RIB) setPath(rd uint64, p netip.Prefix, peer uint32, s *attrSet) int {
+	t := r.tables[rd]
+	if t == nil {
+		if s == nil {
+			return 0
+		}
+		t = newTable()
+		r.tables[rd] = t
+	}
 	a, bits := p.Addr(), p.Bits()
+	var d int
 	if a.Is4() {
 		k := key4(a, bits)
-		ps, d := r.replace(r.v4.get(bits, k), peer, s)
-		r.v4.set(bits, k, ps)
-		return d
+		var ps []path
+		ps, d = r.replace(t.v4.get(bits, k), peer, s)
+		t.v4.set(bits, k, ps)
+	} else {
+		k := key6(a, bits)
+		var ps []path
+		ps, d = r.replace(t.v6.get(bits, k), peer, s)
+		t.v6.set(bits, k, ps)
 	}
-	k := key6(a, bits)
-	ps, d := r.replace(r.v6.get(bits, k), peer, s)
-	r.v6.set(bits, k, ps)
+	if rd != 0 && t.empty() {
+		delete(r.tables, rd)
+	}
 	return d
 }
 
 // apply processes an UPDATE of a peer: withdrawals first, then announcements.
-func (r *RIB) apply(k PeerKey, u *update) {
+// Unicast prefixes go to the table of rd (the peer distinguisher of an RD
+// instance or VRF Loc-RIB peer, 0 for the global table); VPN prefixes to the
+// table of their own route distinguisher.
+func (r *RIB) apply(k PeerKey, rd uint64, u *update) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	id := r.peerID(k)
 	st := r.peers[id]
 	st.last = r.now()
 	for _, p := range u.withdrawn {
-		st.routes += r.setPath(p, id, nil)
+		st.routes += r.setPath(rd, p, id, nil)
 	}
-	if len(u.announced) == 0 || !u.hasAttrs {
+	for _, p := range u.vpnWithdrawn {
+		st.routes += r.setPath(p.rd, p.prefix, id, nil)
+	}
+	if !u.hasAttrs {
 		return
 	}
 	for _, p := range u.announced {
-		s := r.intern(&u.attrs)
-		st.routes += r.setPath(p, id, s)
+		st.routes += r.setPath(rd, p, id, r.intern(&u.attrs))
+	}
+	for _, p := range u.vpnAnnounced {
+		st.routes += r.setPath(p.rd, p.prefix, id, r.intern(&u.attrs))
 	}
 }
 
@@ -318,8 +355,13 @@ func (r *RIB) removePeers(match func(PeerKey) bool) int {
 		return 0
 	}
 	f := func(id uint32) bool { return drop[id] }
-	removeFrom(r, r.v4, f)
-	removeFrom(r, r.v6, f)
+	for rd, t := range r.tables {
+		removeFrom(r, t.v4, f)
+		removeFrom(r, t.v6, f)
+		if rd != 0 && t.empty() {
+			delete(r.tables, rd)
+		}
+	}
 	for id := range drop {
 		delete(r.ids, r.peers[id].key)
 		r.peers[id] = nil
@@ -363,39 +405,49 @@ func (r *RIB) best(ps []path) path {
 	return b
 }
 
-// Lookup returns the most specific route covering a.
-func (r *RIB) Lookup(a netip.Addr) (Route, bool) {
+// Lookup returns the most specific route covering a in the global table.
+func (r *RIB) Lookup(a netip.Addr) (Route, bool) { return r.LookupRD(0, a) }
+
+// LookupRD returns the most specific route covering a in the VPN table of
+// rd. When no route with that distinguisher is known, the global table is
+// used (the VRF is not monitored); a known VPN table without a covering
+// route gives no route.
+func (r *RIB) LookupRD(rd uint64, a netip.Addr) (Route, bool) {
 	a = a.Unmap()
 	if !a.IsValid() {
 		return Route{}, false
 	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+	t := r.tables[rd]
+	if t == nil {
+		rd, t = 0, r.tables[0]
+	}
 	if a.Is4() {
 		b := a.As4()
 		v := binary.BigEndian.Uint32(b[:])
-		for _, l := range r.v4.lens {
+		for _, l := range t.v4.lens {
 			k := uint32(0)
 			if l > 0 {
 				k = v &^ (1<<(32-l) - 1)
 			}
-			if ps := r.v4.byLen[l][k]; len(ps) > 0 {
-				return r.route(netip.PrefixFrom(a, l).Masked(), ps), true
+			if ps := t.v4.byLen[l][k]; len(ps) > 0 {
+				return r.route(rd, netip.PrefixFrom(a, l).Masked(), ps), true
 			}
 		}
 		return Route{}, false
 	}
-	for _, l := range r.v6.lens {
-		if ps := r.v6.byLen[l][key6(a, l)]; len(ps) > 0 {
-			return r.route(netip.PrefixFrom(a, l).Masked(), ps), true
+	for _, l := range t.v6.lens {
+		if ps := t.v6.byLen[l][key6(a, l)]; len(ps) > 0 {
+			return r.route(rd, netip.PrefixFrom(a, l).Masked(), ps), true
 		}
 	}
 	return Route{}, false
 }
 
-func (r *RIB) route(p netip.Prefix, ps []path) Route {
+func (r *RIB) route(rd uint64, p netip.Prefix, ps []path) Route {
 	b := r.best(ps)
-	return Route{Prefix: p, Attrs: b.attrs.Attrs, LargeText: b.attrs.large, Peer: r.peers[b.peer].key}
+	return Route{Prefix: p, Attrs: b.attrs.Attrs, LargeText: b.attrs.large, Peer: r.peers[b.peer].key, RD: rd}
 }
 
 // Stats is the size of the RIB.
@@ -403,8 +455,12 @@ type Stats struct {
 	PrefixesV4 int `json:"prefixes_v4"`
 	PrefixesV6 int `json:"prefixes_v6"`
 	Routes     int `json:"routes"` // paths: prefixes × peers
-	AttrSets   int `json:"attribute_sets"`
-	Peers      int `json:"peers"`
+	// VPNPrefixes are the prefixes of the VPN tables (all distinguishers),
+	// not counted in PrefixesV4 / PrefixesV6.
+	VPNPrefixes int `json:"vpn_prefixes"`
+	VRFs        int `json:"vrfs"` // route distinguishers with routes
+	AttrSets    int `json:"attribute_sets"`
+	Peers       int `json:"peers"`
 	// Bytes is an estimate of the memory held by the tables.
 	Bytes int64 `json:"bytes"`
 }
@@ -413,7 +469,16 @@ type Stats struct {
 func (r *RIB) Stats() Stats {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	s := Stats{PrefixesV4: r.v4.n, PrefixesV6: r.v6.n, AttrSets: len(r.attrs)}
+	g := r.tables[0]
+	s := Stats{PrefixesV4: g.v4.n, PrefixesV6: g.v6.n, AttrSets: len(r.attrs)}
+	n4, n6 := 0, 0
+	for rd, t := range r.tables {
+		n4, n6 = n4+t.v4.n, n6+t.v6.n
+		if rd != 0 {
+			s.VRFs++
+			s.VPNPrefixes += t.v4.n + t.v6.n
+		}
+	}
 	for _, p := range r.peers {
 		if p != nil {
 			s.Peers++
@@ -421,7 +486,7 @@ func (r *RIB) Stats() Stats {
 		}
 	}
 	// map entry ≈ key + slice header + bucket overhead; path = 16 bytes.
-	s.Bytes = int64(r.v4.n*(4+24+24)+r.v6.n*(16+24+24)+s.Routes*16) + int64(r.bytes)
+	s.Bytes = int64(n4*(4+24+24)+n6*(16+24+24)+s.Routes*16) + int64(r.bytes)
 	return s
 }
 
@@ -431,10 +496,13 @@ type PeerInfo struct {
 	Address       netip.Addr `json:"address"`
 	AS            uint32     `json:"as"`
 	Distinguisher uint64     `json:"distinguisher,omitempty"`
-	PostPolicy    bool       `json:"post_policy"`
-	Routes        int        `json:"routes"`
-	Since         time.Time  `json:"since"`
-	LastUpdate    time.Time  `json:"last_update"`
+	// RD is the distinguisher as text ("65000:1") for RD instance and VRF
+	// Loc-RIB peers.
+	RD         string    `json:"rd,omitempty"`
+	PostPolicy bool      `json:"post_policy"`
+	Routes     int       `json:"routes"`
+	Since      time.Time `json:"since"`
+	LastUpdate time.Time `json:"last_update"`
 }
 
 // Peers lists the peers, by router then peer address.
@@ -445,8 +513,12 @@ func (r *RIB) Peers() []PeerInfo {
 		if p == nil {
 			continue
 		}
-		out = append(out, PeerInfo{Router: p.key.Router, Address: p.key.Address, AS: p.key.AS, Distinguisher: p.key.Distinguisher,
-			PostPolicy: p.key.Post, Routes: p.routes, Since: p.since, LastUpdate: p.last})
+		pi := PeerInfo{Router: p.key.Router, Address: p.key.Address, AS: p.key.AS, Distinguisher: p.key.Distinguisher,
+			PostPolicy: p.key.Post, Routes: p.routes, Since: p.since, LastUpdate: p.last}
+		if pi.Distinguisher != 0 {
+			pi.RD = FormatRD(pi.Distinguisher)
+		}
+		out = append(out, pi)
 	}
 	r.mu.RUnlock()
 	sort.Slice(out, func(i, j int) bool {
