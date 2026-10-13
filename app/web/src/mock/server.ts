@@ -39,6 +39,8 @@ const ALL_PERMISSIONS = [
   'settings.classifiers:edit',
   'settings.openbao:view',
   'settings.openbao:test',
+  'settings.gnmi:view',
+  'settings.gnmi:edit',
   'settings.snmp:view',
   'settings.snmp:edit',
   'settings.bmp:view',

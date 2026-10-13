@@ -241,7 +241,7 @@ func (a *App) Handler() http.Handler {
 	a.entraRoutes(h)
 	a.openbaoMigrateRoutes(h)
 
-	// SNMP poller and BMP receiver settings (routing.go)
+	// gNMI / SNMP poller and BMP receiver settings (routing.go, gnmi.go)
 	a.routingRoutes(h)
 
 	// status

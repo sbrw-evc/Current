@@ -97,7 +97,7 @@ type EnricherConfig struct {
 	Threats   enrich.ThreatSource    // threat lists (wiring.Threat); nil: none
 	Metrics   prometheus.Registerer
 	Log       *slog.Logger
-	// Routing adds SNMP interface names and BMP routes (bmp.go); nil = none.
+	// Routing adds gNMI / SNMP interface names and BMP routes (bmp.go); nil = none.
 	Routing *Routing
 }
 

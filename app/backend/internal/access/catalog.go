@@ -83,8 +83,10 @@ const (
 	DependenciesRun  = "dependencies:run"
 )
 
-// Permissions of the SNMP poller and BMP receiver settings.
+// Permissions of the gNMI / SNMP poller and BMP receiver settings.
 const (
+	GNMIView = "settings.gnmi:view"
+	GNMIEdit = "settings.gnmi:edit"
 	SNMPView = "settings.snmp:view"
 	SNMPEdit = "settings.snmp:edit"
 	BMPView  = "settings.bmp:view"
@@ -171,6 +173,10 @@ var pages = []Page{
 	{"settings.snmp", GroupSettings, Text{"SNMP", "SNMP"}, []Feature{
 		view,
 		{"edit", Text{"Change SNMP credentials and polled devices, poll a device", "Изменение учётных данных SNMP и опрашиваемых устройств, проверочный опрос"}},
+	}},
+	{"settings.gnmi", GroupSettings, Text{"gNMI", "gNMI"}, []Feature{
+		view,
+		{"edit", Text{"Change gNMI credentials and polled devices, poll a device", "Изменение учётных данных gNMI и опрашиваемых устройств, проверочный опрос"}},
 	}},
 	{"settings.bmp", GroupSettings, Text{"BMP routing", "Маршруты BMP"}, []Feature{
 		view,
