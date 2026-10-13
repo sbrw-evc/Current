@@ -123,6 +123,11 @@ echo 'COMPOSE_FILE=docker-compose.yml:docker-compose.umbrella.yml' >> .env
 docker compose up -d
 ```
 
+Only the `flow` container joins it. The wizard defaults point at the bundled services by their `flow-postgres`,
+`flow-clickhouse`, `flow-nats` and `flow-openbao` aliases, so Umbrella's own `postgres` or `openbao` containers on
+the same network are never picked up by mistake. On a host that also runs Umbrella Monitoring, set
+`OPENBAO_PORT=8201` in `.env`: its OpenBao already publishes 8200.
+
 ## Upgrade
 
 ```sh
