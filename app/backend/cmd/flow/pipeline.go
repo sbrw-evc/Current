@@ -199,7 +199,7 @@ func startPipeline(ctx context.Context, role config.Role, env config.Env, cfg co
 			b.Close()
 			return p, err
 		}
-		if err := routingExtension(ctx, &ec, st, vault, p.collector, deps, reg, log, goRun); err != nil {
+		if err := routingExtension(ctx, &ec, st, vault, p.collector, b, deps, reg, log, goRun); err != nil {
 			b.Close()
 			return p, err
 		}

@@ -57,6 +57,10 @@ const strings: Dict = {
     'bmp.col.as': 'AS',
     'bmp.col.rib': 'RIB',
     'bmp.col.routes': 'Routes',
+    'bmp.repl': 'Replication',
+    'bmp.repl.off': 'Off: this process uses only its own sessions (no NATS)',
+    'bmp.repl.sync': 'Replaying the sessions of other enricher processes…',
+    'bmp.repl.on': 'Via NATS JetStream; routers held by other enricher processes: {n}',
     'bmp.lookup': 'Route lookup',
     'bmp.lookup.address': 'Address',
     'bmp.lookup.rd': 'RD (empty: global table)',
@@ -113,6 +117,10 @@ const strings: Dict = {
     'bmp.col.as': 'AS',
     'bmp.col.rib': 'RIB',
     'bmp.col.routes': 'Маршрутов',
+    'bmp.repl': 'Репликация',
+    'bmp.repl.off': 'Выключена: процесс использует только свои сессии (нет NATS)',
+    'bmp.repl.sync': 'Загружаются сессии других процессов обогащения…',
+    'bmp.repl.on': 'Через NATS JetStream; маршрутизаторов на других процессах обогащения: {n}',
     'bmp.lookup': 'Поиск маршрута',
     'bmp.lookup.address': 'Адрес',
     'bmp.lookup.rd': 'RD (пусто — глобальная таблица)',
@@ -229,7 +237,25 @@ function StatusCard({ view }: { view: BmpView }) {
   return (
     <Card title={t('bmp.state')} actions={<Chip tone={st.enabled ? (st.error ? 'error' : 'ok') : 'off'}>{t(st.enabled ? 'bmp.on' : 'bmp.off')}</Chip>}>
       {st.error && <Banner kind="error" title={st.error} />}
-      <Rows align="end" rows={[[t('bmp.listen'), <code key="l">{st.listen}</code>]]} />
+      <Rows
+        align="end"
+        rows={[
+          [t('bmp.listen'), <code key="l">{st.listen}</code>],
+          ...(st.replication
+            ? [
+                [
+                  t('bmp.repl'),
+                  !st.replication.enabled
+                    ? t('bmp.repl.off')
+                    : !st.replication.caught_up
+                      ? t('bmp.repl.sync')
+                      : t('bmp.repl.on', { n: num(st.replication.routers?.length ?? 0, locale) }),
+                ] as [string, React.ReactNode],
+              ]
+            : []),
+        ]}
+      />
+      {st.replication?.error && <Banner kind="warn" title={st.replication.error} />}
       <div className="stat-tiles">
         {(
           [

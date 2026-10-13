@@ -58,8 +58,9 @@ Flow's own keys and password hashes, is lost when its pod restarts: never use it
   mode first, finish the wizard, then `kubectl exec deploy/<release>-umbrella-flow -- cat /data/flow.json` and
   upgrade with `--set roles.mode=split --set-file config.flowJson=flow.json`.
 
-The BMP receiver and the SNMP poller run with the enricher. Keep one enricher replica when BMP is used: a replica
-knows only the routes of the BMP sessions it holds.
+The BMP receiver and the SNMP poller run with the enricher. With several enricher replicas, each replica shares
+its BMP sessions with the others over NATS JetStream (stream `FLOW_BMP`), so every replica knows every router's
+routes. Configure each router with one BMP station (the BMP service address) so it has one session at a time.
 
 ## Ports and services
 

@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/nats-io/nats.go/jetstream"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/sbrw-evc/network/app/backend/internal/app"
@@ -50,6 +51,51 @@ type BMP struct {
 
 	rds  sync.Map // VRF route distinguisher text → bmp RD
 	nrds atomic.Int32
+
+	// Replication with the other enricher processes (NATS JetStream).
+	repl     *bmpReplication
+	replica  *bmp.Replica
+	replStop context.CancelFunc
+}
+
+// UseJetStream shares the BMP sessions with the other enricher processes
+// through NATS JetStream (bmprepl.go); call it before Run.
+func (b *BMP) UseJetStream(js jetstream.JetStream) {
+	b.mu.Lock()
+	b.repl = newBMPReplication(js, b.log)
+	b.mu.Unlock()
+}
+
+// startReplica replays the sessions of the other processes while BMP is
+// enabled; it returns the replica the local server defers to.
+func (b *BMP) startReplica(base context.Context, s bmp.Settings) (*bmp.Replica, error) {
+	if b.repl == nil {
+		return nil, nil
+	}
+	if b.replica == nil {
+		rs := bmp.NewServer(bmp.Config{Logger: b.log, Metrics: b.m}, b.RIB)
+		b.replica = bmp.NewReplica(rs)
+	}
+	if err := b.replica.Apply(s); err != nil {
+		return nil, err
+	}
+	if b.replStop == nil {
+		ctx, cancel := context.WithCancel(base)
+		b.replStop = cancel
+		replica := b.replica
+		go b.repl.run(ctx, replica)
+		b.log.Info("BMP replication started", "stream", bmpStream)
+	}
+	return b.replica, nil
+}
+
+func (b *BMP) stopReplica() {
+	if b.replStop != nil {
+		b.replStop()
+		b.replStop = nil
+		b.replica.Clear()
+		b.log.Info("BMP replication stopped")
+	}
 }
 
 // NewBMP builds the component; Run applies the settings.
@@ -134,7 +180,15 @@ func (b *BMP) Refresh(ctx context.Context) error {
 	}
 	switch {
 	case s.Enabled && b.srv == nil:
-		srv := bmp.NewServer(bmp.Config{Listen: b.listen, Logger: b.log, Metrics: b.m}, b.RIB)
+		replica, err := b.startReplica(base, s)
+		if err != nil {
+			return err
+		}
+		cfg := bmp.Config{Listen: b.listen, Logger: b.log, Metrics: b.m, Replica: replica}
+		if b.repl != nil {
+			cfg.Replicator = b.repl
+		}
+		srv := bmp.NewServer(cfg, b.RIB)
 		if err := srv.Apply(s); err != nil {
 			return err
 		}
@@ -153,9 +207,13 @@ func (b *BMP) Refresh(ctx context.Context) error {
 	case !s.Enabled && b.srv != nil:
 		b.stop()
 		b.srv, b.stop = nil, nil
+		b.stopReplica()
 		b.log.Info("BMP receiver stopped")
 	case b.srv != nil:
 		if err := b.srv.Apply(s); err != nil {
+			return err
+		}
+		if _, err := b.startReplica(base, s); err != nil {
 			return err
 		}
 	}
@@ -207,7 +265,7 @@ func (b *BMP) Reload(ctx context.Context, what string) error {
 // Status implements app.StatusReporter.
 func (b *BMP) Status(context.Context) any {
 	b.mu.Lock()
-	srv, lastErr := b.srv, b.lastErr
+	srv, lastErr, repl, replica := b.srv, b.lastErr, b.repl, b.replica
 	b.mu.Unlock()
 	out := map[string]any{"enabled": b.enabled.Load(), "listen": b.listen, "rib": b.RIB.Stats()}
 	if lastErr != "" {
@@ -224,6 +282,11 @@ func (b *BMP) Status(context.Context) any {
 		peers = peers[:1000]
 	}
 	out["peers"] = peers
+	if repl != nil {
+		out["replication"] = repl.status(replica)
+	} else {
+		out["replication"] = map[string]any{"enabled": false}
+	}
 	return out
 }
 

@@ -8,12 +8,19 @@ export type BmpSession = { router: string; sys_name?: string; sys_descr?: string
 export type BmpPeer = { router: string; address: string; as: number; distinguisher?: number; rd?: string; post_policy: boolean; routes: number; since: string; last_update: string }
 export type RibStats = { prefixes_v4: number; prefixes_v6: number; vpn_prefixes?: number; vrfs?: number; routes: number; attribute_sets: number; peers: number; bytes: number }
 
+export type BmpReplication = {
+  enabled: boolean
+  caught_up?: boolean
+  error?: string
+  routers?: { router: string; peers_up: number; last_record: string }[]
+}
+
 export type BmpView = {
   enabled: boolean
   policy: BmpPolicy
   routers: string[]
   as_providers: string[]
-  status?: { enabled: boolean; listen: string; error?: string; rib: RibStats; sessions: BmpSession[]; peers: BmpPeer[] } | null
+  status?: { enabled: boolean; listen: string; error?: string; rib: RibStats; sessions: BmpSession[]; peers: BmpPeer[]; replication?: BmpReplication } | null
 }
 
 export type BmpRoute = {
