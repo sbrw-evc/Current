@@ -5,8 +5,8 @@ export type BmpPolicy = 'prefer-post' | 'post' | 'pre'
 export const AS_PROVIDERS = ['routing', 'flow', 'flow-except-private', 'geoip'] as const
 
 export type BmpSession = { router: string; sys_name?: string; sys_descr?: string; since: string; peers_up: number; messages: number; errors: number; last_error?: string }
-export type BmpPeer = { router: string; address: string; as: number; distinguisher?: number; post_policy: boolean; routes: number; since: string; last_update: string }
-export type RibStats = { prefixes_v4: number; prefixes_v6: number; routes: number; attribute_sets: number; peers: number; bytes: number }
+export type BmpPeer = { router: string; address: string; as: number; distinguisher?: number; rd?: string; post_policy: boolean; routes: number; since: string; last_update: string }
+export type RibStats = { prefixes_v4: number; prefixes_v6: number; vpn_prefixes?: number; vrfs?: number; routes: number; attribute_sets: number; peers: number; bytes: number }
 
 export type BmpView = {
   enabled: boolean
@@ -18,6 +18,7 @@ export type BmpView = {
 
 export type BmpRoute = {
   prefix: string
+  rd?: string // VPN table the route was found in; empty for the global table
   origin_as: number
   as_path: number[]
   communities: string[]
@@ -30,6 +31,18 @@ export type BmpDraft = { enabled: boolean; policy: BmpPolicy; routers: string; a
 
 export function toDraft(v: BmpView): BmpDraft {
   return { enabled: v.enabled, policy: v.policy, routers: v.routers.join('\n'), as_providers: [...v.as_providers] }
+}
+
+// validRD accepts a route distinguisher as Inventory DB VRFs write it:
+// 65000:100, 192.0.2.1:100 or 4200000000:100.
+export function validRD(s: string): boolean {
+  const m = /^(\d+|\d+\.\d+\.\d+\.\d+):(\d+)$/.exec(s.trim())
+  if (!m) return false
+  const n = Number(m[2])
+  if (m[1].includes('.')) return m[1].split('.').every((o) => Number(o) <= 255) && n <= 0xffff
+  const asn = Number(m[1])
+  if (asn > 0xffffffff) return false
+  return asn <= 0xffff ? n <= 0xffffffff : n <= 0xffff
 }
 
 export function validate(d: BmpDraft): string[] {

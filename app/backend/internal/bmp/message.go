@@ -34,6 +34,7 @@ const (
 	flagV = 0x80 // IPv6 peer address
 	flagL = 0x40 // post-policy Adj-RIB-In
 	flagA = 0x20 // legacy 2-byte AS_PATH
+	flagO = 0x10 // Adj-RIB-Out (RFC 8671)
 )
 
 var msgNames = map[byte]string{
@@ -58,6 +59,10 @@ type peerHeader struct {
 }
 
 func (h peerHeader) post() bool { return h.typ == peerLocRIB || h.flags&flagL != 0 }
+
+// out reports routes advertised to the peer (Adj-RIB-Out, RFC 8671) rather
+// than received from it. The O flag is not defined for Loc-RIB peers.
+func (h peerHeader) out() bool { return h.typ != peerLocRIB && h.flags&flagO != 0 }
 
 // as4 reports 4-byte AS numbers in AS_PATH (the A flag is clear). The Loc-RIB
 // peer type (RFC 9069) always uses 4-byte AS numbers.

@@ -201,6 +201,7 @@ type ifEntry struct {
 	name, descr                               string
 	speed                                     uint64
 	boundary, connectivity, provider, circuit string
+	rd                                        string // route distinguisher of the interface VRF
 }
 
 const (
@@ -274,6 +275,7 @@ func (e *Enricher) iface(x *expEntry, addr netip.Addr, idx uint32, cls *classifi
 		i.source = ifSourceInventory
 		i.name, i.descr, i.speed = it.Name, it.Description, it.Speed
 		i.boundary, i.connectivity, i.provider, i.circuit = it.Boundary, it.Connectivity, it.Provider, it.Circuit
+		i.rd = it.RD
 		if i.descr == "" {
 			i.descr = cdescr
 		}
@@ -346,14 +348,21 @@ func (e *Enricher) enrichOne(f *flow.Flow, x *expEntry, ea netip.Addr, snap *inv
 		st.unknownExporter++
 		unk.exporter(ea)
 	}
+	// Routes are looked up in the VRF of the input interface (else the
+	// output one), the table the router forwarded the flow with.
+	rd, rdSet := "", false
 	if f.InIf != 0 {
 		i := e.iface(x, ea, f.InIf, cls, now, st)
+		rd, rdSet = i.rd, true
 		st.countIf(i)
 		f.InIfName, f.InIfDescription, f.InIfSpeed = i.name, i.descr, i.speed
 		f.InIfBoundary, f.InIfConnectivity, f.InIfProvider, f.InIfCircuit = i.boundary, i.connectivity, i.provider, i.circuit
 	}
 	if f.OutIf != 0 {
 		i := e.iface(x, ea, f.OutIf, cls, now, st)
+		if !rdSet {
+			rd = i.rd
+		}
 		st.countIf(i)
 		f.OutIfName, f.OutIfDescription, f.OutIfSpeed = i.name, i.descr, i.speed
 		f.OutIfBoundary, f.OutIfConnectivity, f.OutIfProvider, f.OutIfCircuit = i.boundary, i.connectivity, i.provider, i.circuit
@@ -366,7 +375,7 @@ func (e *Enricher) enrichOne(f *flow.Flow, x *expEntry, ea netip.Addr, snap *inv
 		e.network(src, f.SrcNetMask, snap, &n, st, unk, f.Bytes*max(f.SamplingRate, 1))
 		f.SrcNetPrefix, f.SrcNetName, f.SrcNetRole, f.SrcNetSite, f.SrcNetTenant, f.SrcNetVRF = n.prefix, n.name, n.role, n.site, n.tenant, n.vrf
 		f.SrcHost, f.SrcCI, f.SrcCountry, f.SrcCity = n.host, n.ci, n.geo.Country, n.geo.City
-		e.route(src, &n)
+		e.route(rd, src, &n)
 		f.SrcAS = e.as(f.SrcAS, &n)
 	}
 	if dst.IsValid() {
@@ -374,7 +383,7 @@ func (e *Enricher) enrichOne(f *flow.Flow, x *expEntry, ea netip.Addr, snap *inv
 		e.network(dst, f.DstNetMask, snap, &n, st, unk, f.Bytes*max(f.SamplingRate, 1))
 		f.DstNetPrefix, f.DstNetName, f.DstNetRole, f.DstNetSite, f.DstNetTenant, f.DstNetVRF = n.prefix, n.name, n.role, n.site, n.tenant, n.vrf
 		f.DstHost, f.DstCI, f.DstCountry, f.DstCity = n.host, n.ci, n.geo.Country, n.geo.City
-		e.route(dst, &n)
+		e.route(rd, dst, &n)
 		f.DstAS = e.as(f.DstAS, &n)
 		e.applyDstRoute(f, &n)
 	}

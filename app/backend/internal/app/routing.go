@@ -36,7 +36,8 @@ type RoutingService interface {
 	GNMIStatus() any
 	SNMPStatus() any
 	BMPStatus() any
-	BMPLookup(addr netip.Addr) (any, bool)
+	// BMPLookup finds the route of addr in the VPN table of rd (0: global).
+	BMPLookup(rd uint64, addr netip.Addr) (any, bool)
 }
 
 func (a *App) routingRoutes(h func(string, func(http.ResponseWriter, *http.Request))) {
@@ -396,7 +397,14 @@ func (a *App) bmpLookup(w http.ResponseWriter, r *http.Request, p *Principal) {
 		notImplemented(w, "the BMP routing table (it runs with the enricher)")
 		return
 	}
-	route, ok := a.deps.Routing.BMPLookup(addr)
+	var rd uint64
+	if v := strings.TrimSpace(r.URL.Query().Get("rd")); v != "" {
+		if rd, err = bmp.ParseRD(v); err != nil {
+			httpx.Error(w, http.StatusBadRequest, "invalid_rd", err.Error())
+			return
+		}
+	}
+	route, ok := a.deps.Routing.BMPLookup(rd, addr)
 	if !ok {
 		httpx.Error(w, http.StatusNotFound, "no_route", "no route covers "+addr.String())
 		return
