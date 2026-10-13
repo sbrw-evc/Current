@@ -288,21 +288,7 @@ func (r Rule) WithDefaults() Rule {
 		}
 	}
 	r.Baseline = &b
-	if r.Title == "" {
-		r.Title = defaultTitles[r.Kind]
-	}
 	return r
-}
-
-var defaultTitles = map[Kind]string{
-	KindLinkUtilization: "Загрузка канала ${interface} (${direction}) на ${exporter} — ${value_text}",
-	KindLinkCommit:      "95-й перцентиль ${interface} на ${exporter} — ${p95_text} при коммите ${commit_text}",
-	KindDDoSVolumetric:  "Объёмная атака на ${dst_ip}: ${value_text}",
-	KindDDoSSyn:         "SYN flood на ${dst_ip}: ${value_text} SYN без ACK",
-	KindTrafficAnomaly:  "Аномалия трафика ${group}: ${value_text} при норме ${expected_text}",
-	KindTrafficDrop:     "Провал трафика ${group}: ${value_text} при норме ${expected_text}",
-	KindExporterSilent:  "Нет потоков от экспортёра ${exporter} ${value_text}",
-	KindCustom:          "${rule}: ${group} — ${value_text}",
 }
 
 var (

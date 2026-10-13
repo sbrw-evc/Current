@@ -92,6 +92,7 @@ func (a *App) putGeneral(w http.ResponseWriter, r *http.Request, p *Principal) {
 	a.audit(ctx, p, "settings.general", "", map[string]any{"language": g.Language, "theme": g.Theme, "timezone": g.Timezone,
 		"public_url": g.PublicURL, "geoip": len(geo.Databases)})
 	a.reload(ctx, ReloadGeoIP)
+	a.reload(ctx, ReloadGeneral)
 	a.getGeneral(w, r, p)
 }
 

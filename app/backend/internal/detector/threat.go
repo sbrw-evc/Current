@@ -18,7 +18,10 @@ func init() {
 	Kinds = append(Kinds, KindThreatContact)
 	kindSignals[KindThreatContact] = struct{ signal, method string }{"sec.threat.contact", "RED"}
 	kindDefaults[KindThreatContact] = struct{ window, interval time.Duration }{5 * time.Minute, time.Minute}
-	defaultTitles[KindThreatContact] = "Контакт ${host} с адресом из списка угроз ${threat_list} (${threat_ip})"
+	defaultTitles[KindThreatContact] = text{
+		"Контакт ${host} с адресом из списка угроз ${threat_list} (${threat_ip})",
+		"Contact of ${host} with ${threat_ip} from the threat list ${threat_list}",
+	}
 }
 
 // defaultThreatRule is the built-in threat contact rule.
@@ -129,7 +132,7 @@ func threatObservation(e evalCtx, r threatRow) observation {
 			"bps": fmt.Sprintf("%.0f", r.bps), "pps": fmt.Sprintf("%.0f", r.pps), "flows": fmt.Sprint(r.flows),
 			"exporter": deviceCI(r.exporter, r.exp),
 		},
-		vars:       map[string]string{"host": host, "threshold_text": formatRate(e.rule.Thresholds.BPS, "bps")},
+		vars:       map[string]string{"host": host, "threshold_text": formatRate(e.rule.Thresholds.BPS, "bps", e.lang)},
 		linkFilter: andFilters(e.rule.Filter, "(SrcAddr = "+r.host+" OR DstAddr = "+r.host+") AND (SrcThreat != '' OR DstThreat != '')"),
 		linkDims:   []string{"SrcAddr", "DstAddr", "DstPort"},
 	}

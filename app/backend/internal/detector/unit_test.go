@@ -176,12 +176,49 @@ func TestRules(t *testing.T) {
 	}
 }
 
+func TestTitleLanguage(t *testing.T) {
+	for _, c := range []struct {
+		v                float64
+		unit, lang, want string
+	}{
+		{4.2e9, "bps", LangEN, "4.2 Gbit/s"},
+		{1500, "pps", LangEN, "1.5 kpps"},
+		{1500, "pps", "", "1.5 тыс. пак/с"},
+		{10, "min", LangEN, "10 min"},
+		{10, "min", "de", "10 мин"},
+	} {
+		if s := formatRate(c.v, c.unit, c.lang); s != c.want {
+			t.Errorf("formatRate(%v, %s, %s) = %q, want %q", c.v, c.unit, c.lang, s, c.want)
+		}
+	}
+	if s := groupText(nil, nil, LangEN); s != "all traffic" {
+		t.Error(s)
+	}
+	ru := defaultTitles[KindDDoSVolumetric].ru
+	for _, c := range []struct{ title, lang, want string }{
+		{"", LangEN, "Volumetric attack on ${dst_ip}: ${value_text}"},
+		{"", LangRU, ru},
+		{ru, LangEN, "Volumetric attack on ${dst_ip}: ${value_text}"}, // saved by earlier versions
+		{"Attack on ${dst_ip}", LangRU, "Attack on ${dst_ip}"},
+	} {
+		r := Rule{Kind: KindDDoSVolumetric, Title: c.title}
+		if got := titleTemplate(r.WithDefaults(), c.lang); got != c.want {
+			t.Errorf("title %q in %s = %q, want %q", c.title, c.lang, got, c.want)
+		}
+	}
+	for _, k := range Kinds {
+		if d := defaultTitles[k]; d.ru == "" || d.en == "" {
+			t.Errorf("kind %s: default title missing", k)
+		}
+	}
+}
+
 func TestTitleAndLinks(t *testing.T) {
-	got := renderTitle("Load ${interface} on ${exporter} — ${value_text} ${missing}", map[string]string{"interface": "xe-0/0/1", "exporter": "edge-01", "value_text": formatRate(93.5, "%")})
+	got := renderTitle("Load ${interface} on ${exporter} — ${value_text} ${missing}", map[string]string{"interface": "xe-0/0/1", "exporter": "edge-01", "value_text": formatRate(93.5, "%", LangRU)})
 	if got != "Load xe-0/0/1 on edge-01 — 93.5 %" {
 		t.Fatal(got)
 	}
-	if s := formatRate(4.2e9, "bps"); s != "4.2 Гбит/с" {
+	if s := formatRate(4.2e9, "bps", LangRU); s != "4.2 Гбит/с" {
 		t.Fatal(s)
 	}
 	from := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
@@ -322,9 +359,12 @@ func TestSender(t *testing.T) {
 	}
 
 	// Test event as in the preset quick test.
-	te, err := s.SendTest(ctx, "")
+	te, err := s.SendTest(ctx, "", LangEN)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if te.Title != "Umbrella Flow test event" {
+		t.Fatal(te.Title)
 	}
 	got = in.take()
 	if len(got) != 1 || got[0]["id"] != te.ID || got[0]["signal"] != "umbrella_test" || got[0]["status"] != "firing" ||
@@ -332,7 +372,7 @@ func TestSender(t *testing.T) {
 		t.Fatalf("%v", got)
 	}
 	in.status.Store(403)
-	if _, err := SendTest(ctx, nil, in.srv.URL, token, "x"); err == nil || !strings.Contains(err.Error(), "403") {
+	if _, err := SendTest(ctx, nil, in.srv.URL, token, "x", ""); err == nil || !strings.Contains(err.Error(), "403") {
 		t.Fatal(err)
 	}
 }

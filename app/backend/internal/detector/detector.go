@@ -36,8 +36,11 @@ type Config struct {
 	State StateStore
 	// PublicURL of Flow for links.flow (empty: no links).
 	PublicURL string
-	Now       func() time.Time
-	Logger    *slog.Logger
+	// Language of the event titles, read on every evaluation ("ru" | "en");
+	// nil: "ru".
+	Language func() string
+	Now      func() time.Time
+	Logger   *slog.Logger
 	// Metrics, when set, registers the detector metrics and the
 	// per-interface gauges flow_interface_bps and
 	// flow_interface_utilization_ratio {exporter, ifname, direction}.
@@ -62,6 +65,7 @@ type Detector struct {
 	commit     CommitSource
 	state      StateStore
 	publicURL  string
+	language   func() string
 	now        func() time.Time
 	log        *slog.Logger
 	lag        time.Duration
@@ -104,7 +108,8 @@ func New(cfg Config) (*Detector, error) {
 	d := &Detector{
 		conn: cfg.Conn, store: st, sink: cfg.Sender, exporters: cfg.Exporters, commit: cfg.Commit,
 		state: cfg.State, publicURL: strings.TrimRight(cfg.PublicURL, "/"), now: cfg.Now, log: cfg.Logger,
-		lag: cfg.Lag, groupLimit: cfg.GroupLimit, timeout: cfg.QueryTimeout, tickEvery: cfg.TickEvery,
+		language: cfg.Language,
+		lag:      cfg.Lag, groupLimit: cfg.GroupLimit, timeout: cfg.QueryTimeout, tickEvery: cfg.TickEvery,
 		alerts: map[string]map[string]*AlertState{},
 	}
 	if d.now == nil {
@@ -163,6 +168,14 @@ func New(cfg Config) (*Detector, error) {
 	d.reconcileLocked()
 	d.mu.Unlock()
 	return d, nil
+}
+
+// lang is the language of the event titles.
+func (d *Detector) lang() string {
+	if d.language == nil {
+		return LangRU
+	}
+	return normLang(d.language())
 }
 
 func compileRules(rules []Rule) ([]*ruleRun, error) {
@@ -376,7 +389,7 @@ func (d *Detector) evalRule(ctx context.Context, r *ruleRun, now time.Time) erro
 
 	qctx, cancel := context.WithTimeout(ctx, d.timeout)
 	start := time.Now()
-	obs, err := d.evaluate(qctx, evalCtx{rule: r.rule, fr: r.fr, now: now, active: active})
+	obs, err := d.evaluate(qctx, evalCtx{rule: r.rule, lang: d.lang(), fr: r.fr, now: now, active: active})
 	cancel()
 	took := time.Since(start)
 	d.m.evals.WithLabelValues(r.rule.ID).Inc()
@@ -476,13 +489,13 @@ func (d *Detector) firingEvent(rule Rule, st *AlertState, o *observation, now ti
 	maps.Copy(vars, o.vars)
 	vars["ci"], vars["ip"], vars["source_ref"], vars["group"] = o.ci, o.ip, o.ref, o.group
 	vars["value"] = trimFloat(o.value, 2)
-	vars["value_text"] = formatRate(o.value, o.unit)
+	vars["value_text"] = formatRate(o.value, o.unit, d.lang())
 	if vars["exporter"] == "" {
 		vars["exporter"] = o.ci
 	}
 	ev := Event{
 		ID: eventID(rule.ID, st.Key, st.Since), Status: StatusFiring, Signal: signal, Method: method,
-		Severity: rule.Severity, Title: renderTitle(rule.Title, vars), CI: o.ci, SourceRef: o.ref, IP: o.ip,
+		Severity: rule.Severity, Title: renderTitle(titleTemplate(rule, d.lang()), vars), CI: o.ci, SourceRef: o.ref, IP: o.ip,
 		Value: ptr(o.value), Labels: labels, StartsAt: rfc3339(st.Since),
 	}
 	if ev.Title == "" {
