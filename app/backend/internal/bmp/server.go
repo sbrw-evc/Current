@@ -7,8 +7,9 @@
 // SrcAS / DstAS.
 //
 // The BGP decoder is written from the RFCs (4271, 4760, 6793, 7911, 1997,
-// 8092, 9069, 4364, 4659, 8671): unicast and L3VPN IPv4 / IPv6, other
-// address families are skipped.
+// 8092, 9069, 4364, 4659, 8671, 8277, 7432, 9136): unicast, labeled unicast
+// and L3VPN IPv4 / IPv6 and the IP routes of EVPN; other address families
+// are skipped.
 //
 // With several enricher processes, sessions are replicated (replica.go):
 // each process replays the sessions of the others into its own RIB.

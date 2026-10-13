@@ -35,14 +35,29 @@ const (
 	segConfedSet      = 4
 )
 
-// AFI / SAFI values handled: unicast and L3VPN (RFC 4364, RFC 4659) IPv4
-// and IPv6.
+// AFI / SAFI values handled: unicast, labeled unicast (RFC 8277) and L3VPN
+// (RFC 4364, RFC 4659) IPv4 and IPv6, and the IP routes of EVPN (RFC 7432
+// MAC/IP advertisements, RFC 9136 IP prefixes).
 const (
 	afiIPv4     = 1
 	afiIPv6     = 2
+	afiL2VPN    = 25
 	safiUnicast = 1
+	safiLabeled = 4
+	safiEVPN    = 70
 	safiVPN     = 128
 )
+
+// handledFamily reports an AFI / SAFI the decoder keeps.
+func handledFamily(afi uint16, safi uint8) bool {
+	switch safi {
+	case safiUnicast, safiLabeled, safiVPN:
+		return afi == afiIPv4 || afi == afiIPv6
+	case safiEVPN:
+		return afi == afiL2VPN
+	}
+	return false
+}
 
 // asTrans is AS_TRANS (RFC 6793), the 2-byte placeholder for 4-byte ASNs.
 const asTrans = 23456
@@ -349,7 +364,7 @@ func (u *update) parseMPReach(v []byte, caps *sessionCaps) error {
 	}
 	nh := v[4 : 4+nhl]
 	nlri := v[4+nhl+1:] // one reserved byte
-	if (safi != safiUnicast && safi != safiVPN) || (afi != afiIPv4 && afi != afiIPv6) {
+	if !handledFamily(afi, safi) {
 		return nil
 	}
 	if safi == safiVPN {
@@ -367,11 +382,17 @@ func (u *update) parseMPReach(v []byte, caps *sessionCaps) error {
 		u.attrs.NextHop = netip.AddrFrom16([16]byte(nh[:16])).Unmap()
 	}
 	var err error
-	if safi == safiVPN {
-		u.vpnAnnounced, err = parseVPNNLRI(nlri, afi, caps.hasAddPath(afi, safi), false, u.vpnAnnounced)
-		return err
+	addPath := caps.hasAddPath(afi, safi)
+	switch safi {
+	case safiVPN:
+		u.vpnAnnounced, err = parseVPNNLRI(nlri, afi, addPath, false, true, u.vpnAnnounced)
+	case safiLabeled:
+		u.announced, err = parseLabeledNLRI(nlri, afi, addPath, false, u.announced)
+	case safiEVPN:
+		u.vpnAnnounced, err = parseEVPN(nlri, addPath, u.vpnAnnounced)
+	default:
+		u.announced, err = parseNLRI(nlri, afi, addPath, u.announced)
 	}
-	u.announced, err = parseNLRI(nlri, afi, caps.hasAddPath(afi, safi), u.announced)
 	return err
 }
 
@@ -380,23 +401,106 @@ func (u *update) parseMPUnreach(v []byte, caps *sessionCaps) error {
 		return errShort
 	}
 	afi, safi := binary.BigEndian.Uint16(v[0:2]), v[2]
-	if (safi != safiUnicast && safi != safiVPN) || (afi != afiIPv4 && afi != afiIPv6) {
+	if !handledFamily(afi, safi) {
 		return nil
 	}
 	var err error
-	if safi == safiVPN {
-		u.vpnWithdrawn, err = parseVPNNLRI(v[3:], afi, caps.hasAddPath(afi, safi), true, u.vpnWithdrawn)
-		return err
+	addPath := caps.hasAddPath(afi, safi)
+	switch safi {
+	case safiVPN:
+		u.vpnWithdrawn, err = parseVPNNLRI(v[3:], afi, addPath, true, true, u.vpnWithdrawn)
+	case safiLabeled:
+		u.withdrawn, err = parseLabeledNLRI(v[3:], afi, addPath, true, u.withdrawn)
+	case safiEVPN:
+		u.vpnWithdrawn, err = parseEVPN(v[3:], addPath, u.vpnWithdrawn)
+	default:
+		u.withdrawn, err = parseNLRI(v[3:], afi, addPath, u.withdrawn)
 	}
-	u.withdrawn, err = parseNLRI(v[3:], afi, caps.hasAddPath(afi, safi), u.withdrawn)
 	return err
+}
+
+// parseLabeledNLRI decodes labeled unicast prefixes (RFC 8277): the label
+// stack is skipped, the routes go to the unicast table.
+func parseLabeledNLRI(b []byte, afi uint16, addPath, withdraw bool, out []netip.Prefix) ([]netip.Prefix, error) {
+	ps, err := parseVPNNLRI(b, afi, addPath, withdraw, false, nil)
+	for _, p := range ps {
+		out = append(out, p.prefix)
+	}
+	return out, err
+}
+
+// EVPN route types carrying IP routes.
+const (
+	evpnMACIP    = 2 // MAC/IP advertisement (RFC 7432 §7.2): a host route when the IP is set
+	evpnIPPrefix = 5 // IP prefix (RFC 9136 §3.1)
+)
+
+// parseEVPN keeps the IP routes of EVPN NLRI (route type, length, value):
+// MAC/IP advertisements with an IP address as host routes and IP prefix
+// routes, in the table of their route distinguisher. Other route types
+// (Ethernet A-D, multicast, Ethernet segment...) carry no IP route.
+func parseEVPN(b []byte, addPath bool, out []vpnPrefix) ([]vpnPrefix, error) {
+	for len(b) > 0 {
+		if addPath {
+			if len(b) < 4 {
+				return out, errShort
+			}
+			b = b[4:]
+		}
+		if len(b) < 2 {
+			return out, errShort
+		}
+		typ, l := b[0], int(b[1])
+		if 2+l > len(b) {
+			return out, fmt.Errorf("EVPN route: %w", errShort)
+		}
+		v := b[2 : 2+l]
+		b = b[2+l:]
+		switch typ {
+		case evpnMACIP:
+			// RD 8, ESI 10, Ethernet tag 4, MAC length 1, MAC 6, IP length 1, IP.
+			if len(v) < 30 {
+				return out, fmt.Errorf("EVPN MAC/IP route: %w", errShort)
+			}
+			rd := binary.BigEndian.Uint64(v[0:8])
+			ipBits := int(v[29])
+			ip := v[30:]
+			switch {
+			case ipBits == 32 && len(ip) >= 4:
+				out = append(out, vpnPrefix{rd: rd, prefix: netip.PrefixFrom(netip.AddrFrom4([4]byte(ip[:4])), 32)})
+			case ipBits == 128 && len(ip) >= 16:
+				out = append(out, vpnPrefix{rd: rd, prefix: netip.PrefixFrom(netip.AddrFrom16([16]byte(ip[:16])), 128)})
+			case ipBits != 0:
+				return out, fmt.Errorf("EVPN MAC/IP route: IP length %d", ipBits)
+			}
+		case evpnIPPrefix:
+			// RD 8, ESI 10, Ethernet tag 4, prefix length 1, prefix,
+			// gateway, label 3: 34 bytes for IPv4, 58 for IPv6.
+			if len(v) != 34 && len(v) != 58 {
+				return out, fmt.Errorf("EVPN IP prefix route: length %d", len(v))
+			}
+			rd := binary.BigEndian.Uint64(v[0:8])
+			bits := int(v[22])
+			var p netip.Prefix
+			if len(v) == 34 {
+				p = netip.PrefixFrom(netip.AddrFrom4([4]byte(v[23:27])), bits)
+			} else {
+				p = netip.PrefixFrom(netip.AddrFrom16([16]byte(v[23:39])), bits)
+			}
+			if !p.IsValid() {
+				return out, fmt.Errorf("EVPN IP prefix route: prefix length %d", bits)
+			}
+			out = append(out, vpnPrefix{rd: rd, prefix: p.Masked()})
+		}
+	}
+	return out, nil
 }
 
 // parseVPNNLRI decodes labeled VPN prefixes (RFC 4364 §4.3.4, RFC 8277):
 // length in bits, MPLS labels (3 bytes each, up to the bottom-of-stack bit),
-// an 8-byte route distinguisher, then the prefix. A withdrawal carries one
-// label field whatever its value.
-func parseVPNNLRI(b []byte, afi uint16, addPath, withdraw bool, out []vpnPrefix) ([]vpnPrefix, error) {
+// an 8-byte route distinguisher (withRD), then the prefix. A withdrawal
+// carries one label field whatever its value.
+func parseVPNNLRI(b []byte, afi uint16, addPath, withdraw, withRD bool, out []vpnPrefix) ([]vpnPrefix, error) {
 	maxBits := 32
 	if afi == afiIPv6 {
 		maxBits = 128
@@ -428,11 +532,14 @@ func parseVPNNLRI(b []byte, afi uint16, addPath, withdraw bool, out []vpnPrefix)
 				break
 			}
 		}
-		if bits < 64 || len(v) < 8 {
-			return out, fmt.Errorf("VPN prefix route distinguisher: %w", errShort)
+		var rd uint64
+		if withRD {
+			if bits < 64 || len(v) < 8 {
+				return out, fmt.Errorf("VPN prefix route distinguisher: %w", errShort)
+			}
+			rd = binary.BigEndian.Uint64(v[:8])
+			v, bits = v[8:], bits-64
 		}
-		rd := binary.BigEndian.Uint64(v[:8])
-		v, bits = v[8:], bits-64
 		if bits > maxBits {
 			return out, fmt.Errorf("prefix length %d", bits)
 		}
