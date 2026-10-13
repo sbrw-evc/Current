@@ -18,24 +18,31 @@ import (
 	"github.com/sbrw-evc/network/app/backend/internal/snmp"
 )
 
-// Settings keys and reload topics of the SNMP poller and the BMP receiver.
+// Settings keys and reload topics of the gNMI and SNMP pollers and the BMP
+// receiver.
 const (
+	SettingGNMI = "gnmi"
 	SettingSNMP = "snmp"
 	SettingBMP  = "bmp"
+	ReloadGNMI  = "gnmi"
 	ReloadSNMP  = "snmp"
 	ReloadBMP   = "bmp"
 )
 
-// RoutingService is the SNMP poller and the BMP receiver of this process
-// (wiring.Routing). Each method returns nil / false when the component does
-// not run here (it runs with the enricher).
+// RoutingService is the gNMI and SNMP pollers and the BMP receiver of this
+// process (wiring.Routing). Each method returns nil / false when the
+// component does not run here (it runs with the enricher).
 type RoutingService interface {
+	GNMIStatus() any
 	SNMPStatus() any
 	BMPStatus() any
 	BMPLookup(addr netip.Addr) (any, bool)
 }
 
 func (a *App) routingRoutes(h func(string, func(http.ResponseWriter, *http.Request))) {
+	h("GET /api/settings/gnmi", a.guard(perms(access.GNMIView), a.getGNMI))
+	h("PUT /api/settings/gnmi", a.guard(perms(access.GNMIEdit), a.putGNMI))
+	h("POST /api/settings/gnmi/test", a.guard(perms(access.GNMIEdit), a.testGNMI))
 	h("GET /api/settings/snmp", a.guard(perms(access.SNMPView), a.getSNMP))
 	h("PUT /api/settings/snmp", a.guard(perms(access.SNMPEdit), a.putSNMP))
 	h("POST /api/settings/snmp/test", a.guard(perms(access.SNMPEdit), a.testSNMP))

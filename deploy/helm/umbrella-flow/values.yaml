@@ -33,7 +33,7 @@ roles:
     resources:
       requests: {cpu: 500m, memory: 256Mi}
       limits: {memory: 1Gi}
-  # The BMP receiver and the SNMP poller run with the enricher. With BMP
+  # The BMP receiver and the gNMI / SNMP pollers run with the enricher. With BMP
   # enabled keep one enricher replica (or one per router group): each
   # replica only knows the routes of the BMP sessions it holds.
   enricher:

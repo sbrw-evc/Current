@@ -3,7 +3,7 @@ package enrich
 import "net/netip"
 
 // IfNameChain combines interface sources in priority order (the collector's
-// option data first, then SNMP): the first source that knows the interface
+// option data first, then gNMI, then SNMP): the first source that knows the interface
 // gives its name, and missing description and speed are taken from the next
 // ones. Nil sources are skipped; nil is returned when none is left.
 func IfNameChain(srcs ...IfNameSource) IfNameSource {

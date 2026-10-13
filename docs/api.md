@@ -493,12 +493,43 @@ process only), `0.0.0.0` when the record names no source. `ExporterName`: `vpc-�
 | GET | `/api/settings/flowlogs` (`settings.flowlogs:view`) | `{available, public_url, aws: {enabled, token_set, endpoint, url}, azure: {…}, gcp: {…}}` — `available`: this process can accept flow logs; `url`: `<public_url><endpoint>` (`""` without a public URL in the general settings). Console: Settings → Cloud flow logs (write-only tokens, ingest URLs and setup snippets for AWS Firehose, Azure and GCP Pub/Sub push) |
 | PUT | `/api/settings/flowlogs` (`settings.flowlogs:edit`) | `{aws?: {enabled, token?}, azure?: …, gcp?: …}` — `token` (≥ 16 characters) goes to OpenBao, `""` removes it, omitted keeps it; enabling needs a token (400 `flowlogs_invalid`) |
 
+## gNMI
+
+Interface data read over gNMI (OpenConfig) for exporters that Inventory DB does not describe, or whose interfaces have
+no name or speed there (`internal/gnmi`, runs with the enricher). Order of the enricher's interface sources: Inventory
+DB, then the collector's option templates / sFlow counters, then gNMI, then SNMP — when gNMI and SNMP both answer for a
+device, the gNMI name wins and SNMP only fills a missing description or speed (an Inventory DB device whose interface
+lacks an `snmp_index` is matched by the gNMI / SNMP name). Each poll is a series of gNMI `Get` requests (one path each,
+`name=*` / `index=*` wildcards) over gRPC: `/interfaces/interface/state/ifindex` (required: a device that refuses it
+fails the poll), `/interfaces/interface/state/description`, `/interfaces/interface/ethernet/state/port-speed` and
+`negotiated-port-speed`, `/interfaces/interface/aggregation/state/lag-speed`, and the subinterface
+`/interfaces/interface/subinterfaces/subinterface/state/{ifindex,description}` (the others are optional). Values may
+come as typed scalars or as JSON / JSON_IETF (leaves or whole containers, module prefixes stripped). Name = the
+interface key (`<name>.<index>` for a subinterface, which takes its interface's speed; a subinterface sharing the
+ifindex of its interface is ignored), description = `state/description`, speed = the negotiated, else the configured
+port speed (OpenConfig `SPEED_10MB` … `SPEED_800GB` identities mapped to bits/s, `SPEED_UNKNOWN` = 0), else
+`lag-speed` × 10⁶. Requests use JSON_IETF (a device answering `InvalidArgument` / `Unimplemented` is asked again with
+JSON) or JSON per profile. Credentials: optional `username` / `password` sent as the `username` / `password` gRPC
+metadata of every request (the gNMI convention), TLS on / off (TLS 1.2+; without TLS the password travels in clear
+text), `skip_verify`, an optional `server_name` the device certificate must carry (default: the address) and an
+optional PEM CA bundle (default: the system roots). Polled devices, profiles by prefix, interval / TTL and retries
+after a failure work as for SNMP below (`timeout_seconds` default 10, per request). Secrets live in OpenBao at
+`gnmi/<profile id>/{password,ca}` (key `value`); the settings hold only references. Settings key `gnmi`, permissions
+`settings.gnmi:view` / `settings.gnmi:edit`. Metrics `flow_gnmi_polls_total{result}`, `flow_gnmi_devices`; status
+component `gnmi`.
+
+| Method | Path | |
+|---|---|---|
+| GET | `/api/settings/gnmi` | `{enabled, poll_exporters, devices: [addr], interval_minutes, ttl_minutes, timeout_seconds (10), concurrency (8), profiles: [{id, name, prefixes, port (57400), username?, tls, skip_verify?, server_name?, encoding: "json_ietf"\|"json", password_set, ca_set}], encodings, status?: {enabled, devices: [{address, profile, interfaces, polled?, error?, configured}], failing}}` — `status` when the poller runs in this process |
+| PUT | `/api/settings/gnmi` | the same fields; per profile the write-only `password` and `ca_pem` (omitted = keep, `""` = remove; a password is required with a `username`, the CA must be PEM). A profile without a user name drops its password, one without TLS its CA. A profile without a known `id` gets a new one; removed profiles' secrets are deleted. → as GET; 400 `gnmi_invalid` |
+| POST | `/api/settings/gnmi/test` | `{address, profile}` (a profile as in PUT; secrets not given are taken from the saved profile of the same `id`) → `{ok, error?, details?: {interfaces, sample: [{index, name, descr, speed}]}}` |
+
 ## SNMP
 
 Fallback interface data for exporters that Inventory DB does not describe, or whose interfaces have no name or speed
 there (`internal/snmp`, runs with the enricher). It is the last interface source of the enricher: Inventory DB, then
-the collector's option templates / sFlow counters, then SNMP (a missing description or speed is filled from the next
-source; an Inventory DB device whose interface lacks an `snmp_index` is matched by the SNMP `ifName`). SNMPv2c and
+the collector's option templates / sFlow counters, then gNMI, then SNMP (a missing description or speed is filled from
+the next source; an Inventory DB device whose interface lacks an `snmp_index` is matched by the SNMP `ifName`). SNMPv2c and
 SNMPv3 (USM: MD5 / SHA / SHA-224 / -256 / -384 / -512, DES / AES / AES-192 / AES-256 / AES-192C / AES-256C) with
 GETBULK walks of `ifName`, `ifDescr`, `ifAlias`, `ifHighSpeed` and `ifSpeed`: name = `ifName` (else `ifDescr`),
 description = `ifAlias`, speed = `ifHighSpeed` × 10⁶ (else `ifSpeed`). Polled devices: the exporters seen in flows

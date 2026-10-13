@@ -204,15 +204,20 @@ func (b *BMP) Status(context.Context) any {
 	return out
 }
 
-// Routing groups the SNMP poller and the BMP receiver of the enricher
-// process; it implements app.RoutingService.
+// Routing groups the gNMI and SNMP pollers and the BMP receiver of the
+// enricher process; it implements app.RoutingService.
 type Routing struct {
+	GNMI *GNMI
 	SNMP *SNMP
 	BMP  *BMP
 }
 
-// NewRouting builds both components (disabled until their settings enable them).
+// NewRouting builds the components (disabled until their settings enable them).
 func NewRouting(st *store.Store, vault *secrets.Client, reg prometheus.Registerer, log *slog.Logger) (*Routing, error) {
+	g, err := NewGNMI(st, vault, reg, log)
+	if err != nil {
+		return nil, err
+	}
 	s, err := NewSNMP(st, vault, reg, log)
 	if err != nil {
 		return nil, err
@@ -221,18 +226,23 @@ func NewRouting(st *store.Store, vault *secrets.Client, reg prometheus.Registere
 	if err != nil {
 		return nil, err
 	}
-	return &Routing{SNMP: s, BMP: b}, nil
+	return &Routing{GNMI: g, SNMP: s, BMP: b}, nil
 }
 
-// configure adds SNMP after the collector's interface names and the BMP
-// routes to the enricher configuration.
+// configure adds gNMI, then SNMP after the collector's interface names, and
+// the BMP routes to the enricher configuration.
 func (r *Routing) configure(ec *enrich.Config) {
 	if r == nil {
 		return
 	}
-	if r.SNMP != nil {
-		ec.IfNames = enrich.IfNameChain(ec.IfNames, r.SNMP.P)
+	var gn, sn enrich.IfNameSource
+	if r.GNMI != nil {
+		gn = r.GNMI.P
 	}
+	if r.SNMP != nil {
+		sn = r.SNMP.P
+	}
+	ec.IfNames = enrich.IfNameChain(ec.IfNames, gn, sn)
 	if r.BMP != nil {
 		ec.Routing = r.BMP
 	}
@@ -244,9 +254,10 @@ func (r *Routing) attach(e *enrich.Enricher) {
 	}
 }
 
-// Run runs both components until ctx ends.
+// Run runs the components until ctx ends.
 func (r *Routing) Run(ctx context.Context) {
 	var wg sync.WaitGroup
+	wg.Go(func() { r.GNMI.Run(ctx) })
 	wg.Go(func() { r.SNMP.Run(ctx) })
 	wg.Go(func() { r.BMP.Run(ctx) })
 	wg.Wait()
@@ -255,6 +266,8 @@ func (r *Routing) Run(ctx context.Context) {
 // Reload implements app.Reloader.
 func (r *Routing) Reload(ctx context.Context, what string) error {
 	switch what {
+	case app.ReloadGNMI:
+		return r.GNMI.Refresh(ctx)
 	case app.ReloadSNMP:
 		return r.SNMP.Refresh(ctx)
 	case app.ReloadBMP:
@@ -262,6 +275,9 @@ func (r *Routing) Reload(ctx context.Context, what string) error {
 	}
 	return nil
 }
+
+// GNMIStatus implements app.RoutingService.
+func (r *Routing) GNMIStatus() any { return r.GNMI.Status(context.Background()) }
 
 // SNMPStatus implements app.RoutingService.
 func (r *Routing) SNMPStatus() any { return r.SNMP.Status(context.Background()) }

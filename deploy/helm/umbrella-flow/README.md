@@ -58,7 +58,7 @@ Flow's own keys and password hashes, is lost when its pod restarts: never use it
   mode first, finish the wizard, then `kubectl exec deploy/<release>-umbrella-flow -- cat /data/flow.json` and
   upgrade with `--set roles.mode=split --set-file config.flowJson=flow.json`.
 
-The BMP receiver and the SNMP poller run with the enricher. Keep one enricher replica when BMP is used: a replica
+The BMP receiver and the gNMI / SNMP pollers run with the enricher. Keep one enricher replica when BMP is used: a replica
 knows only the routes of the BMP sessions it holds.
 
 ## Ports and services
