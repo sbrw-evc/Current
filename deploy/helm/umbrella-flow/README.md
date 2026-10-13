@@ -70,10 +70,10 @@ profiles in `subscribe` mode open one stream per device from every enricher repl
 | 8080 | TCP | `<release>-umbrella-flow` | web console, API, `/metrics`, `/healthz` |
 | 2055 | UDP | `<release>-umbrella-flow-flows` | NetFlow v5 / v9, IPFIX |
 | 6343 | UDP | `<release>-umbrella-flow-flows` | sFlow v5 |
-| 10179 | TCP | `<release>-umbrella-flow-bmp` | BMP, listened to only while enabled under Settings → BMP |
+| 10179 | TCP | `<release>-umbrella-flow-bmp` | BMP, listened to only while enabled under Data collection → BMP routing |
 
 Restrict who can reach the flow and BMP services with `service.*.loadBalancerSourceRanges` (BMP is
-unauthenticated; Settings → BMP also takes a list of allowed routers).
+unauthenticated; Data collection → BMP routing also takes a list of allowed routers).
 
 Probes use `/healthz` on the HTTP port for every role.
 

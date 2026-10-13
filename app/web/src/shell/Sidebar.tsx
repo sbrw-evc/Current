@@ -151,11 +151,18 @@ function SideLink({ page, active, rail }: { page: PageDef; active: boolean; rail
   )
 }
 
-function GroupAccordion({ group, path }: { group: NavGroup; path: string }) {
+// readOpen (as Umbrella's): a group the user has not opened or closed yet is open when it is the
+// first one, so a short menu greets a new user instead of every page at once.
+function readOpen(group: string, first: boolean) {
+  const v = read(openKey(group))
+  return v === null ? first : v === '1'
+}
+
+function GroupAccordion({ group, first, path }: { group: NavGroup; first: boolean; path: string }) {
   const t = useT(navStrings)
   const compact = useCompact()
   const hasActive = group.pages.some((p) => owns(p, path))
-  const [open, setOpen] = useState(() => hasActive || read(openKey(group.id)) !== '0')
+  const [open, setOpen] = useState(() => hasActive || readOpen(group.id, first))
   useEffect(() => {
     if (hasActive) setOpen(true)
   }, [hasActive])
@@ -223,7 +230,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
               </div>
             </Fragment>
           ))
-        : groups.map((g) => <GroupAccordion key={g.id} group={g} path={pathname} />)}
+        : groups.map((g, i) => <GroupAccordion key={g.id} group={g} first={i === 0} path={pathname} />)}
     </nav>
   )
 }

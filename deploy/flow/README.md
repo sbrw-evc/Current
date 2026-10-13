@@ -52,7 +52,7 @@ With demo traffic: `docker compose --profile demo up -d` (graphs fill within a m
 | 8080 | TCP | web console, API, `/metrics`, `/healthz` | `FLOW_HTTP_PORT`, `FLOW_HTTP_BIND` |
 | 2055 | UDP | NetFlow v5 / v9, IPFIX | `FLOW_NETFLOW_PORT` |
 | 6343 | UDP | sFlow v5 | `FLOW_SFLOW_PORT` |
-| 10179 | TCP | BMP (BGP Monitoring Protocol), listened to only while enabled under Settings → BMP | `FLOW_BMP_PORT` |
+| 10179 | TCP | BMP (BGP Monitoring Protocol), listened to only while enabled under Data collection → BMP routing | `FLOW_BMP_PORT` |
 | 8123 | TCP | ClickHouse HTTP (Grafana, `clickhouse-client`), localhost only | `CLICKHOUSE_HTTP_PORT`, `CLICKHOUSE_BIND` |
 | 8200 | TCP | OpenBao UI / API, localhost only | `OPENBAO_PORT`, `OPENBAO_BIND` |
 | 3000 | TCP | Grafana (`--profile grafana`), localhost only | `GRAFANA_PORT`, `GRAFANA_BIND` |
@@ -87,7 +87,7 @@ sflow collector 192.0.2.10 6343
 Export interface and sampler option templates: Flow uses them for interface names and the sampling rate. A sampling
 rate the exporter does not report can be set on the Exporters page.
 
-BMP (optional, for AS paths and communities): enable it under Settings → BMP, then point the routers at TCP 10179,
+BMP (optional, for AS paths and communities): enable it under Data collection → BMP routing, then point the routers at TCP 10179,
 for example:
 
 ```text

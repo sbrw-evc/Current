@@ -4,13 +4,13 @@ import type { DetectorStatus, Rule, RulesView } from './model'
 
 // The detector API (docs/api.md "Detector").
 
-export const useRules = () => useQuery({ queryKey: ['detector', 'rules'], queryFn: ({ signal }) => get<RulesView>('/api/detector/rules', signal) })
+export const useRules = (enabled = true) => useQuery({ queryKey: ['detector', 'rules'], queryFn: ({ signal }) => get<RulesView>('/api/detector/rules', signal), enabled })
 
 export const useDefaultRules = (enabled = true) =>
   useQuery({ queryKey: ['detector', 'defaults'], queryFn: ({ signal }) => get<RulesView>('/api/detector/rules/defaults', signal), staleTime: Infinity, enabled })
 
-export const useDetectorStatus = (refetch = 10e3) =>
-  useQuery({ queryKey: ['detector', 'status'], queryFn: ({ signal }) => get<DetectorStatus>('/api/detector/status', signal), refetchInterval: refetch })
+export const useDetectorStatus = (refetch = 10e3, enabled = true) =>
+  useQuery({ queryKey: ['detector', 'status'], queryFn: ({ signal }) => get<DetectorStatus>('/api/detector/status', signal), refetchInterval: refetch, enabled })
 
 // useSaveRules PUTs the whole list (the server checks every rule) and refreshes the caches.
 export function useSaveRules() {

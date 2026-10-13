@@ -55,8 +55,8 @@ const strings: Dict = {
 
 const KEY = ['inventory-db', 'integration']
 
-export function useInventoryIntegration() {
-  return useQuery({ queryKey: KEY, queryFn: ({ signal }) => get<InventoryIntegration>('/api/inventory-db/integration', signal), retry: false })
+export function useInventoryIntegration(enabled = true) {
+  return useQuery({ queryKey: KEY, queryFn: ({ signal }) => get<InventoryIntegration>('/api/inventory-db/integration', signal), retry: false, enabled })
 }
 
 export function InventoryDbIntegrationCard({ canEdit }: { canEdit: boolean }) {
