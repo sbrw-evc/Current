@@ -44,7 +44,12 @@ func Error(w http.ResponseWriter, status int, code, msg string) {
 // with the code "internal" (the text goes to the message).
 func Err(w http.ResponseWriter, err error) {
 	status, code := StatusOf(err)
-	JSON(w, status, Problem{Code: code, Message: err.Error()})
+	pr := Problem{Code: code, Message: err.Error()}
+	var v interface{ PolicyViolations() []string }
+	if errors.As(err, &v) {
+		pr.Violations = v.PolicyViolations()
+	}
+	JSON(w, status, pr)
 }
 
 // HTTPError is an error with an HTTP status and a machine-readable code. Packages

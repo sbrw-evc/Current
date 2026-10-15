@@ -377,12 +377,12 @@ func TestUsersAndRoles(t *testing.T) {
 	if code, out := admin.do("POST", "/api/roles", map[string]any{"name": "Bad", "permissions": []string{"nope:x"}}); code != 400 {
 		t.Fatal(code, out)
 	}
-	code, u := admin.do("POST", "/api/users", map[string]any{"username": "noc1", "password": "noc-password", "role_id": role["id"]})
+	code, u := admin.do("POST", "/api/users", map[string]any{"username": "noc1", "password": "Noc-Passw0rd-1", "role_id": role["id"]})
 	if code != 201 || u["role"] != "NOC" {
 		t.Fatal(code, u)
 	}
 	noc := e.client()
-	noc.login("noc1", "noc-password")
+	noc.login("noc1", "Noc-Passw0rd-1")
 	if code, _ := noc.do("GET", "/api/inventory-db", nil); code != 200 {
 		t.Fatal(code)
 	}
@@ -397,28 +397,28 @@ func TestUsersAndRoles(t *testing.T) {
 	if code, _ := admin.do("PUT", "/api/users/"+itoa(int(u["id"].(float64)))+"/password", map[string]any{"password": "short"}); code != 400 {
 		t.Fatal(code)
 	}
-	if code, _ := admin.do("PUT", "/api/users/"+itoa(int(u["id"].(float64)))+"/password", map[string]any{"password": "new-noc-password"}); code != 200 {
+	if code, _ := admin.do("PUT", "/api/users/"+itoa(int(u["id"].(float64)))+"/password", map[string]any{"password": "New-noc-Passw0rd"}); code != 200 {
 		t.Fatal(code)
 	}
 	if code, _ := noc.do("GET", "/api/auth/me", nil); code != 401 {
 		t.Fatal("session survived password reset", code)
 	}
-	noc.login("noc1", "new-noc-password")
+	noc.login("noc1", "New-noc-Passw0rd")
 	if code, _ := admin.do("PUT", "/api/users/"+itoa(int(u["id"].(float64))), map[string]any{"disabled": true}); code != 200 {
 		t.Fatal(code)
 	}
 	if code, _ := noc.do("GET", "/api/auth/me", nil); code != 401 {
 		t.Fatal("disabled user kept the session", code)
 	}
-	if code, out := noc.do("POST", "/api/auth/login", map[string]string{"username": "noc1", "password": "new-noc-password"}); code != 403 || out["error"] != "user_disabled" {
+	if code, out := noc.do("POST", "/api/auth/login", map[string]string{"username": "noc1", "password": "New-noc-Passw0rd"}); code != 403 || out["error"] != "user_disabled" {
 		t.Fatal(code, out)
 	}
 
 	// own password change
-	if code, _ := admin.do("POST", "/api/auth/password", map[string]any{"current": "wrong", "new": "another-password"}); code != 403 {
+	if code, _ := admin.do("POST", "/api/auth/password", map[string]any{"current": "wrong", "new": "Another-Passw0rd"}); code != 403 {
 		t.Fatal(code)
 	}
-	if code, _ := admin.do("POST", "/api/auth/password", map[string]any{"current": "admin-password", "new": "another-password"}); code != 200 {
+	if code, _ := admin.do("POST", "/api/auth/password", map[string]any{"current": "admin-password", "new": "Another-Passw0rd"}); code != 200 {
 		t.Fatal(code)
 	}
 	if code, _ := admin.do("GET", "/api/auth/me", nil); code != 200 {

@@ -34,6 +34,10 @@ const SnmpPage = lazy(() => import('./pages/settings/Snmp'))
 const BmpPage = lazy(() => import('./pages/settings/Bmp'))
 const UmbrellaSettingsPage = lazy(() => import('./pages/umbrella/UmbrellaSettings'))
 const DependenciesPage = lazy(() => import('./pages/umbrella/Dependencies'))
+const ProfilePage = lazy(() => import('./pages/identity/Profile'))
+const UsersPage = lazy(() => import('./pages/identity/Users'))
+const PolicyPage = lazy(() => import('./pages/identity/Users').then((m) => ({ default: m.PolicyPage })))
+const SignInSettingsPage = lazy(() => import('./pages/identity/SignInSettings'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -91,6 +95,10 @@ const router = createBrowserRouter([
       { path: 'settings/snmp', element: <Guard perm="settings.snmp:view">{lazyPage(<SnmpPage />)}</Guard> },
       { path: 'settings/bmp', element: <Guard perm="settings.bmp:view">{lazyPage(<BmpPage />)}</Guard> },
       { path: 'settings/umbrella', element: <Guard perm="settings.umbrella:view">{lazyPage(<UmbrellaSettingsPage />)}</Guard> },
+      { path: 'profile', element: lazyPage(<ProfilePage />) },
+      { path: 'settings/users', element: <Guard perm="users:view">{lazyPage(<UsersPage />)}</Guard> },
+      { path: 'settings/sign-in', element: <Guard perm="users:view">{lazyPage(<SignInSettingsPage />)}</Guard> },
+      { path: 'settings/password-policy', element: <Guard perm="users:view">{lazyPage(<PolicyPage />)}</Guard> },
       { path: 'dependencies', element: <Guard perm="dependencies:view">{lazyPage(<DependenciesPage />)}</Guard> },
       { path: '*', element: <NotFound /> },
     ],

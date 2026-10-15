@@ -41,6 +41,10 @@ type User struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	LastLoginAt *time.Time `json:"last_login_at"`
+	// ExternalID is the subject of the provider (Google, Apple, OpenID
+	// Connect, the Umbrella hub) the account is bound to.
+	ExternalID        string     `json:"-"`
+	PasswordChangedAt *time.Time `json:"password_changed_at,omitempty"`
 }
 
 // ---- roles
@@ -183,12 +187,12 @@ func (s *Store) Permissions(ctx context.Context, userID int64) ([]string, error)
 // ---- users
 
 const userCols = `u.id, u.username, u.name, u.email, u.source, u.password_ref, u.role_id, r.name, u.disabled,
-	u.created_at, u.updated_at, u.last_login_at`
+	u.created_at, u.updated_at, u.last_login_at, u.external_id, u.password_changed_at`
 
 func scanUser(row pgx.Row) (User, error) {
 	var u User
 	err := row.Scan(&u.ID, &u.Username, &u.Name, &u.Email, &u.Source, &u.PasswordRef, &u.RoleID, &u.Role, &u.Disabled,
-		&u.CreatedAt, &u.UpdatedAt, &u.LastLoginAt)
+		&u.CreatedAt, &u.UpdatedAt, &u.LastLoginAt, &u.ExternalID, &u.PasswordChangedAt)
 	return u, pgErr(err)
 }
 
@@ -273,7 +277,7 @@ func (s *Store) UpdateUser(ctx context.Context, id int64, in UserUpdate) (User, 
 
 // SetPasswordRef stores the OpenBao reference of a local user's password hash.
 func (s *Store) SetPasswordRef(ctx context.Context, id int64, ref string) error {
-	tag, err := s.pool.Exec(ctx, `UPDATE users SET password_ref = $2, updated_at = now() WHERE id = $1`, id, ref)
+	tag, err := s.pool.Exec(ctx, `UPDATE users SET password_ref = $2, password_changed_at = now(), updated_at = now() WHERE id = $1`, id, ref)
 	if err == nil && tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}

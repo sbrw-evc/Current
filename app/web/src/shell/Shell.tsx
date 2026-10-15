@@ -67,6 +67,8 @@ export function Shell() {
     )
   }
   if (!session) return null
+  // An expired password leaves only the profile, where a new one is set.
+  if (session.user.password_expired && loc.pathname !== '/profile') return <Navigate to="/profile" replace />
 
   if (mobile)
     return (

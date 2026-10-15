@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/sbrw-evc/network/app/backend/internal/access"
 	"github.com/sbrw-evc/network/app/backend/internal/auth"
@@ -27,10 +28,37 @@ type userView struct {
 	Source      string   `json:"source"`
 	Role        string   `json:"role"`
 	Permissions []string `json:"permissions"`
+	// PasskeysEnabled shows the passkeys of the profile; the password fields
+	// the expiry of a local password.
+	PasskeysEnabled   bool       `json:"passkeys_enabled"`
+	PasswordExpired   bool       `json:"password_expired"`
+	PasswordWarning   bool       `json:"password_expiry_warning"`
+	PasswordExpiresAt *time.Time `json:"password_expires_at,omitempty"`
 }
 
-func viewOf(u store.User, perms access.Set) userView {
-	return userView{ID: u.ID, Username: u.Username, Name: u.Name, Email: u.Email, Source: u.Source, Role: u.Role, Permissions: perms.List()}
+func (a *App) viewOf(ctx context.Context, u store.User, perms access.Set) userView {
+	v := userView{ID: u.ID, Username: u.Username, Name: u.Name, Email: u.Email, Source: u.Source, Role: u.Role, Permissions: perms.List()}
+	ps, _ := a.passkeyConfig(ctx)
+	v.PasskeysEnabled = ps.Enabled
+	if exp, ok := a.passwordExpiry(ctx, u); ok {
+		now := time.Now()
+		v.PasswordExpiresAt = &exp
+		v.PasswordExpired = !now.Before(exp)
+		v.PasswordWarning = !now.Before(exp.AddDate(0, 0, -a.policy(ctx).WarnDays))
+	}
+	return v
+}
+
+// passwordExpiry is when the password of a local user expires under the policy.
+func (a *App) passwordExpiry(ctx context.Context, u store.User) (time.Time, bool) {
+	if u.Source != store.SourceLocal || u.PasswordChangedAt == nil {
+		return time.Time{}, false
+	}
+	p := a.policy(ctx)
+	if p.MaxAgeDays <= 0 {
+		return time.Time{}, false
+	}
+	return u.PasswordChangedAt.AddDate(0, 0, p.MaxAgeDays), true
 }
 
 func (a *App) login(w http.ResponseWriter, r *http.Request) {
@@ -45,6 +73,13 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 	remote := httpx.ClientIP(r, a.opt.TrustedProxies)
 	username := strings.TrimSpace(in.Username)
 	keys := []string{"user:" + strings.ToLower(username), "ip:" + remote}
+	// An explicit policy (set here or by Umbrella Identity) decides the lockout
+	// of the account; without one the built-in limits stay.
+	var stored auth.PasswordPolicy
+	if found, _ := a.st.Setting(ctx, setup.SettingPasswordPolicy, &stored); found && stored.LockoutAttempts > 0 {
+		pol := stored.Normalize()
+		a.limiter.Tune(pol.LockoutAttempts, time.Duration(pol.LockoutMinutes)*time.Minute)
+	}
 	if locked, left := a.limiter.Locked(keys...); locked {
 		w.Header().Set("Retry-After", fmt.Sprint(int(left.Seconds())+1))
 		httpx.Error(w, http.StatusTooManyRequests, "too_many_attempts", "too many failed sign-ins, try again later")
@@ -78,7 +113,7 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = a.st.Audit(ctx, u.Username, "auth.login", "", remote, map[string]string{"source": u.Source})
-	httpx.JSON(w, http.StatusOK, map[string]any{"user": viewOf(u, access.NewSet(list)), "csrf": ss.CSRF})
+	httpx.JSON(w, http.StatusOK, map[string]any{"user": a.viewOf(ctx, u, access.NewSet(list)), "csrf": ss.CSRF})
 }
 
 type signInError struct {
@@ -179,7 +214,7 @@ func (a *App) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) me(w http.ResponseWriter, r *http.Request, p *Principal) {
-	httpx.JSON(w, http.StatusOK, map[string]any{"user": viewOf(p.User, p.Perms), "csrf": p.Session.CSRF})
+	httpx.JSON(w, http.StatusOK, map[string]any{"user": a.viewOf(r.Context(), p.User, p.Perms), "csrf": p.Session.CSRF})
 }
 
 func (a *App) changeOwnPassword(w http.ResponseWriter, r *http.Request, p *Principal) {
@@ -201,7 +236,7 @@ func (a *App) changeOwnPassword(w http.ResponseWriter, r *http.Request, p *Princ
 		httpx.Error(w, http.StatusForbidden, "invalid_credentials", "the current password is wrong")
 		return
 	}
-	if err := a.setPassword(r.Context(), p.User, in.New, p.Session.ID); err != nil {
+	if err := a.replacePassword(r.Context(), p.User, in.New, p.Session.ID, true); err != nil {
 		httpx.Err(w, err)
 		return
 	}
@@ -220,19 +255,27 @@ func (a *App) policy(ctx context.Context) auth.PasswordPolicy {
 
 // checkPassword validates a new password against the policy.
 func (a *App) checkPassword(ctx context.Context, password, username string) error {
-	if err := a.policy(ctx).Validate(password, username); err != nil {
-		return &httpx.HTTPError{Status: http.StatusBadRequest, Code: "weak_password", Msg: err.Error()}
-	}
-	return nil
+	return a.policy(ctx).Validate(password, username)
 }
 
-// setPassword stores the hash of a new password in OpenBao, the reference
-// in PostgreSQL, and ends the user's other sessions.
+// setPassword stores the hash of a new password (an administrator sets it:
+// the history is kept but not checked) and ends the user's other sessions.
 func (a *App) setPassword(ctx context.Context, u store.User, password, keepSession string) error {
+	return a.replacePassword(ctx, u, password, keepSession, false)
+}
+
+// replacePassword stores the hash of a new password in OpenBao, the reference
+// in PostgreSQL, remembers the previous one for the history (checked when the
+// user changes their own password) and ends the user's other sessions.
+func (a *App) replacePassword(ctx context.Context, u store.User, password, keepSession string, checkHistory bool) error {
 	if err := a.checkPassword(ctx, password, u.Username); err != nil {
 		return err
 	}
-	ref, err := a.passwords.Set(ctx, u.ID, password)
+	pol := a.policy(ctx)
+	ref, err := a.passwords.Replace(ctx, u.ID, u.PasswordRef, password, pol.HistoryCount, checkHistory)
+	if errors.Is(err, auth.ErrReused) {
+		return &auth.PolicyError{Violations: []string{auth.ViolationHistory}}
+	}
 	if err != nil {
 		return &httpx.HTTPError{Status: http.StatusServiceUnavailable, Code: "openbao_unavailable", Err: err}
 	}

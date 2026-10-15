@@ -52,6 +52,9 @@ deployed with Docker Compose (one command) or a Helm chart, and configured in a 
 - **CMDB from real traffic.** Steady CI-to-CI flows become dependency proposals on Umbrella's CMDB map.
 - **Fast storage, long history.** Raw flows plus 1 min / 5 min / 1 h aggregates in ClickHouse, with the resolution
   picked for the requested period and separate retention for each level.
+- **One sign-in for the Umbrella family.** Passkeys (Windows Hello, Touch ID, security keys), Google, Apple and OpenID
+  Connect, and Umbrella single sign-in with user, role, password policy and passkey synchronization
+  ([docs/identity-federation.md](docs/identity-federation.md)).
 - **Secure by default.** Every secret in OpenBao, local users, LDAP / AD and Entra ID sign-in, page-level roles,
   visibility limited to a user's Umbrella services, API tokens and an audit log.
 - **Up in one command.** One image for every role, a Docker Compose stack or a Helm chart, a first-run setup wizard

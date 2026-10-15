@@ -4,6 +4,7 @@ import { get } from '../../api/client'
 import { useT, type Dict } from '../../i18n'
 import { Banner } from '../../ui/ui'
 import { SIGNIN_ERRORS } from './EntraModel'
+import { strings as idStrings } from '../identity/strings'
 
 // The "Sign in with Microsoft" button of the sign-in page (shown when Entra ID sign-in is on) and the
 // error the Entra callback left in ?signin_error=…
@@ -40,6 +41,7 @@ const strings: Dict = {
 }
 
 const KNOWN = new Set<string>(SIGNIN_ERRORS)
+const errorStrings: Dict = { en: { ...idStrings.en, ...strings.en }, ru: { ...idStrings.ru, ...strings.ru } }
 
 function MicrosoftLogo() {
   return (
@@ -53,11 +55,12 @@ function MicrosoftLogo() {
 }
 
 export function EntraSignInError() {
-  const t = useT(strings)
+  const t = useT(errorStrings)
   const [params] = useSearchParams()
   const code = params.get('signin_error')
   if (!code) return null
-  return <Banner kind="error" title={t(KNOWN.has(code) ? `entra.err.${code}` : 'entra.err.unknown')} />
+  const own = t(`err.${code}`)
+  return <Banner kind="error" title={KNOWN.has(code) ? t(`entra.err.${code}`) : own !== `err.${code}` ? own : t('entra.err.unknown')} />
 }
 
 export function EntraLoginButton() {

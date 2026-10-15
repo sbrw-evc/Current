@@ -2,14 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_POLICY, failed, publicURLOk } from './policy'
 
 describe('password policy', () => {
-  it('needs 12+ letters and digits by default', () => {
-    expect(failed('short1', 'admin', DEFAULT_POLICY)).toEqual(['length'])
-    expect(failed('onlylettersherehere', 'admin', DEFAULT_POLICY)).toEqual(['digits'])
-    expect(failed('Пароль-надёжный-2026', 'admin', DEFAULT_POLICY)).toEqual([])
-    expect(failed('admin-password-1', 'admin', DEFAULT_POLICY)).toEqual(['username'])
+  it('follows the corporate default of the family', () => {
+    expect(failed('Short-1', 'admin', DEFAULT_POLICY)).toEqual(['length'])
+    expect(failed('onlylettershere', 'admin', DEFAULT_POLICY)).toEqual(['digits', 'special', 'mixed_case'])
+    expect(failed('Correct-Horse-9', 'admin', DEFAULT_POLICY)).toEqual([])
+    expect(failed('Пароль-Надёжный-2026', 'admin', DEFAULT_POLICY)).toEqual(['letters'])
+    expect(failed('Admin2026!', 'admin', { ...DEFAULT_POLICY, min_length: 8 })).toContain('common')
   })
-  it('checks special characters when asked', () => {
-    expect(failed('abcdefghijk12', 'x', { ...DEFAULT_POLICY, symbols: true })).toEqual(['symbols'])
+  it('allows any alphabet when asked', () => {
+    expect(failed('Пароль-Надёжный-2026', 'admin', { ...DEFAULT_POLICY, letters: 'any' })).toEqual([])
   })
 })
 

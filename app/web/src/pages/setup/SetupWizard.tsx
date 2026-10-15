@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Check, CheckCircle2, Circle, Plus, Trash2 } from 'lucide-react'
+import { Check, Plus, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion, MotionConfig, type Variants } from 'motion/react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError, post } from '../../api/client'
@@ -11,7 +11,8 @@ import { useTheme } from '../../theme'
 import { Choice, Choices, Pop } from '../../ui/Choice'
 import { SecretField } from '../../ui/SecretField'
 import { Banner, Brand, Button, Chip, Field, Input, Password, Preferences, Rows, Select, spring, Stepper, Switch, type Tone } from '../../ui/ui'
-import { DEFAULT_POLICY, failed, publicURLOk, rules, USERNAME } from './policy'
+import { DEFAULT_POLICY, failed, publicURLOk, USERNAME } from './policy'
+import { PolicyChecklist, PolicyEditor } from '../identity/components'
 import { setupStrings } from './strings'
 import type { Admin, ClickHouse, Collector, GeoIP, Inventory, Nats, OpenBao, PasswordPolicy, Postgres, Retention, SetupBody, SetupDefaults, SetupTheme, TestResult, TestStep, Umbrella } from './types'
 
@@ -641,20 +642,7 @@ export default function SetupWizard({ defaults }: { defaults: SetupDefaults }) {
                       <Field label={t('ad.password')}>{(id) => <Password id={id} value={admin.password} autoComplete="new-password" onChange={(e) => setAdmin({ ...admin, password: e.target.value })} />}</Field>
                       <Field label={t('ad.confirm')}>{(id) => <Password id={id} value={admin.confirm} autoComplete="new-password" onChange={(e) => setAdmin({ ...admin, confirm: e.target.value })} />}</Field>
                     </div>
-                    <ul className="checklist">
-                      {[...rules(policy).map((r) => ({ key: r, ok: admin.password !== '' && !policyFails.includes(r), text: r === 'length' ? t('pp.length', { n: policy.min_length }) : t(`pp.${r}`) })), { key: 'match', ok: admin.password !== '' && admin.password === admin.confirm, text: t('pp.match') }].map((i) => (
-                        <li key={i.key} className={i.ok ? 'ok' : ''}>
-                          {i.ok ? (
-                            <Pop>
-                              <CheckCircle2 size={16} />
-                            </Pop>
-                          ) : (
-                            <Circle size={16} />
-                          )}
-                          {i.text}
-                        </li>
-                      ))}
-                    </ul>
+                    <PolicyChecklist policy={policy} password={admin.password} username={admin.username.trim()} confirm={admin.confirm} />
                     <section className="section">
                       <header className="section-head">
                         <h3>{t(JSON.stringify(policy) === JSON.stringify(DEFAULT_POLICY) ? 'pol.default' : 'pol.custom')}</h3>
@@ -666,19 +654,7 @@ export default function SetupWizard({ defaults }: { defaults: SetupDefaults }) {
                       <AnimatePresence initial={false}>
                         {policyOpen && (
                           <motion.div key="policy" className="reveal-box" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.3 }}>
-                            <div className="stack">
-                              <Field label={t('pol.min')}>
-                                {() => (
-                                  <div className="nb-stepper">
-                                    <Stepper value={policy.min_length} min={8} max={64} onChange={(min_length) => setPolicy({ ...policy, min_length })} />
-                                  </div>
-                                )}
-                              </Field>
-                              <Switch checked={policy.letters} onChange={(letters) => setPolicy({ ...policy, letters })} label={t('pol.letters')} />
-                              <Switch checked={policy.digits} onChange={(digits) => setPolicy({ ...policy, digits })} label={t('pol.digits')} />
-                              <Switch checked={policy.symbols} onChange={(symbols) => setPolicy({ ...policy, symbols })} label={t('pol.symbols')} />
-                              <Switch checked={policy.not_username} onChange={(not_username) => setPolicy({ ...policy, not_username })} label={t('pol.username')} />
-                            </div>
+                            <PolicyEditor value={policy} onChange={setPolicy} />
                           </motion.div>
                         )}
                       </AnimatePresence>

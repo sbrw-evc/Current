@@ -69,6 +69,13 @@ func (a *App) putGeneral(w http.ResponseWriter, r *http.Request, p *Principal) {
 			return
 		}
 	}
+	policy := in.PasswordPolicy
+	if a.policyManaged(ctx) || policy.MinLength == 0 {
+		policy = a.policy(ctx) // the hub's policy, or a client that does not send it
+	} else if err := policy.Check(); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "invalid_policy", err.Error())
+		return
+	}
 	geo := in.GeoIP
 	if geo.Databases == nil {
 		geo.Databases = []string{}
@@ -81,7 +88,7 @@ func (a *App) putGeneral(w http.ResponseWriter, r *http.Request, p *Principal) {
 	}
 	for _, step := range []func() error{
 		func() error { return a.st.PutSetting(ctx, setup.SettingGeneral, g) },
-		func() error { return a.st.PutSetting(ctx, setup.SettingPasswordPolicy, in.PasswordPolicy.Normalize()) },
+		func() error { return a.st.PutSetting(ctx, setup.SettingPasswordPolicy, policy.Normalize()) },
 		func() error { return a.st.PutSetting(ctx, setup.SettingGeoIP, geo) },
 	} {
 		if err := step(); err != nil {

@@ -97,6 +97,7 @@ func (a *App) Run(ctx context.Context) {
 		wg.Go(func() { a.runInventorySchedule(ctx) })
 	}
 	wg.Go(func() { a.runDependencySchedule(ctx) })
+	wg.Go(func() { a.runIdentitySchedule(ctx) })
 	wg.Wait()
 }
 
@@ -239,6 +240,12 @@ func (a *App) Handler() http.Handler {
 	// (routes in tokens.go, entra.go, openbao_migrate.go)
 	a.tokenRoutes(h)
 	a.entraRoutes(h)
+	// Umbrella Identity: passkeys, Google / Apple / OpenID Connect, single
+	// sign-in and synchronization with Umbrella Monitoring, the password policy
+	a.passkeyRoutes(h)
+	a.providerRoutes(h)
+	a.identityRoutes(h)
+	a.passwordPolicyRoutes(h)
 	a.openbaoMigrateRoutes(h)
 
 	// gNMI / SNMP poller and BMP receiver settings (routing.go, gnmi.go)
@@ -287,6 +294,9 @@ type Principal struct {
 
 type handler func(w http.ResponseWriter, r *http.Request, p *Principal)
 
+// allowedWhenExpired are what a user whose password expired may still do.
+var allowedWhenExpired = map[string]bool{"GET /api/auth/me": true, "POST /api/auth/password": true, "GET /api/settings/password-policy": true}
+
 func perms(p ...string) []string { return p }
 
 // guard authenticates the request (a session cookie, or an API token in
@@ -334,6 +344,10 @@ func (a *App) guard(anyOf []string, next handler) http.HandlerFunc {
 			return
 		}
 		p := &Principal{User: u, Perms: access.NewSet(list), Session: ss, Remote: httpx.ClientIP(r, a.opt.TrustedProxies)}
+		if exp, ok := a.passwordExpiry(ctx, u); ok && !time.Now().Before(exp) && !allowedWhenExpired[r.Pattern] {
+			httpx.Error(w, http.StatusForbidden, "password_expired", "the password has expired: set a new one")
+			return
+		}
 		if len(anyOf) > 0 && !p.Perms.Any(anyOf...) {
 			httpx.Error(w, http.StatusForbidden, "forbidden", "you do not have the permission "+anyOf[0])
 			return

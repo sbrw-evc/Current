@@ -11,7 +11,8 @@ Deployment is Docker-first: [deploy/flow](../deploy/flow/README.md) brings up th
 | Part | What it does | Package |
 |---|---|---|
 | Setup wizard | opens on the first start (no `flow.json`): setup code (log + `FLOW_DATA_DIR/setup-token`, 5 wrong codes lock it for a minute), general settings, OpenBao, PostgreSQL (can attach to an existing Flow database), ClickHouse with retention, NATS, collector addresses, optional Inventory DB / Umbrella / GeoIP, first administrator with the password policy. Every step has a check (`POST /api/setup/test/{step}`); the final `POST /api/setup` re-checks everything, writes secrets to OpenBao, migrates PostgreSQL and ClickHouse, writes `flow.json` and switches to the console without a restart. In Docker the fields are prefilled from `FLOW_SETUP_DEFAULTS_*` | `internal/setup` |
-| Sign-in | local users (PBKDF2-SHA256 hashes in OpenBao), LDAP / AD (service account bind, user bind, nested groups, group → role mapping, default role), Microsoft Entra ID (OpenID Connect code flow + PKCE, ID token verified against the tenant keys, groups from the token or Microsoft Graph, group → role mapping, users created on first sign-in with the default role; Settings → Entra ID); sessions in an HttpOnly cookie `flow_session` (12 h idle, 7 days max), `X-CSRF-Token` on state-changing requests, lockout after 5 failures | `internal/auth`, `internal/directory`, `internal/entra`, `internal/app` |
+| Sign-in | local users (PBKDF2-SHA256 hashes in OpenBao), LDAP / AD (service account bind, user bind, nested groups, group → role mapping, default role), Microsoft Entra ID (OpenID Connect code flow + PKCE, ID token verified against the tenant keys, groups from the token or Microsoft Graph, group → role mapping, users created on first sign-in with the default role; Settings → Entra ID); sessions in an HttpOnly cookie `flow_session` (12 h idle, 7 days max), `X-CSRF-Token` on state-changing requests, lockout after 5 failures (or as the password policy says) | `internal/auth`, `internal/directory`, `internal/entra`, `internal/app` |
+| Umbrella Identity | passkeys (WebAuthn with user verification: Windows Hello face / fingerprint / PIN, Touch ID, Face ID, Android, FIDO2 keys; profile registration, administrator removal; Settings → Sign-in), Google Workspace, Sign in with Apple and any OpenID Connect provider (allowed domains, existing accounts only, role of new accounts), Umbrella single sign-in: connected with the key made by Umbrella Monitoring in three steps (key → roles → options), sign-in buttons for every method of the hub (`idp_hint`), synchronization of users, roles (Umbrella role / directory group → Flow role), disabled accounts, the password policy and passkeys every 5 minutes with ETags; the password policy of the family (length, classes, alphabets, common passwords, history, expiry, lockout); Settings → Users, Password policy, Profile ([docs/identity-federation.md](../docs/identity-federation.md)) | `internal/passkey`, `internal/oidcx`, `internal/umbrellaid`, `internal/app/identity_*.go` |
 | API tokens | service accounts with a role and bearer tokens `flow_…` (HMAC-SHA256 with `keys#tokens`, plaintext shown once, expiry, last use, revoke; no CSRF); Settings → API tokens; audit of creation, revocation and use from a new address | `internal/auth`, `internal/store`, `internal/app` |
 | Roles | permissions `<page>:<function>` (`GET /api/access/catalog`), built-in Administrator (everything) and Viewer (visualize, flows, exporters), custom roles; the last enabled administrator cannot be removed | `internal/access`, `internal/app` |
 | Configuration | relational PostgreSQL schema (goose migrations embedded in the binary): users, roles, sessions, settings, saved views, classifier rules, Inventory DB connection, sampling overrides, LDAP group mapping, audit log | `internal/store` |
@@ -73,6 +74,9 @@ OpenBao is the only secret store (KV v2, mount `flow`, AppRole `flow`), as in Um
 | `ldap` | `bind_password` | LDAP / AD service account |
 | `users/<id>` | `password_hash` | local user password hash |
 | `entra` | `client_secret` | Microsoft Entra ID application client secret |
+| `identity/umbrella`, `identity/umbrella/token` | `client_secret`, `token` | the Umbrella Identity client secret and synchronization token (from the connection key) |
+| `identity/providers/<kind>/client-secret`, `…/private-key` | `client_secret`, `private_key` | Google / OpenID Connect client secrets, the Sign in with Apple key |
+| `users/<id>/history` | `hashes` | hashes of the previous passwords of a local user (password history) |
 | `keys` | `session`, `csrf`, `tokens` | session / CSRF / API token HMAC keys |
 
 ## Run
@@ -190,6 +194,9 @@ app/
       config/            environment and flow.json
       directory/         LDAP / AD sign-in and groups
       entra/             Microsoft Entra ID sign-in (OIDC + PKCE, Graph groups), entratest fake provider
+      oidcx/             Google, Apple and OpenID Connect sign-in; JWT verification (RS256, ES256)
+      passkey/           passkey (WebAuthn) ceremonies; passkeytest is a software authenticator
+      umbrellaid/        Umbrella Identity member client (connection key, SSO, federation API); hubtest fake hub
       httpx/             JSON, errors {error, message}, security headers, SPA serving, client address
       secrets/           OpenBao KV v2 client (token / AppRole, renewal, 30 s cache), secretstest fake
       setup/             first-run wizard and connection checks

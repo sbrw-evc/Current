@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { Check, ChevronDown, ChevronRight, Languages, LogOut, Moon, Sun } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Fingerprint, Languages, LogOut, Moon, Sun } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import type { Locale, Theme } from '../api/types'
 import { useLocale, useT } from '../i18n'
 import { useTheme } from '../theme'
@@ -15,6 +15,7 @@ export function UserMenu() {
   const t = useT(navStrings)
   const { user, signOut } = useSession()
   const { pathname } = useLocation()
+  const navigate = useNavigate()
   const { theme, setTheme } = useTheme()
   const { locale, setLocale } = useLocale()
   const [open, setOpen] = useState(false)
@@ -101,6 +102,10 @@ export function UserMenu() {
               }))}
             />
             <div className="menu-sep" />
+            <button type="button" role="menuitem" className="menu-item" onClick={() => navigate('/profile')}>
+              <Fingerprint size={18} />
+              {t('menu.profile')}
+            </button>
             <button type="button" role="menuitem" className="menu-item danger" onClick={signOut}>
               <LogOut size={18} />
               {t('menu.signout')}

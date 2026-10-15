@@ -13,7 +13,8 @@ export type Inventory = { enabled: boolean; url: string; token: string; interval
 export type Umbrella = { enabled: boolean; ingest_url: string; token: string }
 export type GeoIP = { databases: string[] }
 export type Admin = { username: string; name: string; email: string; password: string }
-export type PasswordPolicy = { min_length: number; letters: boolean; digits: boolean; symbols: boolean; not_username: boolean }
+import type { PasswordPolicy } from '../../lib/policy'
+export type { PasswordPolicy }
 
 export type SetupDefaults = {
   language?: 'ru' | 'en'

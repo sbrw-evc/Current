@@ -5,12 +5,15 @@ export class ApiError extends Error {
   status: number
   code: string
   detail?: string
+  // violations of the password policy (weak_password)
+  violations?: string[]
 
-  constructor(status: number, code: string, detail?: string) {
+  constructor(status: number, code: string, detail?: string, violations?: string[]) {
     super(detail ? `${code}: ${detail}` : code)
     this.status = status
     this.code = code
     this.detail = detail
+    this.violations = violations
   }
 }
 
@@ -56,8 +59,8 @@ export async function api<T>(method: string, path: string, body?: unknown, signa
     data = undefined
   }
   if (!res.ok) {
-    const d = (data ?? {}) as { error?: string; message?: string }
-    throw new ApiError(res.status, d.error ?? `http_${res.status}`, d.message)
+    const d = (data ?? {}) as { error?: string; message?: string; violations?: string[] }
+    throw new ApiError(res.status, d.error ?? `http_${res.status}`, d.message, d.violations)
   }
   return data as T
 }
@@ -66,3 +69,4 @@ export const get = <T>(path: string, signal?: AbortSignal) => api<T>('GET', path
 export const post = <T>(path: string, body?: unknown, signal?: AbortSignal) => api<T>('POST', path, body ?? {}, signal)
 export const put = <T>(path: string, body: unknown) => api<T>('PUT', path, body)
 export const del = <T>(path: string) => api<T>('DELETE', path)
+export const patch = <T>(path: string, body: unknown) => api<T>('PATCH', path, body)

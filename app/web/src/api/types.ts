@@ -17,7 +17,19 @@ export type Permission =
   | 'settings.openbao:view'
   | 'settings.openbao:test'
 
-export type User = { id: string; username: string; name: string; role: string; permissions: string[] }
+export type User = {
+  id: string
+  username: string
+  name: string
+  email?: string
+  source?: string
+  role: string
+  permissions: string[]
+  passkeys_enabled?: boolean
+  password_expired?: boolean
+  password_expiry_warning?: boolean
+  password_expires_at?: string
+}
 export type Me = { user: User; csrf: string }
 
 

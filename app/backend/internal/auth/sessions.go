@@ -237,3 +237,16 @@ func (l *Limiter) Reset(keys ...string) {
 		delete(l.m, k)
 	}
 }
+
+// Tune changes the threshold and the lock duration (the password policy's
+// lockout); zero values keep the current ones.
+func (l *Limiter) Tune(maxFailures int, lockFor time.Duration) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if maxFailures > 0 {
+		l.MaxFailures = maxFailures
+	}
+	if lockFor > 0 {
+		l.LockFor = lockFor
+	}
+}

@@ -2,8 +2,11 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -166,27 +169,53 @@ func TestPasswordsInVault(t *testing.T) {
 }
 
 func TestPolicy(t *testing.T) {
-	if err := DefaultPolicy.Validate("short", "x"); err == nil {
-		t.Fatal("short accepted")
+	violated := func(p PasswordPolicy, pw, user string) []string {
+		var pe *PolicyError
+		if err := p.Validate(pw, user); err != nil && !errors.As(err, &pe) {
+			t.Fatal(err)
+		} else if pe != nil {
+			return pe.Violations
+		}
+		return nil
 	}
-	if err := DefaultPolicy.Validate("long-enough-pass", "x"); err != nil {
-		t.Fatal(err)
+	if v := violated(DefaultPolicy, "Short-1", "x"); !slices.Contains(v, ViolationLength) {
+		t.Fatal("short accepted", v)
 	}
-	web := PasswordPolicy{MinLength: 12, Letters: true, Digits: true, NotUsername: true}
-	if err := web.Validate("onlylettersherehere", "admin"); err == nil {
-		t.Error("digits not required")
+	if v := violated(DefaultPolicy, "Correct-Horse-9", "x"); v != nil {
+		t.Fatal(v)
 	}
-	if err := web.Validate("my-admin-password-1", "admin"); err == nil {
-		t.Error("user name accepted inside the password")
+	if v := violated(DefaultPolicy, "Qwerty123456!", "x"); !slices.Contains(v, ViolationCommon) {
+		t.Error("common password accepted", v)
 	}
-	if err := web.Validate("correct-horse-battery-9", "admin"); err != nil {
+	if v := violated(DefaultPolicy, "Admin2024!xx", "admin2024"); !slices.Contains(v, ViolationCommon) {
+		t.Error("user name with a few characters accepted", v)
+	}
+	if v := violated(DefaultPolicy, "Correct-Horse-Ж9", "x"); !slices.Contains(v, ViolationLetters) {
+		t.Error("cyrillic accepted by a latin policy", v)
+	}
+	if err := (PasswordPolicy{MinLength: 12, RequireDigits: true, MinDigits: 4}).Check(); err != nil {
 		t.Error(err)
 	}
-	if err := (PasswordPolicy{MinLength: 12, Symbols: true}).Validate("abcdefghijkl", ""); err == nil {
-		t.Error("symbols not required")
+	if err := (PasswordPolicy{MinLength: 8, RequireDigits: true, MinDigits: 8, RequireMixedCase: true}).Check(); err == nil {
+		t.Error("impossible policy accepted")
 	}
-	if err := (PasswordPolicy{MinLength: 8, RequireClasses: 3}).Validate("alllowercase", "x"); err == nil {
-		t.Fatal("classes")
+	if err := (PasswordPolicy{MinLength: 12, LockoutAttempts: 2, LockoutMinutes: 5}).Check(); err == nil {
+		t.Error("lockout below 3 accepted")
+	}
+}
+
+func TestPolicyLegacyJSON(t *testing.T) {
+	var p PasswordPolicy
+	if err := json.Unmarshal([]byte(`{"min_length":14,"letters":true,"digits":true,"symbols":false,"not_username":true}`), &p); err != nil {
+		t.Fatal(err)
+	}
+	if p.MinLength != 14 || !p.RequireDigits || p.MinDigits != 1 || p.RequireSpecial || !p.BlockCommon || p.Letters != LettersAny {
+		t.Fatalf("%+v", p)
+	}
+	b, _ := json.Marshal(DefaultPolicy)
+	var q PasswordPolicy
+	if err := json.Unmarshal(b, &q); err != nil || q != DefaultPolicy {
+		t.Fatalf("%+v %v", q, err)
 	}
 }
 
