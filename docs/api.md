@@ -2,7 +2,7 @@
 
 All paths are under `/api`. Responses are JSON; errors are `{"error": "<code>", "message": "<text>"}` with an HTTP
 4xx/5xx status. The session is the HttpOnly cookie `flow_session`; mutating requests carry `X-CSRF-Token` (the `csrf`
-value from `/api/auth/login` and `/api/auth/me`), as in Umbrella. Machine clients send an API token instead:
+value from `/api/auth/me`), as in Umbrella. Machine clients send an API token instead:
 `Authorization: Bearer flow_…` (see [API tokens](#api-tokens)); token requests need no CSRF header. Times are RFC 3339
 UTC.
 
@@ -14,16 +14,29 @@ UTC.
 | GET | `/metrics` | Prometheus |
 | GET | `/api/version` | `{version, commit, built_at}` |
 
-## Sign-in
+## Sign-in (SPA)
+
+People sign in through [SPA](https://github.com/sbrw-evc/SPA-Single-point-of-authorization-), the Single Point of Authorization
+([protocol](https://github.com/sbrw-evc/SPA-Single-point-of-authorization-/blob/main/docs/protocol.md), [identity-federation.md](identity-federation.md)). Flow has no
+password sign-in.
 
 | Method | Path | Body / response |
 |---|---|---|
-| POST | `/api/auth/login` | `{username, password}` → `{user, csrf}` |
-| POST | `/api/auth/logout` | — |
-| GET | `/api/auth/me` | `{user: {id, username, name, role, permissions: ["visualize:view", …]}, csrf}` or 401 |
-| GET | `/api/auth/entra` | `{enabled}` (no session needed): show the "Sign in with Microsoft" button |
-| GET | `/api/auth/entra/start` | browser navigation: 302 to the Microsoft sign-in page (state and PKCE verifier kept by Flow, state also in the cookie `flow_entra`) |
-| GET | `/api/auth/entra/callback` | the redirect URI: redeems the code, verifies the ID token, creates or refreshes the user, sets `flow_session` and redirects to `/`; on failure redirects to `/login?signin_error=<code>` (`entra_off`, `entra_unavailable`, `entra_denied`, `entra_state`, `entra_account`, `entra_no_role`, `entra_conflict`, `user_disabled`, `too_many_attempts`) |
+| GET | `/api/auth/spa` | no session needed: `{connected, issuer?, application?, methods?}`; `{connected: false, error: "invalid_key"}` when the key is not an SPA key |
+| GET | `/api/auth/spa/start?return=<path>[&login_hint=…][&idp_hint=…][&prompt=login]` | browser navigation: 302 to SPA's `/oauth2/authorize` (`response_type=code`, `scope=openid profile email groups roles`, PKCE S256, `nonce`, signed single-use `state`); the verifier and nonce go to the HttpOnly cookie `flow_spa` (`SameSite=Lax`, path `/api/auth/spa/`, 10 minutes, `Secure` on https) |
+| GET | `/api/auth/spa/callback` | the redirect address: checks `state` against the cookie, redeems the code with the verifier, verifies the ID token (RS256 against the JWKS, `iss`, `aud`, `exp`, `nonce`), finds or creates the user bound to `sub`, sets `flow_session` and redirects to the return path; on failure redirects to `/login?sso_error=<code>[&sso_error_description=…]` (`access_denied` and other errors of SPA, `state`, `invalid_token`, `no_role`, `account_conflict`, `spa_unavailable`, `not_connected`) |
+| POST | `/api/auth/logout` | → `{ok, redirect}`: the session ends; the console goes to `redirect`, SPA's sign-out (`post_logout_redirect_uri=<address>/`, `client_id`) |
+| GET | `/api/auth/me` | `{user: {id, username, name, email, source: "spa" \| "legacy", role, role_ident, permissions: ["visualize:view", …]}, csrf, account_url}` or 401; `account_url` is SPA's "Account and security" page |
+
+## Users and roles
+
+| Method | Path | Permission | |
+|---|---|---|---|
+| GET | `/api/users` | `users:view` | `{results: [{id, username, name, email, source, spa_id, role_id, role, role_ident, disabled, last_login_at}]}` — read-only: people are managed in SPA |
+| GET | `/api/roles` | `roles:view` or `users:view` | `{results: [{id, ident, name, description, builtin, permissions, users}]}` |
+| POST / PUT / DELETE | `/api/roles[/{id}]` | `roles:edit` | custom roles `{name, description, permissions}`; `ident` (the ID in SPA) is made from the name on creation and never changes; built-in roles cannot be changed; each change republishes the role catalogue to SPA |
+| GET | `/api/settings/spa` | `users:view` | `{connected, key_source: "env" \| "file" \| "openbao", key_error?, issuer, client_id, application: {id, name, type}, redirect_uri, post_logout_redirect_uri, account_url, sign_out_url, methods, last_sync, ok, error?, users, created, bound, updated, disabled, conflicts, no_role, counts: {enabled, disabled, legacy}, catalogue: {at, roles, error?}, roles: [{id, name, description}], interval}` |
+| POST | `/api/settings/spa/sync` | `users:edit` | synchronizes now → the view (409 `spa_not_connected`, 409 `sync_running`) |
 
 ## First-run setup wizard
 
@@ -31,14 +44,14 @@ Opens on first start, while `FLOW_DATA_DIR` has no `flow.json`. The setup code i
 `FLOW_DATA_DIR/setup-token` (or taken from `FLOW_SETUP_TOKEN`); once setup completes the file is deleted, the wizard
 never opens again and every `/api/setup*` answers 404. In the Docker stack the fields are prefilled from the
 container's environment (`FLOW_SETUP_DEFAULTS_*`: PostgreSQL, ClickHouse, NATS and OpenBao addresses and the AppRole
-files), so after `docker compose up -d` only the setup code and the administrator password have to be entered.
+files), so after `docker compose up -d` only the setup code (and the SPA connection key, unless `SPA_CONNECTION_KEY` is set) has to be entered.
 
 | Method | Path | Body / response |
 |---|---|---|
 | GET | `/api/setup` | `{required: bool, defaults: {language, theme, timezone, public_url, openbao: {...}, postgres: {...}, clickhouse: {...}, nats: {...}, collector: {...}}}` — passwords and secrets are never returned in `defaults`, only a `*_set` flag |
 | POST | `/api/setup/check-code` | `{setup_code}` → `{ok}` (401 `setup_code_invalid`) |
-| POST | `/api/setup/test/{step}` | `step` = `openbao` \| `postgres` \| `clickhouse` \| `nats` \| `inventory` \| `umbrella` \| `geoip`; body is the step's fields, flat, + `setup_code` → `{ok, error?, details?}` (`details`: server version, `has_state` for PostgreSQL, Inventory DB device count, etc.) |
-| POST | `/api/setup` | everything (below) → `{ok}`; the server re-runs every check, writes secrets to OpenBao, creates the PostgreSQL and ClickHouse schemas, saves `flow.json`, creates the administrator and switches to normal mode without a restart |
+| POST | `/api/setup/test/{step}` | `step` = `openbao` \| `postgres` \| `clickhouse` \| `nats` \| `inventory` \| `umbrella` \| `geoip` \| `spa`; body is the step's fields, flat, + `setup_code` → `{ok, error?, details?}` (`details`: server version, `has_state` for PostgreSQL, Inventory DB device count, etc.) |
+| POST | `/api/setup` | everything (below) → `{ok}`; the server re-runs every check, writes secrets to OpenBao, creates the PostgreSQL and ClickHouse schemas, saves `flow.json` and switches to normal mode without a restart |
 
 Steps (screens) and the fields of `POST /api/setup`:
 
@@ -48,7 +61,7 @@ Steps (screens) and the fields of `POST /api/setup`:
 3. **OpenBao** — `openbao: {addr, mount (flow), auth: "token"|"approle", token? | role_id?, secret_id?}`.
 4. **PostgreSQL** — `postgres: {host, port, database, username, password, sslmode, attach_existing}`; the password goes
    to OpenBao. If the database already holds Flow state (the check answers `details.has_state: true`), the wizard
-   offers to attach to it (`attach_existing: true`; the Administrator step can then be skipped).
+   offers to attach to it (`attach_existing: true`).
 5. **ClickHouse** — `clickhouse: {addr, database (flow), username, password, secure}` + retention
    `retention: {raw_days 15, d1m 30, d5m 90, d1h 730}` (top level, as the console sends it, or
    `clickhouse.retention`, which wins).
@@ -59,10 +72,11 @@ Steps (screens) and the fields of `POST /api/setup`:
 9. **Umbrella (optional)** — `umbrella: {enabled, ingest_url, token}`: the ingest URL and token from Umbrella's
    "Connect source → Umbrella Flow" dialog; the check sends a test event.
 10. **GeoIP (optional)** — `geoip: {databases: ["/geoip/GeoLite2-City.mmdb", …]}`; the check opens the files.
-11. **Administrator** — `admin: {username, name, email, password}` with the password policy
-    `password_policy: {min_length, letters, digits, symbols, not_username}` (top level; collapsed in the console, which
-    proposes 12+ characters with letters and digits, not containing the user name). The server applies the same
-    rules; without a policy it requires 12+ characters only.
+11. **SPA (optional)** — `spa: {connection_key}`: the connection key `spa1.…` SPA shows in Applications → Connect an
+    application; the check (`spa` step, `{connection_key, public_url}`) asks SPA whether it accepts the key and returns
+    the application and the redirect address. The key goes to OpenBao (`spa#connection_key`). Skipped when the
+    deployment gives `SPA_CONNECTION_KEY` (`defaults.spa.from_env`). There is no first administrator: whoever SPA gives
+    Flow's `admin` role administers Flow.
 12. **Review** — summary of every step with its check result, "Finish" button.
 
 Optional steps can be skipped and configured later under Settings.
@@ -376,33 +390,13 @@ and secrets copied to an empty target are removed. Audit: `settings.openbao.migr
 renewals, next_at, last_error?, last_error_at?}` — how the client keeps its token alive (renewed once two thirds of the
 lease have passed; a non-renewable AppRole token is replaced by a new sign-in).
 
-## Settings: Microsoft Entra ID
-
-Permissions `users:view` / `users:edit` (as LDAP). Settings key `entra`; the client secret is stored in OpenBao at
-`entra#client_secret` and never returned.
-
-| Method | Path | |
-|---|---|---|
-| GET | `/api/settings/entra` | `{enabled, cloud: "global" \| "usgov" \| "china", tenant_id, client_id, redirect_url, client_secret_set, default_role_id, group_roles: [{group_id, role_id, role}], users}` |
-| PUT | `/api/settings/entra` | `{enabled, cloud, tenant_id, client_id, redirect_url, client_secret?, default_role_id, group_roles: [{group_id, role_id}]}` → the view; enabling checks the tenant and the credentials first (400 `entra_unavailable`, `entra_invalid`, `entra_secret_required`); `client_secret` empty or omitted keeps the stored one (only for the same tenant and application); switching off signs Entra users out |
-| POST | `/api/settings/entra/test` | same body → `{ok, probe: {issuer, tenant_id, credentials}, error?}` (discovery + a client-credentials token) |
-
-`redirect_url` must be `<Flow address>/api/auth/entra/callback` and registered in Entra ID. Sign-in: OpenID Connect
-authorization code flow with PKCE (S256), nonce and state; the ID token (RS256) is verified against the tenant keys
-(issuer, audience, expiry, nonce, tenant). The profile comes from Microsoft Graph `/me`. When group mappings exist,
-groups come from the `groups` claim, or from Graph `/me/transitiveMemberOf` (nested groups; needs the delegated
-permission `GroupMember.Read.All`) when the claim is missing or overflows. Role: the first `group_roles` entry whose
-group the user belongs to, else `default_role_id` (0 = no access, `entra_no_role`). The user (`source: "entra"`, user
-name = `preferred_username` in lower case) is created on the first sign-in and refreshed on each one; a local or LDAP
-user with the same name is never taken over.
-
 ## API tokens
 
 Machine access ([integrations §1](integrations.md#1-api-tokens-all-three-apps)). A **service account** has a role; its
 tokens carry exactly that role's permissions. Tokens are `flow_` + 32 random bytes (base64url, 48 characters); only
 HMAC-SHA256 with the key `keys#tokens` in OpenBao is stored, the plaintext is returned once by `POST /api/tokens`.
-Requests: `Authorization: Bearer flow_…`, no CSRF header; an unknown, expired or revoked token, or a token of a disabled
-account, gets 401 `invalid_token`. Permissions `tokens:view` / `tokens:edit`; a role can be given to a service account
+Requests: `Authorization: Bearer flow_…`, no CSRF header; an unknown, expired or revoked token, a token of a disabled
+account, or a token issued by a person SPA disabled, gets 401 `invalid_token`. Permissions `tokens:view` / `tokens:edit`; a role can be given to a service account
 only by a user who has all its permissions (403 `role_not_grantable`; `scope:umbrella` excepted). Audit:
 `service_account.create`, `service_account.delete`, `token.create`, `token.revoke`, `token.use_new_address` (first use
 and use from another client address than the last one). `last_used_at` is updated at most once a minute.

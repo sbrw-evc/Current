@@ -21,6 +21,7 @@ deployed with Docker Compose (one command) or a Helm chart, and configured in a 
 - [Sending traffic to Flow](#sending-traffic-to-flow)
 - [Other ways to run](#other-ways-to-run)
 - [Integrations](#integrations)
+- [Sign-in and access](#sign-in-and-access)
 - [Security and secrets](#security-and-secrets)
 - [Operations](#operations)
 - [Development](#development)
@@ -52,10 +53,11 @@ deployed with Docker Compose (one command) or a Helm chart, and configured in a 
 - **CMDB from real traffic.** Steady CI-to-CI flows become dependency proposals on Umbrella's CMDB map.
 - **Fast storage, long history.** Raw flows plus 1 min / 5 min / 1 h aggregates in ClickHouse, with the resolution
   picked for the requested period and separate retention for each level.
-- **One sign-in for the Umbrella family.** Passkeys (Windows Hello, Touch ID, security keys), Google, Apple and OpenID
-  Connect, and Umbrella single sign-in with user, role, password policy and passkey synchronization
+- **Sign-in and access are managed in [SPA](https://github.com/sbrw-evc/SPA-Single-point-of-authorization-).** People sign in through SPA, the Single Point of
+  Authorization of the Umbrella family (passwords, passkeys, LDAP / AD, Entra ID, Google, Apple and OpenID Connect
+  live there); Flow reads its people and their roles from SPA and publishes its own roles to it
   ([docs/identity-federation.md](docs/identity-federation.md)).
-- **Secure by default.** Every secret in OpenBao, local users, LDAP / AD and Entra ID sign-in, page-level roles,
+- **Secure by default.** Every secret in OpenBao, no passwords kept in Flow, page-level roles,
   visibility limited to a user's Umbrella services, API tokens and an audit log.
 - **Up in one command.** One image for every role, a Docker Compose stack or a Helm chart, a first-run setup wizard
   with a check at every step, horizontal scaling by role.
@@ -123,7 +125,9 @@ Then:
 2. Enter the setup code from the log.
 3. Click through the wizard: OpenBao, PostgreSQL, ClickHouse and NATS are prefilled for the bundled services.
    Inventory DB, Umbrella and GeoIP are optional and can be set later in the console.
-4. Create the administrator. The wizard writes `flow.json` to the `flow-data` volume and opens the console.
+4. Paste the SPA connection key (or set `SPA_CONNECTION_KEY` in `.env`, see [Sign-in and access](#sign-in-and-access)).
+   The wizard writes `flow.json` to the `flow-data` volume and opens the sign-in page; whoever SPA gives Flow's
+   `admin` role administers Flow.
 
 With the demo profile the graphs fill within a minute: three exporters (`edge-01`, `edge-02`, `dc-sw-01`) appear on the
 Exporters page and in Visualize.
@@ -194,17 +198,40 @@ Single-host and split-role walkthroughs: [app/README.md](app/README.md#run).
 Contracts between the three applications: [docs/integrations.md](docs/integrations.md). Grafana:
 [deploy/grafana/README.md](deploy/grafana/README.md).
 
+## Sign-in and access
+
+Sign-in and access are managed in **SPA**, the Single Point of Authorization of the Umbrella family
+([repository](https://github.com/sbrw-evc/SPA-Single-point-of-authorization-), contract: [docs/protocol.md](https://github.com/sbrw-evc/SPA-Single-point-of-authorization-/blob/main/docs/protocol.md)). Flow keeps no
+passwords, password policy, passkeys or directory settings; it has no sign-in form and no first administrator of its
+own.
+
+To connect Flow:
+
+1. In SPA: **Applications → Connect an application**, type `umbrella-flow`, the address of Flow. The redirect address
+   is `<address>/api/auth/spa/callback`, the address after sign-out `<address>/`.
+2. On the **Access** step assign Flow's roles (`admin`, `viewer` and the custom roles Flow publishes) to people and
+   groups.
+3. Give Flow the **connection key** (`spa1.…`) SPA shows: `SPA_CONNECTION_KEY`, a file named by
+   `SPA_CONNECTION_KEY_FILE`, or the setup wizard (kept in OpenBao at `spa#connection_key`). Set `SPA_PUBLIC_URL` when
+   Flow is reached under another address than the request's.
+
+Flow then sends people to SPA to sign in, synchronizes its users every 5 minutes (Settings → SPA → Synchronize now),
+disables people SPA disables or removes (their sessions and API tokens stop working) and publishes its role catalogue
+whenever its roles change. Password and passkeys: user menu → **Account and security** (SPA). Details:
+[docs/identity-federation.md](docs/identity-federation.md).
+
 ## Security and secrets
 
-- OpenBao is the only secret store. Database passwords, Inventory DB and Umbrella tokens, the LDAP bind password, the
-  Entra ID secret, session keys and local users' password hashes live there; PostgreSQL and `flow.json` keep only
-  `openbao://mount/path#key` references.
+- OpenBao is the only secret store. Database passwords, Inventory DB and Umbrella tokens, the SPA connection key
+  (when given in the wizard) and session keys live there; PostgreSQL and `flow.json` keep only
+  `openbao://mount/path#key` references. Flow keeps no passwords: people sign in through SPA.
 - Flow signs in to OpenBao with AppRole and caches reads for 30 s, so a rotation in OpenBao needs no restart.
 - The API never returns a secret (only a `*_set` flag), and secrets never reach logs or the audit log.
 - `.env` in the Docker stack holds only bootstrap passwords for the bundled service containers; the `flow` container
   never sees them.
-- Sessions are HttpOnly cookies with CSRF protection and a sign-in lockout; API tokens are stored as HMACs and shown
-  once.
+- Sessions are HttpOnly cookies with CSRF protection, started after the SPA sign-in (OpenID Connect with PKCE S256, a
+  nonce and a signed single-use state); API tokens are stored as HMACs, shown once and stop working when SPA disables
+  the person who issued them.
 - Behind an HTTPS reverse proxy set `FLOW_SECURE_COOKIES=true` and `FLOW_TRUSTED_PROXIES`.
 - BMP is unauthenticated: limit who can reach TCP 10179 and list the allowed routers in the BMP settings.
 

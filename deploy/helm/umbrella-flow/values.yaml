@@ -47,6 +47,18 @@ roles:
       requests: {cpu: 100m, memory: 128Mi}
       limits: {memory: 512Mi}
 
+# Sign-in and access are managed in SPA, the Single Point of Authorization
+# (https://github.com/sbrw-evc/SPA-Single-point-of-authorization-). The
+# connection key spa1.… SPA shows in Applications → Connect an application
+# goes in a Secret (SPA_CONNECTION_KEY); without it the key can be pasted in
+# the setup wizard (kept in OpenBao).
+spa:
+  # Name of a Secret holding the connection key, and its key.
+  connectionKeySecret: ""
+  connectionKeySecretKey: connection_key
+  # Address of Flow when it differs from the request address (SPA_PUBLIC_URL).
+  publicURL: ""
+
 # Settings that prefill the setup wizard (FLOW_SETUP_DEFAULTS_*) and process
 # options (FLOW_*).
 config:

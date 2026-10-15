@@ -106,7 +106,7 @@ Flow holds an Umbrella service-account token (Umbrella permission `integrations.
 ```
 
 `mode: "all"` → `cis` and `services` are empty and mean "everything". Users are matched by login (case-insensitive;
-LDAP / Entra logins are the same in both apps). Unknown user → `{"known": false}`. Flow caches per user for 60 s and,
+both apps get their users from SPA, so the logins are the same). Unknown user → `{"known": false}`. Flow caches per user for 60 s and,
 for a user whose Flow role has `scope:umbrella`, restricts every ClickHouse query with
 `(SrcCI IN refs OR DstCI IN refs OR SrcAddr IN ips OR DstAddr IN ips)`.
 

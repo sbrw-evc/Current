@@ -28,6 +28,9 @@ services:
       FLOW_ROLE: all
       FLOW_SECURE_COOKIES: ${FLOW_SECURE_COOKIES:-false}
       FLOW_TRUSTED_PROXIES: ${FLOW_TRUSTED_PROXIES:-}
+      # Sign-in and access through SPA: the connection key spa1.… (or paste it in the wizard)
+      SPA_CONNECTION_KEY: ${SPA_CONNECTION_KEY:-}
+      SPA_PUBLIC_URL: ${SPA_PUBLIC_URL:-}
       FLOW_STARTUP_WAIT: ${FLOW_STARTUP_WAIT:-2m}
       FLOW_SETUP_TOKEN: ${FLOW_SETUP_TOKEN:-}
       # The wizard is prefilled with the bundled services; passwords are only

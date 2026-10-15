@@ -207,11 +207,12 @@ A new Inventory DB integration kind `kind: flow` (modelled on `umbrella`):
 
 ### 4.5. Common
 
-- **Sign-in**: LDAP / AD and Entra ID, as in Umbrella and Inventory DB; `<page>:<function>` roles. Visibility by
+- **Sign-in**: through SPA, the Single Point of Authorization of the family (docs/identity-federation.md); Flow keeps
+  `<page>:<function>` roles and publishes them to SPA, which assigns them. Visibility by
   Umbrella services comes once Umbrella has API tokens (section 7); until then, by Inventory DB tenants / sites.
 - **Secrets**: OpenBao only (KV v2, mount `flow/`; may be the same instance as Umbrella's). It holds the PostgreSQL and
-  ClickHouse passwords, NATS credentials, Inventory DB and Umbrella tokens, the LDAP bind password, the Entra ID secret,
-  session and signing keys, and local users' password hashes (`users/<id>`, PBKDF2-SHA256, as in Umbrella). PostgreSQL
+  ClickHouse passwords, NATS credentials, Inventory DB and Umbrella tokens, the SPA connection key, and session and
+  signing keys (Flow keeps no passwords). PostgreSQL
   and `flow.json` hold only `openbao://…` references; `flow.json` holds the OpenBao address and auth method (AppRole from
   mounted files). The API never returns secrets (only a `*_set` flag), and they never reach logs or the audit log;
   reads are cached for 30 s, so rotating a secret in OpenBao needs no restart.

@@ -10,13 +10,13 @@ Deployment is Docker-first: [deploy/flow](../deploy/flow/README.md) brings up th
 
 | Part | What it does | Package |
 |---|---|---|
-| Setup wizard | opens on the first start (no `flow.json`): setup code (log + `FLOW_DATA_DIR/setup-token`, 5 wrong codes lock it for a minute), general settings, OpenBao, PostgreSQL (can attach to an existing Flow database), ClickHouse with retention, NATS, collector addresses, optional Inventory DB / Umbrella / GeoIP, first administrator with the password policy. Every step has a check (`POST /api/setup/test/{step}`); the final `POST /api/setup` re-checks everything, writes secrets to OpenBao, migrates PostgreSQL and ClickHouse, writes `flow.json` and switches to the console without a restart. In Docker the fields are prefilled from `FLOW_SETUP_DEFAULTS_*` | `internal/setup` |
-| Sign-in | local users (PBKDF2-SHA256 hashes in OpenBao), LDAP / AD (service account bind, user bind, nested groups, group → role mapping, default role), Microsoft Entra ID (OpenID Connect code flow + PKCE, ID token verified against the tenant keys, groups from the token or Microsoft Graph, group → role mapping, users created on first sign-in with the default role; Settings → Entra ID); sessions in an HttpOnly cookie `flow_session` (12 h idle, 7 days max), `X-CSRF-Token` on state-changing requests, lockout after 5 failures (or as the password policy says) | `internal/auth`, `internal/directory`, `internal/entra`, `internal/app` |
-| Umbrella Identity | passkeys (WebAuthn with user verification: Windows Hello face / fingerprint / PIN, Touch ID, Face ID, Android, FIDO2 keys; profile registration, administrator removal; Settings → Sign-in), Google Workspace, Sign in with Apple and any OpenID Connect provider (allowed domains, existing accounts only, role of new accounts), Umbrella single sign-in: connected with the key made by Umbrella Monitoring in three steps (key → roles → options), sign-in buttons for every method of the hub (`idp_hint`), synchronization of users, roles (Umbrella role / directory group → Flow role), disabled accounts, the password policy and passkeys every 5 minutes with ETags; the password policy of the family (length, classes, alphabets, common passwords, history, expiry, lockout); Settings → Users, Password policy, Profile ([docs/identity-federation.md](../docs/identity-federation.md)) | `internal/passkey`, `internal/oidcx`, `internal/umbrellaid`, `internal/app/identity_*.go` |
+| Setup wizard | opens on the first start (no `flow.json`): setup code (log + `FLOW_DATA_DIR/setup-token`, 5 wrong codes lock it for a minute), general settings, OpenBao, PostgreSQL (can attach to an existing Flow database), ClickHouse with retention, NATS, collector addresses, optional Inventory DB / Umbrella / GeoIP, the SPA connection key (optional: it can come from `SPA_CONNECTION_KEY`); there is no first administrator — whoever SPA gives Flow's `admin` role administers Flow. Every step has a check (`POST /api/setup/test/{step}`); the final `POST /api/setup` re-checks everything, writes secrets to OpenBao, migrates PostgreSQL and ClickHouse, writes `flow.json` and switches to the console without a restart. In Docker the fields are prefilled from `FLOW_SETUP_DEFAULTS_*` | `internal/setup` |
+| Sign-in and access | through [SPA](https://github.com/sbrw-evc/SPA-Single-point-of-authorization-), the Single Point of Authorization (its docs/protocol.md): `GET /api/auth/spa/start` → SPA (OpenID Connect code flow, PKCE S256, nonce, signed single-use state, verifier cookie on `/api/auth/spa/`) → `GET /api/auth/spa/callback` (ID token verified against SPA's JWKS: RS256, `iss`, `aud`, `exp`, `nonce`), then Flow's own session (HttpOnly cookie `flow_session`, 12 h idle, 7 days max, `X-CSRF-Token` on state-changing requests); sign-out ends it and goes to SPA's sign-out. The connection key `spa1.…` comes from `SPA_CONNECTION_KEY`, `SPA_CONNECTION_KEY_FILE` or OpenBao (`spa#connection_key`) | `internal/spa`, `internal/oidcx`, `internal/auth`, `internal/app/spa.go` |
+| Users from SPA | every 5 minutes (one replica, PostgreSQL advisory lock) and on Settings → SPA → Synchronize now: `GET /api/spa/v1/users` with ETags creates, updates and disables the users (bound by SPA user ID; an account made before SPA is bound once by user name, unclaimed ones are disabled), maps the `roles` claim to the user's role and ends sessions of disabled people; API tokens of a disabled person stop working. Flow publishes its roles (`PUT /api/spa/v1/roles`, by their stable `ident`; Administrator is `admin`, Viewer `viewer`) at start and whenever they change. Settings → Users is read-only ("Managed in SPA") | `internal/app/spa.go`, `internal/store/spa.go` |
 | API tokens | service accounts with a role and bearer tokens `flow_…` (HMAC-SHA256 with `keys#tokens`, plaintext shown once, expiry, last use, revoke; no CSRF); Settings → API tokens; audit of creation, revocation and use from a new address | `internal/auth`, `internal/store`, `internal/app` |
-| Roles | permissions `<page>:<function>` (`GET /api/access/catalog`), built-in Administrator (everything) and Viewer (visualize, flows, exporters), custom roles; the last enabled administrator cannot be removed | `internal/access`, `internal/app` |
-| Configuration | relational PostgreSQL schema (goose migrations embedded in the binary): users, roles, sessions, settings, saved views, classifier rules, Inventory DB connection, sampling overrides, LDAP group mapping, audit log | `internal/store` |
-| Platform API | `/healthz`, `/metrics`, `/api/version`, auth, users, roles, LDAP, saved views, classifiers (with validation through the classifier package), Inventory DB connection / test / sync / schedule, sampling overrides, general settings and password policy, Umbrella connection with a test event, OpenBao status / test / move to another OpenBao, Entra ID, service accounts and API tokens, system status, audit log, `/api/schema` | `internal/app` |
+| Roles | permissions `<page>:<function>` (`GET /api/access/catalog`), built-in Administrator (everything, `admin` in SPA) and Viewer (visualize, flows, exporters, `viewer`), custom roles with a stable `ident` published to SPA; SPA assigns them | `internal/access`, `internal/app` |
+| Configuration | relational PostgreSQL schema (goose migrations embedded in the binary): users, roles, sessions, settings, saved views, classifier rules, Inventory DB connection, sampling overrides, audit log | `internal/store` |
+| Platform API | `/healthz`, `/metrics`, `/api/version`, sign-in through SPA, users (read-only), roles, SPA connection and synchronization, saved views, classifiers (with validation through the classifier package), Inventory DB connection / test / sync / schedule, sampling overrides, general settings, Umbrella connection with a test event, OpenBao status / test / move to another OpenBao, service accounts and API tokens, system status, audit log, `/api/schema` | `internal/app` |
 | Traffic API | visualize (time series and sankey; `query.ValidationError` / filter errors → 400), filter validation and completion (columns, operators, values: built-in symbols plus the most frequent values of the last 24 h from ClickHouse, `flows_1h` for aggregated columns), raw flow search, exporters (ClickHouse aggregates merged with the collector registry in role `all`), home widgets, unknown Inventory DB objects, classifier validation / preview | `internal/wiring` over `internal/query`, `internal/filter`, `internal/inventory`, `internal/classifier` |
 | Pipeline | collector (NetFlow v5/v9, IPFIX, sFlow; sampling overrides from PostgreSQL applied at run time) → bus (in-process in role `all` without NATS, NATS JetStream otherwise) → enricher (Inventory DB snapshot, interface names learned by the collector, CEL classifiers, GeoIP, applications) → batching ClickHouse writer (schema migrated on start). Stop order: collector, then bus consumer (drained), then writer flush | `internal/collector`, `internal/bus`, `internal/enrich`, `internal/storage/clickhouse`, wired by `internal/wiring` and `cmd/flow` |
 | Inventory DB sync | the enricher / detector processes follow the connection stored in PostgreSQL (token read from OpenBao on each sync): sync on start, every interval, at once on a settings change or a sync requested from the API; result in `last_sync` | `internal/wiring` (`Inventory`), `internal/inventory` |
@@ -30,14 +30,14 @@ Deployment is Docker-first: [deploy/flow](../deploy/flow/README.md) brings up th
 | SNMP | fallback interface names / descriptions / speeds (SNMPv2c / v3, GETBULK of `ifName`, `ifDescr`, `ifAlias`, `ifHighSpeed`, `ifSpeed`) for exporters seen in flows and listed devices, credential profiles by prefix with community / USM passwords in OpenBao, refresh interval and TTL cache; the enricher uses it after Inventory DB, the collector's option data and gNMI; `GET/PUT /api/settings/snmp`, `POST /api/settings/snmp/test`, Settings → SNMP page, `flow_snmp_*` metrics | `internal/snmp`, `internal/enrich` (`snmp.go`), `internal/wiring` (`SNMP`) |
 | BMP | RFC 7854 receiver on TCP 10179 (own BGP decoder: IPv4 / IPv6 unicast and labeled unicast, VPNv4 / VPNv6 and EVPN IP routes (types 2 and 5) with a table per route distinguisher, RD instance and VRF Loc-RIB peers, Adj-RIB-Out skipped, MP_REACH / MP_UNREACH, 4-byte AS and AS4_PATH, ADD-PATH, communities, large communities), per-peer Adj-RIB-In with post-policy preference in a compact LPM table with interned attributes, withdrawals, peer down / session close cleanup, memory metrics, sessions replicated between enricher processes over NATS JetStream (stream `FLOW_BMP`, snapshots, heartbeats); the enricher looks routes up in the VRF of the input interface and fills `DstASPath`, `DstCommunities`, `DstLargeCommunities`, the next hop when missing, and SrcAS / DstAS through the `routing` AS provider; `GET/PUT /api/settings/bmp`, `GET /api/bmp/lookup`, Settings → BMP page, `flow_bmp_*` metrics | `internal/bmp`, `internal/enrich` (`routing.go`), `internal/wiring` (`BMP`, `Routing`) |
 | Status | `GET /api/status` components: `collector`, `bus`, `enricher`, `writer`, `inventory`, `detector`, `rdns`, `threat`, `gnmi`, `snmp`, `bmp` (those running in the process) | `internal/wiring` |
-| Web console | React console: setup wizard, overview widgets, Visualize, flow search, exporters with sampling overrides (per exporter / per interface), detector rules (form with per-kind fields, client checks mirroring the server) and status, dependencies, Inventory DB, classifiers, Umbrella (events and API connection), OpenBao, API tokens, Entra ID, threat intelligence, reverse DNS, cloud flow logs (write-only tokens, ingest URLs and AWS Firehose / Azure / GCP Pub/Sub setup snippets), gNMI, SNMP, BMP; the mock server (`VITE_MOCK=1`) answers every page; a banner when the Umbrella scope cannot be loaded; screenshots with live demo data in [docs/screens](docs/screens) (`*-live.png`) | `web/` |
+| Web console | React console: setup wizard, overview widgets, Visualize, flow search, exporters with sampling overrides (per exporter / per interface), detector rules (form with per-kind fields, client checks mirroring the server) and status, dependencies, Inventory DB, classifiers, Umbrella (events and API connection), OpenBao, API tokens, SPA (connection, synchronization, published roles), users (read-only), threat intelligence, reverse DNS, cloud flow logs (write-only tokens, ingest URLs and AWS Firehose / Azure / GCP Pub/Sub setup snippets), gNMI, SNMP, BMP; the mock server (`VITE_MOCK=1`) answers every page; a banner when the Umbrella scope cannot be loaded; screenshots with live demo data in [docs/screens](docs/screens) (`*-live.png`) | `web/` |
 
 ## Secrets
 
 OpenBao is the only secret store (KV v2, mount `flow`, AppRole `flow`), as in Umbrella Monitoring:
 
 - Everything entered in the wizard, the UI or the API — PostgreSQL, ClickHouse and NATS credentials, the Inventory DB
-  token, the Umbrella ingest token, the LDAP bind password — goes straight to OpenBao; PostgreSQL and `flow.json`
+  token, the Umbrella ingest token, the SPA connection key — goes straight to OpenBao; PostgreSQL and `flow.json`
   keep only `openbao://<mount>/<path>#<key>` references.
 - Local users' password hashes (PBKDF2-SHA256, 600 000 iterations) live at `users/<id>#password_hash`; the `users`
   table has only the reference.
@@ -71,13 +71,8 @@ OpenBao is the only secret store (KV v2, mount `flow`, AppRole `flow`), as in Um
 | `flowlogs` | `aws`, `azure`, `gcp` | cloud flow log ingest tokens |
 | `umbrella-api` | `token` | Umbrella service-account token (visibility scopes, CMDB proposals) |
 | `grafana` | `clickhouse_password` | read-only ClickHouse user `grafana` (seeded by the Docker stack; used by Grafana, not by Flow) |
-| `ldap` | `bind_password` | LDAP / AD service account |
-| `users/<id>` | `password_hash` | local user password hash |
-| `entra` | `client_secret` | Microsoft Entra ID application client secret |
-| `identity/umbrella`, `identity/umbrella/token` | `client_secret`, `token` | the Umbrella Identity client secret and synchronization token (from the connection key) |
-| `identity/providers/<kind>/client-secret`, `…/private-key` | `client_secret`, `private_key` | Google / OpenID Connect client secrets, the Sign in with Apple key |
-| `users/<id>/history` | `hashes` | hashes of the previous passwords of a local user (password history) |
-| `keys` | `session`, `csrf`, `tokens` | session / CSRF / API token HMAC keys |
+| `spa` | `connection_key` | the SPA connection key `spa1.…` (when given in the setup wizard; `SPA_CONNECTION_KEY` wins) |
+| `keys` | `session`, `csrf`, `tokens`, `state` | session / CSRF / API token / SPA sign-in state HMAC keys |
 
 ## Run
 
@@ -169,13 +164,16 @@ Screenshots: [visualize-e2e.png](docs/screens/visualize-e2e.png) (the Umbrella "
 | `FLOW_STARTUP_WAIT` | `2m` | how long to wait for OpenBao and PostgreSQL on start |
 | `FLOW_SETUP_TOKEN` | random | fixed setup code |
 | `FLOW_SECURE_COOKIES` | `false` | `Secure` cookie flag (behind HTTPS) |
-| `FLOW_TRUSTED_PROXIES` | — | addresses / CIDRs whose `X-Forwarded-For` is trusted (sign-in lockout, audit) |
+| `FLOW_TRUSTED_PROXIES` | — | addresses / CIDRs whose `X-Forwarded-For` (audit) and `X-Forwarded-Proto` / `-Host` (SPA redirect address) are trusted |
 | `FLOW_ROLE` | `all` | `all`, `collector`, `enricher`, `api`, `detector` |
 | `FLOW_NETFLOW_ADDR` | `:2055` | UDP for NetFlow v5/v9 and IPFIX |
 | `FLOW_SFLOW_ADDR` | `:6343` | UDP for sFlow |
 | `FLOW_SAMPLING_OVERRIDES` | — | sampling overrides of the collector, `CIDR[@ifindex\|@ifname]=rate` separated by commas or semicolons (`192.0.2.0/24=1000, 192.0.2.1@17=4000`); win over the stored ones with the same exporter and interface |
 | `FLOW_BMP_ADDR` | `:10179` | TCP for BMP (enricher process), listened to only while BMP is enabled in the settings |
 | `FLOW_NATS_URL` | — | NATS JetStream URL: required by the `collector` role; for the other roles it overrides `nats.url` of `flow.json`. Empty everywhere = in-process bus (role `all` only; `enricher` fails without NATS) |
+| `SPA_CONNECTION_KEY` | — | the SPA connection key `spa1.…` ([SPA protocol](https://github.com/sbrw-evc/SPA-Single-point-of-authorization-/blob/main/docs/protocol.md)); without it and `SPA_CONNECTION_KEY_FILE` the key is read from OpenBao (`spa#connection_key`) |
+| `SPA_CONNECTION_KEY_FILE` | — | a file holding the connection key (Docker / Kubernetes secret) |
+| `SPA_PUBLIC_URL` | — | the address of Flow when it differs from the request address (redirect addresses) |
 | `FLOW_SETUP_DEFAULTS_*` | — | wizard prefill, see `internal/setup/defaults.go`; secrets only as `openbao://` references |
 
 Roles: `all` and `api` serve the wizard and the console; `enricher` and `detector` wait for `flow.json` (shared
@@ -190,13 +188,10 @@ app/
     internal/
       access/            permission catalog, built-in roles
       app/               HTTP application: router, auth middleware, platform handlers, Deps interfaces
-      auth/              PBKDF2 passwords in OpenBao, session / CSRF keys, sessions, lockout, password policy
+      auth/              session / CSRF / API token / state keys in OpenBao, sessions, API tokens
       config/            environment and flow.json
-      directory/         LDAP / AD sign-in and groups
-      entra/             Microsoft Entra ID sign-in (OIDC + PKCE, Graph groups), entratest fake provider
-      oidcx/             Google, Apple and OpenID Connect sign-in; JWT verification (RS256, ES256)
-      passkey/           passkey (WebAuthn) ceremonies; passkeytest is a software authenticator
-      umbrellaid/        Umbrella Identity member client (connection key, SSO, federation API); hubtest fake hub
+      oidcx/             OpenID Connect relying party: discovery, PKCE, ID token verification (JWKS)
+      spa/               SPA client: connection key, sign-in, federation API; spatest is a fake SPA
       httpx/             JSON, errors {error, message}, security headers, SPA serving, client address
       secrets/           OpenBao KV v2 client (token / AppRole, renewal, 30 s cache), secretstest fake
       setup/             first-run wizard and connection checks

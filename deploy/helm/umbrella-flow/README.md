@@ -27,14 +27,20 @@ bao kv put -mount=flow nats token=...          # when NATS is used
 kubectl create secret generic flow-openbao \
   --from-literal=role_id="$(bao read -field=role_id auth/approle/role/flow/role-id)" \
   --from-literal=secret_id="$(bao write -f -field=secret_id auth/approle/role/flow/secret-id)"
+# Sign-in and access are managed in SPA: the connection key from SPA → Applications → Connect an application
+kubectl create secret generic flow-spa --from-literal=connection_key='spa1.…'
 ```
 
 ```sh
 helm install flow deploy/helm/umbrella-flow \
   --set image.repository=registry.example.com/umbrella-flow --set image.tag=1.0.0 \
   --set openbao.addr=http://openbao.vault:8200 --set openbao.existingSecret=flow-openbao \
-  --set postgres.host=pg.db --set clickhouse.addr=clickhouse.db:9000
+  --set postgres.host=pg.db --set clickhouse.addr=clickhouse.db:9000 \
+  --set spa.connectionKeySecret=flow-spa
 ```
+
+People sign in through [SPA](https://github.com/sbrw-evc/SPA-Single-point-of-authorization-); whoever SPA gives
+Flow's `admin` role administers Flow. Without `spa.connectionKeySecret` the key can be pasted in the setup wizard.
 
 Then open the console (`kubectl port-forward svc/flow-umbrella-flow 8080:8080` or the ingress) and finish the setup
 wizard; it is prefilled from the values, and the setup code is in the pod log (`setup_code=`). The wizard writes
@@ -42,7 +48,7 @@ wizard; it is prefilled from the values, and the setup code is in the pod log (`
 
 Evaluation without external services: `--set dev.enabled=true` adds single-replica PostgreSQL, ClickHouse, NATS and
 an OpenBao **dev server** (in memory, seeded with generated passwords). Everything stored in that OpenBao, including
-Flow's own keys and password hashes, is lost when its pod restarts: never use it for real data.
+Flow's own keys, is lost when its pod restarts: never use it for real data.
 
 ## Roles
 

@@ -85,6 +85,18 @@ spec:
                   name: {{ $root.Values.config.setupTokenSecret }}
                   key: token
             {{- end }}
+            {{- if $root.Values.spa.connectionKeySecret }}
+            # Sign-in and access through SPA (docs/identity-federation.md).
+            - name: SPA_CONNECTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.spa.connectionKeySecret }}
+                  key: {{ $root.Values.spa.connectionKeySecretKey | default "connection_key" }}
+            {{- end }}
+            {{- if $root.Values.spa.publicURL }}
+            - name: SPA_PUBLIC_URL
+              value: {{ $root.Values.spa.publicURL | quote }}
+            {{- end }}
             {{- with $root.Values.config.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

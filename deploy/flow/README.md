@@ -23,7 +23,8 @@ docker compose up -d
 docker compose logs flow | grep setup_code
 ```
 
-Open `http://<host>:8080`, enter the setup code and the administrator password. Every other wizard field
+Open `http://<host>:8080`, enter the setup code and the SPA connection key (or set `SPA_CONNECTION_KEY` in `.env`;
+sign-in and access are managed in [SPA](https://github.com/sbrw-evc/SPA-Single-point-of-authorization-)). Every other wizard field
 (OpenBao, PostgreSQL, ClickHouse, NATS) is prefilled for the bundled services, so you can click through. The
 wizard writes `flow.json` into the `flow-data` volume and switches to the console without a restart.
 
