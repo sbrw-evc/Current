@@ -36,6 +36,10 @@ type Defaults struct {
 	GeoIP      []string
 	Inventory  string
 	Umbrella   string
+	// SPAFromEnv: the SPA connection key is given by the deployment
+	// (SPA_CONNECTION_KEY or SPA_CONNECTION_KEY_FILE); the wizard then does
+	// not ask for it.
+	SPAFromEnv bool
 }
 
 // DefaultsFromEnv reads the defaults (getenv nil = os.Getenv).
@@ -72,8 +76,9 @@ func DefaultsFromEnv(getenv func(string) string) Defaults {
 		NATS: config.NATS{URL: get("NATS_URL", ""), Token: ref("NATS_TOKEN_REF")},
 		Collector: Collector{NetFlowAddr: get("NETFLOW_ADDR", firstNonEmpty(getenv("FLOW_NETFLOW_ADDR"), ":2055")),
 			SFlowAddr: get("SFLOW_ADDR", firstNonEmpty(getenv("FLOW_SFLOW_ADDR"), ":6343")), DefaultSamplingRate: 1},
-		Inventory: get("INVENTORY_URL", ""),
-		Umbrella:  get("UMBRELLA_INGEST_URL", ""),
+		Inventory:  get("INVENTORY_URL", ""),
+		Umbrella:   get("UMBRELLA_INGEST_URL", ""),
+		SPAFromEnv: strings.TrimSpace(getenv("SPA_CONNECTION_KEY")) != "" || strings.TrimSpace(getenv("SPA_CONNECTION_KEY_FILE")) != "",
 	}
 	for _, p := range strings.Split(get("GEOIP_DATABASES", ""), ",") {
 		if p = strings.TrimSpace(p); p != "" {
@@ -114,6 +119,7 @@ func (d Defaults) view() map[string]any {
 		"inventory": map[string]any{"enabled": false, "url": d.Inventory, "interval": "15m"},
 		"umbrella":  map[string]any{"enabled": false, "ingest_url": d.Umbrella},
 		"geoip":     map[string]any{"databases": nonNil(d.GeoIP)},
+		"spa":       map[string]any{"from_env": d.SPAFromEnv},
 	}
 }
 

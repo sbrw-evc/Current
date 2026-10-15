@@ -14,9 +14,9 @@ import (
 	"testing"
 
 	"github.com/sbrw-evc/network/app/backend/internal/access"
-	"github.com/sbrw-evc/network/app/backend/internal/auth"
 	"github.com/sbrw-evc/network/app/backend/internal/config"
 	"github.com/sbrw-evc/network/app/backend/internal/secrets/secretstest"
+	"github.com/sbrw-evc/network/app/backend/internal/spa/spatest"
 	"github.com/sbrw-evc/network/app/backend/internal/store"
 	"github.com/sbrw-evc/network/app/backend/internal/store/storetest"
 )
@@ -230,14 +230,51 @@ func scanForSecrets(t *testing.T, st *store.Store, dir string, values ...string)
 	}
 }
 
+func TestSPAStep(t *testing.T) {
+	sp := spatest.New(t)
+	h := New(Options{DataDir: t.TempDir(), Token: "code", Defaults: DefaultsFromEnv(func(k string) string {
+		return map[string]string{"SPA_CONNECTION_KEY_FILE": "/run/secrets/spa"}[k]
+	})}, nil).Handler()
+	if code, body := get(t, h, "/api/setup"); code != 200 || !strings.Contains(body, `"spa":{"from_env":true}`) {
+		t.Fatal(code, body)
+	}
+	step := func(body map[string]any) map[string]any {
+		t.Helper()
+		body["setup_code"] = "code"
+		code, out := post(t, h, "/api/setup/test/spa", body)
+		if code != 200 {
+			t.Fatal(code, out)
+		}
+		return out
+	}
+	if out := step(map[string]any{"connection_key": sp.ConnectionKey(), "public_url": "https://flow.example"}); out["ok"] != true ||
+		out["details"].(map[string]any)["redirect_uri"] != "https://flow.example/api/auth/spa/callback" ||
+		out["details"].(map[string]any)["application"] != "Umbrella Flow" {
+		t.Fatal(out)
+	}
+	if out := step(map[string]any{"connection_key": "umbid1.old-key"}); out["ok"] == true || !strings.Contains(out["error"].(string), "spa1.") {
+		t.Fatal("a key of another kind accepted", out)
+	}
+	k := sp.Key
+	k.ClientSecret = "wrong"
+	if out := step(map[string]any{"connection_key": k.String()}); out["ok"] == true || !strings.Contains(out["error"].(string), "client secret") {
+		t.Fatal("a wrong client secret accepted", out)
+	}
+	k = sp.Key
+	k.Token = "wrong"
+	if out := step(map[string]any{"connection_key": k.String()}); out["ok"] == true || !strings.Contains(out["error"].(string), "federation token") {
+		t.Fatal("a wrong token accepted", out)
+	}
+}
+
 func TestCompleteDockerStyle(t *testing.T) {
-	auth.Iterations = 1000
 	fake, _ := secretstest.New(t)
 	db := storetest.NewOwnedDatabase(t)
 	ch := clickhouseForTest(t)
 	inv := fakeInventory(t)
 	var event map[string]any
 	umb := fakeUmbrella(t, &event)
+	sp := spatest.New(t)
 	// openbao-init seeded the PostgreSQL password; the AppRole credentials are files.
 	fake.Set("flow/bootstrap/postgres", map[string]any{"password": db.Password})
 	secretsDir := t.TempDir()
@@ -265,12 +302,12 @@ func TestCompleteDockerStyle(t *testing.T) {
 	in := map[string]any{"setup_code": token, "language": "ru", "theme": "dark", "timezone": "Europe/Moscow", "public_url": "https://flow.example",
 		"inventory": map[string]any{"enabled": true, "url": inv.URL, "token": "inv-token-secret", "interval": "10m"},
 		"umbrella":  map[string]any{"enabled": true, "ingest_url": umb.URL + "/api/ingest/network-flow", "token": "umb-token-secret"},
-		"admin":     map[string]any{"username": "admin", "password": "short"}}
-	if code, out := post(t, h, "/api/setup", in); code != 400 || out["error"] != "weak_password" {
+		"spa":       map[string]any{"connection_key": "spa1.garbage"}}
+	if code, out := post(t, h, "/api/setup", in); code != 400 || out["error"] != "spa_unavailable" {
 		t.Fatal(code, out)
 	}
+	in["spa"] = map[string]any{"connection_key": sp.ConnectionKey()}
 	in["timezone"] = "Mars/Olympus"
-	in["admin"] = map[string]any{"username": "admin", "password": "admin-password-secret"}
 	if code, out := post(t, h, "/api/setup", in); code != 400 || out["error"] != "general_invalid" {
 		t.Fatal(code, out)
 	}
@@ -308,12 +345,15 @@ func TestCompleteDockerStyle(t *testing.T) {
 	if fake.Get("flow/keys")["session"] == nil {
 		t.Fatal("session keys not created")
 	}
-	u, err := got.Store.UserByUsername(ctx, "admin")
-	if err != nil || u.Role != access.RoleAdministrator {
-		t.Fatal(u, err)
+	// No first administrator: people come from SPA, whose key is in OpenBao.
+	if n, _ := got.Store.CountUsers(ctx); n != 0 {
+		t.Fatal("users created by the setup", n)
 	}
-	if ok, err := auth.NewPasswords(got.Vault).Verify(u.PasswordRef, "admin-password-secret"); !ok || err != nil {
-		t.Fatal("admin password", ok, err)
+	if fake.Get("flow/spa")["connection_key"] != sp.ConnectionKey() {
+		t.Fatal("SPA connection key not in OpenBao")
+	}
+	if r, err := got.Store.RoleByIdent(ctx, "admin"); err != nil || r.Name != access.RoleAdministrator {
+		t.Fatal(r, err)
 	}
 	var g General
 	if found, _ := got.Store.Setting(ctx, SettingGeneral, &g); !found || g.Theme != "dark" || g.Timezone != "Europe/Moscow" {
@@ -331,10 +371,10 @@ func TestCompleteDockerStyle(t *testing.T) {
 		t.Fatal("ClickHouse schema not created")
 	}
 
-	scanForSecrets(t, got.Store, dir, db.Password, "admin-password-secret", "inv-token-secret", "umb-token-secret",
+	scanForSecrets(t, got.Store, dir, db.Password, sp.Key.ClientSecret, sp.Key.Token, "inv-token-secret", "umb-token-secret",
 		secretstest.RoleID, secretstest.SecretID, fake.Get("flow/keys")["session"].(string))
 
-	// attach to the existing state: refused without attach_existing, admin optional with it
+	// attach to the existing state: refused without attach_existing
 	dir2 := t.TempDir()
 	var got2 *Result
 	h2 := New(Options{DataDir: dir2, Token: "code2", Defaults: DefaultsFromEnv(func(k string) string { return env[k] })},
@@ -350,12 +390,12 @@ func TestCompleteDockerStyle(t *testing.T) {
 		t.Fatal(code, out)
 	}
 	defer got2.Store.Close()
-	if n, _ := got2.Store.CountUsers(ctx); n != 1 {
-		t.Fatal("users changed by attaching", n)
+	if found, _ := got2.Store.Setting(ctx, SettingGeneral, &g); !found || g.Theme != "dark" {
+		t.Fatal("settings changed by attaching", g)
 	}
 }
 
-func TestCompleteNewDatabaseRequiresAdmin(t *testing.T) {
+func TestCompleteRequiresOpenBao(t *testing.T) {
 	fake, _ := secretstest.New(t)
 	db := storetest.NewOwnedDatabase(t)
 	ch := clickhouseForTest(t)
@@ -364,9 +404,6 @@ func TestCompleteNewDatabaseRequiresAdmin(t *testing.T) {
 		"openbao":    map[string]any{"addr": fake.Server.URL, "auth": "approle", "role_id": secretstest.RoleID, "secret_id": secretstest.SecretID},
 		"postgres":   map[string]any{"host": db.Host, "port": db.Port, "database": db.Database, "username": db.User, "password": db.Password, "sslmode": "disable"},
 		"clickhouse": map[string]any{"addr": ch.Addr, "database": ch.Database}}
-	if code, out := post(t, h, "/api/setup", body); code != 400 || out["error"] != "admin_required" {
-		t.Fatal(code, out)
-	}
 	body["openbao"] = map[string]any{"addr": fake.Server.URL, "auth": "approle", "role_id": "x", "secret_id": "y"}
 	if code, out := post(t, h, "/api/setup", body); code != 400 || out["error"] != "openbao_unavailable" {
 		t.Fatal(code, out)

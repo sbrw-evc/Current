@@ -88,6 +88,11 @@ func (s *Store) Pool() *pgxpool.Pool { return s.pool }
 // Migrate applies the embedded migrations. A PostgreSQL advisory lock keeps
 // several instances from migrating at once.
 func (s *Store) Migrate(ctx context.Context) error {
+	return s.migrate(ctx, 0)
+}
+
+// migrate applies the migrations up to version (0 = all; negative: down to -version).
+func (s *Store) migrate(ctx context.Context, version int64) error {
 	db := stdlib.OpenDBFromPool(s.pool)
 	defer db.Close()
 	sub, err := fs.Sub(migrations, "migrations")
@@ -103,7 +108,15 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	res, err := p.Up(ctx)
+	var res []*goose.MigrationResult
+	switch {
+	case version < 0:
+		res, err = p.DownTo(ctx, -version)
+	case version > 0:
+		res, err = p.UpTo(ctx, version)
+	default:
+		res, err = p.Up(ctx)
+	}
 	if err != nil {
 		return fmt.Errorf("migrations: %w", err)
 	}
@@ -120,17 +133,19 @@ func (s *Store) Version(ctx context.Context) (int64, error) {
 	return v, err
 }
 
-// IsEmpty reports whether the database has no Flow users yet (fresh database
-// or not migrated).
+// IsEmpty reports whether the database has no Flow state yet: no users and
+// no settings (a fresh database, or not migrated). People come from SPA, so a
+// completed setup with nobody signed in yet is told by its settings.
 func (s *Store) IsEmpty(ctx context.Context) (bool, error) {
 	var exists bool
-	if err := s.pool.QueryRow(ctx, `SELECT to_regclass('public.users') IS NOT NULL`).Scan(&exists); err != nil {
+	if err := s.pool.QueryRow(ctx, `SELECT to_regclass('public.users') IS NOT NULL AND to_regclass('public.settings') IS NOT NULL`).Scan(&exists); err != nil {
 		return false, err
 	}
 	if !exists {
 		return true, nil
 	}
-	n, err := s.CountUsers(ctx)
+	var n int
+	err := s.pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM users) + (SELECT count(*) FROM settings)`).Scan(&n)
 	return n == 0, err
 }
 

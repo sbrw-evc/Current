@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/netip"
+	"slices"
 	"testing"
 	"time"
 
@@ -44,25 +45,39 @@ func TestStore(t *testing.T) {
 	if _, err := st.UpdateRole(ctx, viewer.ID, "x", "", nil); !errors.Is(err, store.ErrBuiltin) {
 		t.Fatal("built-in role changed", err)
 	}
+	if admin.Ident != store.IdentAdmin || viewer.Ident != store.IdentViewer {
+		t.Fatal("built-in idents", admin.Ident, viewer.Ident)
+	}
 	custom, err := st.CreateRole(ctx, "NOC", "noc", []string{"settings.inventory:sync", "nope:x"})
-	if err != nil || len(custom.Permissions) != 2 {
+	if err != nil || len(custom.Permissions) != 2 || custom.Ident != "noc" {
 		t.Fatal(custom, err)
 	}
 	if _, err := st.CreateRole(ctx, "noc", "", nil); !errors.Is(err, store.ErrConflict) {
 		t.Fatal("duplicate role", err)
 	}
+	// Idents stay stable and unique: a rename keeps it, another alphabet gets "role-N".
+	if r, err := st.UpdateRole(ctx, custom.ID, "Network operations", "", nil); err != nil || r.Ident != "noc" {
+		t.Fatal(r, err)
+	}
+	ru, err := st.CreateRole(ctx, "Дежурный", "", nil)
+	ru2, err2 := st.CreateRole(ctx, "Admin!", "", nil)
+	if err != nil || err2 != nil || ru.Ident != "role-2" || ru2.Ident != "role-3" {
+		t.Fatal(ru, ru2, err, err2)
+	}
+	if r, err := st.RoleByIdent(ctx, "noc"); err != nil || r.ID != custom.ID {
+		t.Fatal(r, err)
+	}
+	_ = st.DeleteRole(ctx, ru.ID)
+	_ = st.DeleteRole(ctx, ru2.ID)
 
 	u, err := st.CreateUser(ctx, store.NewUser{Username: "Alice", Name: "Alice A", RoleID: admin.ID})
-	if err != nil || u.Role != access.RoleAdministrator || u.Source != store.SourceLocal {
+	if err != nil || u.Role != access.RoleAdministrator || u.Source != store.SourceLegacy {
 		t.Fatal(u, err)
 	}
 	if _, err := st.CreateUser(ctx, store.NewUser{Username: "alice", RoleID: admin.ID}); !errors.Is(err, store.ErrConflict) {
 		t.Fatal("duplicate user", err)
 	}
-	if err := st.SetPasswordRef(ctx, u.ID, "openbao://flow/users/1#password_hash"); err != nil {
-		t.Fatal(err)
-	}
-	if got, err := st.UserByUsername(ctx, "ALICE"); err != nil || got.ID != u.ID || got.PasswordRef == "" {
+	if got, err := st.UserByUsername(ctx, "ALICE"); err != nil || got.ID != u.ID {
 		t.Fatal(got, err)
 	}
 	if _, err := st.UserByUsername(ctx, "bob"); !errors.Is(err, store.ErrNotFound) {
@@ -77,23 +92,48 @@ func TestStore(t *testing.T) {
 	if err := st.DeleteRole(ctx, custom.ID); err != nil {
 		t.Fatal(err)
 	}
-	bob, err := st.UpsertDirectoryUser(ctx, "bob", "Bob", "bob@example.com", viewer.ID)
-	if err != nil || bob.Source != store.SourceLDAP || bob.Role != access.RoleViewer {
-		t.Fatal(bob, err)
+
+	// SPA: a legacy account is bound by the user name once, then by the ID only.
+	a2, how, err := st.UpsertSPAUser(ctx, store.SPAUser{ExternalID: "usr_1", Username: "alice", Name: "Alice B", RoleID: viewer.ID})
+	if err != nil || how != store.SPABound || a2.ID != u.ID || a2.Source != store.SourceSPA || a2.Role != access.RoleViewer || a2.ExternalID != "usr_1" {
+		t.Fatal(a2, how, err)
 	}
-	if _, err := st.UpsertDirectoryUser(ctx, "alice", "x", "", viewer.ID); !errors.Is(err, store.ErrConflict) {
-		t.Fatal("local user taken over", err)
+	if a3, how, err := st.UpsertSPAUser(ctx, store.SPAUser{ExternalID: "usr_1", Username: "alice.b", RoleID: admin.ID}); err != nil || how != store.SPAUpdated || a3.ID != u.ID || a3.Username != "alice.b" {
+		t.Fatal(a3, how, err)
 	}
-	dis := true
-	if bob, err = st.UpdateUser(ctx, bob.ID, store.UserUpdate{Disabled: &dis}); err != nil || !bob.Disabled {
-		t.Fatal(bob, err)
+	bob, how, err := st.UpsertSPAUser(ctx, store.SPAUser{ExternalID: "usr_2", Username: "bob", Email: "bob@example.com", RoleID: viewer.ID})
+	if err != nil || how != store.SPACreated || bob.Source != store.SourceSPA || bob.Role != access.RoleViewer {
+		t.Fatal(bob, how, err)
 	}
-	if err := st.SetGroupRoles(ctx, []store.GroupRole{{GroupDN: "cn=noc,dc=x", RoleID: viewer.ID}}); err != nil {
-		t.Fatal(err)
+	if _, _, err := st.UpsertSPAUser(ctx, store.SPAUser{ExternalID: "usr_3", Username: "BOB", RoleID: viewer.ID}); !errors.Is(err, store.ErrUsernameTaken) {
+		t.Fatal("an SPA account taken over", err)
 	}
-	if g, _ := st.GroupRoles(ctx); len(g) != 1 || g[0].Role != access.RoleViewer {
-		t.Fatal(g)
+	legacy, _ := st.CreateUser(ctx, store.NewUser{Username: "carol", RoleID: viewer.ID})
+	gone, err := st.DisableAbsent(ctx, []string{"usr_1"})
+	if err != nil || len(gone) != 2 || !slices.Contains(gone, bob.ID) || !slices.Contains(gone, legacy.ID) {
+		t.Fatal(gone, err)
 	}
+	// The name of a disabled account goes to the person who has it now.
+	if b2, how, err := st.UpsertSPAUser(ctx, store.SPAUser{ExternalID: "usr_3", Username: "bob", RoleID: viewer.ID}); err != nil || how != store.SPACreated || b2.ID == bob.ID {
+		t.Fatal(b2, how, err)
+	}
+	if old, _ := st.UserBySPA(ctx, "usr_2"); old.Username == "bob" || !old.Disabled {
+		t.Fatal(old)
+	}
+	if id, err := st.DisableSPAUser(ctx, "usr_3"); err != nil || id == 0 {
+		t.Fatal(id, err)
+	}
+	if c, _ := st.CountSPAUsers(ctx); c.Enabled != 1 || c.Disabled != 2 || c.Legacy != 1 {
+		t.Fatal(c)
+	}
+	release, ok, err := st.TryLock(ctx, store.LockKey("test"))
+	if err != nil || !ok {
+		t.Fatal(ok, err)
+	}
+	if _, again, _ := st.TryLock(ctx, store.LockKey("test")); again {
+		t.Fatal("lock taken twice")
+	}
+	release()
 
 	// sessions
 	now := time.Now().UTC().Truncate(time.Microsecond)
@@ -127,7 +167,7 @@ func TestStore(t *testing.T) {
 
 	// saved views
 	sv, err := st.CreateSavedView(ctx, u.ID, "Top AS", false, json.RawMessage(`{"dimensions":["SrcAS"]}`))
-	if err != nil || sv.Owner != "Alice" {
+	if err != nil || sv.Owner != "alice.b" {
 		t.Fatal(sv, err)
 	}
 	if list, _ := st.SavedViews(ctx, bob.ID); len(list) != 0 {
@@ -186,10 +226,6 @@ func TestStore(t *testing.T) {
 		t.Fatal(a)
 	}
 
-	// deleting a user deletes their views and sessions
-	if err := st.DeleteUser(ctx, bob.ID); err != nil {
-		t.Fatal(err)
-	}
 	if empty, _ := st.IsEmpty(ctx); empty {
 		t.Fatal("not empty")
 	}

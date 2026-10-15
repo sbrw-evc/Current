@@ -7,19 +7,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/auth"
 	"github.com/sbrw-evc/network/app/backend/internal/config"
 	"github.com/sbrw-evc/network/app/backend/internal/httpx"
 	"github.com/sbrw-evc/network/app/backend/internal/secrets"
 	"github.com/sbrw-evc/network/app/backend/internal/setup"
 )
 
-// ---- general settings (language, theme, time zone, address, password policy, GeoIP)
+// ---- general settings (language, theme, time zone, address, GeoIP)
 
 type generalView struct {
 	setup.General
-	PasswordPolicy auth.PasswordPolicy `json:"password_policy"`
-	GeoIP          setup.GeoIPSettings `json:"geoip"`
+	GeoIP setup.GeoIPSettings `json:"geoip"`
 }
 
 func (a *App) loadGeneral(ctx context.Context) (generalView, error) {
@@ -30,7 +28,6 @@ func (a *App) loadGeneral(ctx context.Context) (generalView, error) {
 	if _, err := a.st.Setting(ctx, setup.SettingGeoIP, &v.GeoIP); err != nil {
 		return v, err
 	}
-	v.PasswordPolicy = a.policy(ctx)
 	return v, nil
 }
 
@@ -69,13 +66,6 @@ func (a *App) putGeneral(w http.ResponseWriter, r *http.Request, p *Principal) {
 			return
 		}
 	}
-	policy := in.PasswordPolicy
-	if a.policyManaged(ctx) || policy.MinLength == 0 {
-		policy = a.policy(ctx) // the hub's policy, or a client that does not send it
-	} else if err := policy.Check(); err != nil {
-		httpx.Error(w, http.StatusBadRequest, "invalid_policy", err.Error())
-		return
-	}
 	geo := in.GeoIP
 	if geo.Databases == nil {
 		geo.Databases = []string{}
@@ -88,7 +78,6 @@ func (a *App) putGeneral(w http.ResponseWriter, r *http.Request, p *Principal) {
 	}
 	for _, step := range []func() error{
 		func() error { return a.st.PutSetting(ctx, setup.SettingGeneral, g) },
-		func() error { return a.st.PutSetting(ctx, setup.SettingPasswordPolicy, policy.Normalize()) },
 		func() error { return a.st.PutSetting(ctx, setup.SettingGeoIP, geo) },
 	} {
 		if err := step(); err != nil {

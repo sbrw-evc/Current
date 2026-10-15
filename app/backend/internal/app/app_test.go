@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/url"
 	"slices"
 	"strings"
 	"testing"
@@ -18,6 +19,8 @@ import (
 	"github.com/sbrw-evc/network/app/backend/internal/httpx"
 	"github.com/sbrw-evc/network/app/backend/internal/secrets/secretstest"
 	"github.com/sbrw-evc/network/app/backend/internal/setup"
+	"github.com/sbrw-evc/network/app/backend/internal/spa"
+	"github.com/sbrw-evc/network/app/backend/internal/spa/spatest"
 	"github.com/sbrw-evc/network/app/backend/internal/store"
 	"github.com/sbrw-evc/network/app/backend/internal/store/storetest"
 )
@@ -89,11 +92,15 @@ type env struct {
 	rel   *reloads
 	admin store.User
 	view  store.User
+	spa   *spatest.SPA
+	app   *App
 }
 
+// newEnv: Flow connected to a fake SPA that knows "admin" (role admin) and
+// "viewer" (role viewer); both exist in Flow as legacy accounts and are bound
+// on their first sign-in.
 func newEnv(t *testing.T) *env {
 	t.Helper()
-	auth.Iterations = 1000
 	st := storetest.New(t)
 	fake, vault := secretstest.New(t)
 	ctx := context.Background()
@@ -102,27 +109,16 @@ func newEnv(t *testing.T) *env {
 	if err := auth.NewKeys(vault).Ensure(ctx); err != nil {
 		t.Fatal(err)
 	}
-	mk := func(name, password string, roleID int64) store.User {
-		u, err := st.CreateUser(ctx, store.NewUser{Username: name, Name: name, RoleID: roleID})
-		if err != nil {
-			t.Fatal(err)
-		}
-		ref, err := auth.NewPasswords(vault).Set(ctx, u.ID, password)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_ = st.SetPasswordRef(ctx, u.ID, ref)
-		u.PasswordRef = ref
-		return u
-	}
-	admin := mk("admin", "admin-password", adminRole.ID)
-	viewer := mk("viewer", "viewer-password", viewerRole.ID)
+	admin := legacyUser(t, st, "admin", adminRole.ID)
+	viewer := legacyUser(t, st, "viewer", viewerRole.ID)
+	sp := spatest.New(t)
+	sp.Users = []spa.User{spaUser("admin", "admin"), spaUser("viewer", "viewer")}
 	rel := &reloads{}
-	a := New(Options{Version: "test"}, Deps{Store: st, Vault: vault, Visualizer: fakeVisualizer{}, Classifiers: fakeClassifiers{},
-		Detector: fakeDetector{}, Reloaders: []Reloader{rel}})
+	a := New(Options{Version: "test", SPAKey: sp.ConnectionKey()}, Deps{Store: st, Vault: vault, Visualizer: fakeVisualizer{},
+		Classifiers: fakeClassifiers{}, Detector: fakeDetector{}, Reloaders: []Reloader{rel}})
 	srv := httptest.NewServer(a.Handler())
 	t.Cleanup(srv.Close)
-	return &env{t: t, srv: srv, st: st, fake: fake, rel: rel, admin: admin, view: viewer}
+	return &env{t: t, srv: srv, st: st, fake: fake, rel: rel, admin: admin, view: viewer, spa: sp, app: a}
 }
 
 type client struct {
@@ -161,13 +157,12 @@ func (c *client) do(method, path string, body any) (int, map[string]any) {
 	return resp.StatusCode, out
 }
 
-func (c *client) login(user, password string) {
+// login signs the person in through the fake SPA.
+func (c *client) login(user string) {
 	c.e.t.Helper()
-	code, out := c.do("POST", "/api/auth/login", map[string]string{"username": user, "password": password})
-	if code != 200 {
-		c.e.t.Fatalf("login %s: %d %v", user, code, out)
+	if e := c.signIn(user, ""); e != "" {
+		c.e.t.Fatalf("login %s: %s", user, e)
 	}
-	c.csrf = out["csrf"].(string)
 }
 
 func TestServiceEndpoints(t *testing.T) {
@@ -193,50 +188,42 @@ func TestServiceEndpoints(t *testing.T) {
 	}
 }
 
-func TestLoginAndLockout(t *testing.T) {
+func TestSignInAndSignOut(t *testing.T) {
 	e := newEnv(t)
 	c := e.client()
-	if code, out := c.do("POST", "/api/auth/login", map[string]string{"username": "admin", "password": "wrong"}); code != 401 || out["error"] != "invalid_credentials" {
-		t.Fatal(code, out)
+	if code, out := c.do("POST", "/api/auth/login", map[string]string{"username": "admin", "password": "x"}); code != 404 {
+		t.Fatal("password sign-in still answers", code, out)
 	}
-	if code, _ := c.do("POST", "/api/auth/login", map[string]string{"username": "nobody", "password": "wrong"}); code != 401 {
-		t.Fatal(code)
-	}
-	c.login("ADMIN", "admin-password")
+	c.login("ADMIN")
 	code, out := c.do("GET", "/api/auth/me", nil)
-	if code != 200 || out["csrf"] != c.csrf {
+	if code != 200 || out["csrf"] != c.csrf || out["account_url"] != e.spa.AccountURL() {
 		t.Fatal(code, out)
 	}
 	user := out["user"].(map[string]any)
-	if user["username"] != "admin" || user["role"] != access.RoleAdministrator || len(user["permissions"].([]any)) != len(access.BuiltinRoles()[0].Permissions) {
+	if user["username"] != "admin" || user["source"] != "spa" || user["role_ident"] != "admin" || user["role"] != access.RoleAdministrator ||
+		len(user["permissions"].([]any)) != len(access.BuiltinRoles()[0].Permissions) {
 		t.Fatal(user)
 	}
 	if code, out := c.do("GET", "/api/schema", nil); code != 200 || len(out["columns"].([]any)) == 0 {
 		t.Fatal(code, out)
 	}
-	if code, _ := c.do("POST", "/api/auth/logout", nil); code != 200 {
-		t.Fatal(code)
+	code, out = c.do("POST", "/api/auth/logout", nil)
+	back := url.QueryEscape(e.srv.URL + "/")
+	if code != 200 || !strings.HasPrefix(out["redirect"].(string), e.spa.SignOutURL()+"?") || !strings.Contains(out["redirect"].(string), "post_logout_redirect_uri="+back) ||
+		!strings.Contains(out["redirect"].(string), "client_id=app_flow") {
+		t.Fatal(code, out)
 	}
 	if code, _ := c.do("GET", "/api/auth/me", nil); code != 401 {
 		t.Fatal("session survived logout", code)
-	}
-
-	// lockout: 5 failures lock the user name even with the right password
-	v := e.client()
-	for i := 0; i < 5; i++ {
-		v.do("POST", "/api/auth/login", map[string]string{"username": "viewer", "password": "nope"})
-	}
-	if code, out := v.do("POST", "/api/auth/login", map[string]string{"username": "viewer", "password": "viewer-password"}); code != 429 || out["error"] != "too_many_attempts" {
-		t.Fatal(code, out)
 	}
 }
 
 func TestCSRFAndPermissions(t *testing.T) {
 	e := newEnv(t)
 	admin := e.client()
-	admin.login("admin", "admin-password")
+	admin.login("admin")
 	viewer := e.client()
-	viewer.login("viewer", "viewer-password")
+	viewer.login("viewer")
 
 	view := map[string]any{"name": "Top AS", "shared": true, "request": map[string]any{"dimensions": []string{"SrcAS"}}}
 	csrf := admin.csrf
@@ -274,7 +261,8 @@ func TestCSRFAndPermissions(t *testing.T) {
 		}
 	}
 	for path, want := range map[string]int{"/api/users": 200, "/api/roles": 200, "/api/inventory-db": 200, "/api/classifiers": 200,
-		"/api/status": 200, "/api/audit": 200, "/api/settings/ldap": 200, "/api/access/catalog": 200} {
+		"/api/status": 200, "/api/audit": 200, "/api/settings/spa": 200, "/api/access/catalog": 200, "/api/settings/ldap": 404,
+		"/api/settings/password-policy": 404, "/api/settings/entra": 404, "/api/settings/identity": 404} {
 		if code, out := admin.do("GET", path, nil); code != want {
 			t.Errorf("admin GET %s: %d %v, want %d", path, code, out, want)
 		}
@@ -303,7 +291,7 @@ func itoa(n int) string { b, _ := json.Marshal(n); return string(b) }
 func TestSettings(t *testing.T) {
 	e := newEnv(t)
 	admin := e.client()
-	admin.login("admin", "admin-password")
+	admin.login("admin")
 
 	// Inventory DB: the token goes to OpenBao
 	code, out := admin.do("PUT", "/api/inventory-db", map[string]any{"enabled": true, "url": "https://inventory.example/", "token": "xc-123", "interval": "10m"})
@@ -350,39 +338,37 @@ func TestSettings(t *testing.T) {
 func TestUsersAndRoles(t *testing.T) {
 	e := newEnv(t)
 	admin := e.client()
-	admin.login("admin", "admin-password")
+	admin.login("admin")
 	ctx := context.Background()
 	adminRole, _ := e.st.RoleByName(ctx, access.RoleAdministrator)
-	viewerRole, _ := e.st.RoleByName(ctx, access.RoleViewer)
 
-	// the last administrator cannot be disabled, demoted or delete themselves
-	if code, out := admin.do("PUT", "/api/users/"+itoa(int(e.admin.ID)), map[string]any{"disabled": true}); code != 409 || out["error"] != "last_admin" {
-		t.Fatal(code, out)
-	}
-	if code, _ := admin.do("PUT", "/api/users/"+itoa(int(e.admin.ID)), map[string]any{"role_id": viewerRole.ID}); code != 409 {
-		t.Fatal(code)
-	}
-	if code, _ := admin.do("DELETE", "/api/users/"+itoa(int(e.admin.ID)), nil); code != 409 {
-		t.Fatal(code)
+	// Users are managed in SPA: no creation, change, password or deletion here.
+	for _, req := range [][2]string{{"POST", "/api/users"}, {"PUT", "/api/users/1"}, {"DELETE", "/api/users/1"}, {"PUT", "/api/users/1/password"},
+		{"POST", "/api/auth/password"}, {"POST", "/api/auth/passkey/begin"}, {"GET", "/api/auth/methods"}} {
+		if code, _ := admin.do(req[0], req[1], map[string]any{}); code != 404 && code != 405 {
+			t.Errorf("%s %s: %d", req[0], req[1], code)
+		}
 	}
 	if code, _ := admin.do("PUT", "/api/roles/"+itoa(int(adminRole.ID)), map[string]any{"name": "x"}); code != 409 {
 		t.Fatal("built-in role changed", code)
 	}
 
-	// a custom role and a user with it
-	code, role := admin.do("POST", "/api/roles", map[string]any{"name": "NOC", "permissions": []string{"settings.inventory:sync", "flows:view"}})
-	if code != 201 || len(role["permissions"].([]any)) != 3 {
+	// A custom role: published to SPA by its ident, then given by SPA.
+	code, role := admin.do("POST", "/api/roles", map[string]any{"name": "NOC", "description": "Network operations", "permissions": []string{"settings.inventory:sync", "flows:view"}})
+	if code != 201 || len(role["permissions"].([]any)) != 3 || role["ident"] != "noc" {
 		t.Fatal(code, role)
+	}
+	if c := e.spa.Catalogue; c == nil || len(c.Roles) != 3 || c.Default != "viewer" || !slices.ContainsFunc(c.Roles, func(r spa.Role) bool {
+		return r.ID == "noc" && r.Name == "NOC" && r.Description == "Network operations"
+	}) || !slices.ContainsFunc(c.Roles, func(r spa.Role) bool { return r.ID == "admin" && r.Name == access.RoleAdministrator }) {
+		t.Fatal("catalogue not published", e.spa.Catalogue)
 	}
 	if code, out := admin.do("POST", "/api/roles", map[string]any{"name": "Bad", "permissions": []string{"nope:x"}}); code != 400 {
 		t.Fatal(code, out)
 	}
-	code, u := admin.do("POST", "/api/users", map[string]any{"username": "noc1", "password": "Noc-Passw0rd-1", "role_id": role["id"]})
-	if code != 201 || u["role"] != "NOC" {
-		t.Fatal(code, u)
-	}
+	e.spa.Users = append(e.spa.Users, spaUser("noc1", "noc"))
 	noc := e.client()
-	noc.login("noc1", "Noc-Passw0rd-1")
+	noc.login("noc1")
 	if code, _ := noc.do("GET", "/api/inventory-db", nil); code != 200 {
 		t.Fatal(code)
 	}
@@ -392,77 +378,49 @@ func TestUsersAndRoles(t *testing.T) {
 	if code, _ := admin.do("DELETE", "/api/roles/"+itoa(int(role["id"].(float64))), nil); code != 409 {
 		t.Fatal("role in use deleted", code)
 	}
-
-	// password reset ends the user's sessions; disabling too
-	if code, _ := admin.do("PUT", "/api/users/"+itoa(int(u["id"].(float64)))+"/password", map[string]any{"password": "short"}); code != 400 {
-		t.Fatal(code)
-	}
-	if code, _ := admin.do("PUT", "/api/users/"+itoa(int(u["id"].(float64)))+"/password", map[string]any{"password": "New-noc-Passw0rd"}); code != 200 {
-		t.Fatal(code)
-	}
-	if code, _ := noc.do("GET", "/api/auth/me", nil); code != 401 {
-		t.Fatal("session survived password reset", code)
-	}
-	noc.login("noc1", "New-noc-Passw0rd")
-	if code, _ := admin.do("PUT", "/api/users/"+itoa(int(u["id"].(float64))), map[string]any{"disabled": true}); code != 200 {
-		t.Fatal(code)
-	}
-	if code, _ := noc.do("GET", "/api/auth/me", nil); code != 401 {
-		t.Fatal("disabled user kept the session", code)
-	}
-	if code, out := noc.do("POST", "/api/auth/login", map[string]string{"username": "noc1", "password": "New-noc-Passw0rd"}); code != 403 || out["error"] != "user_disabled" {
+	// A rename keeps the ident and is published again.
+	published := e.spa.Published
+	if code, out := admin.do("PUT", "/api/roles/"+itoa(int(role["id"].(float64))), map[string]any{"name": "NOC engineers", "permissions": []string{"flows:view"}}); code != 200 || out["ident"] != "noc" {
 		t.Fatal(code, out)
 	}
-
-	// own password change
-	if code, _ := admin.do("POST", "/api/auth/password", map[string]any{"current": "wrong", "new": "Another-Passw0rd"}); code != 403 {
-		t.Fatal(code)
-	}
-	if code, _ := admin.do("POST", "/api/auth/password", map[string]any{"current": "admin-password", "new": "Another-Passw0rd"}); code != 200 {
-		t.Fatal(code)
-	}
-	if code, _ := admin.do("GET", "/api/auth/me", nil); code != 200 {
-		t.Fatal("own session ended by own password change", code)
+	if e.spa.Published != published+1 || !slices.ContainsFunc(e.spa.Catalogue.Roles, func(r spa.Role) bool { return r.ID == "noc" && r.Name == "NOC engineers" }) {
+		t.Fatal("rename not published", e.spa.Catalogue)
 	}
 
-	// LDAP settings: the bind password goes to OpenBao
-	code, out := admin.do("PUT", "/api/settings/ldap", map[string]any{"enabled": true, "url": "ldap://dc.example.com", "bind_dn": "cn=svc,dc=example,dc=com",
-		"base_dn": "dc=example,dc=com", "bind_password": "bind-pw", "default_role_id": viewerRole.ID,
-		"group_roles": []any{map[string]any{"group_dn": "CN=Flow Admins,DC=example,DC=com", "role_id": adminRole.ID}}})
-	if code != 200 || out["bind_password_set"] != true || out["bind_password_ref"] != nil {
+	users := usersByName(t, admin)
+	if users["noc1"]["source"] != "spa" || users["noc1"]["role"] != "NOC engineers" || users["noc1"]["spa_id"] != "usr_noc1" || users["noc1"]["password_ref"] != nil {
+		t.Fatal(users["noc1"])
+	}
+	if code, out := admin.do("GET", "/api/audit", nil); code != 200 || len(out["results"].([]any)) < 4 {
 		t.Fatal(code, out)
 	}
-	if e.fake.Get("flow/ldap")["bind_password"] != "bind-pw" {
-		t.Fatal("bind password not in OpenBao")
-	}
-	ls, _ := (&App{st: e.st}).ldapSettings(ctx)
-	if id, _ := (&App{st: e.st}).directoryRole(ctx, ls, []string{"cn=flow admins,dc=example,dc=com"}); id != adminRole.ID {
-		t.Fatal("group mapping", id)
-	}
-	if id, _ := (&App{st: e.st}).directoryRole(ctx, ls, nil); id != viewerRole.ID {
-		t.Fatal("default role", id)
-	}
+}
 
-	if code, out := admin.do("GET", "/api/audit", nil); code != 200 || len(out["results"].([]any)) < 5 {
+func usersByName(t *testing.T, c *client) map[string]map[string]any {
+	t.Helper()
+	code, out := c.do("GET", "/api/users", nil)
+	if code != 200 {
 		t.Fatal(code, out)
 	}
+	m := map[string]map[string]any{}
+	for _, u := range out["results"].([]any) {
+		x := u.(map[string]any)
+		m[x["username"].(string)] = x
+	}
+	return m
 }
 
 func TestGeneralUmbrellaOpenBao(t *testing.T) {
 	e := newEnv(t)
 	admin := e.client()
-	admin.login("admin", "admin-password")
+	admin.login("admin")
 	code, out := admin.do("GET", "/api/settings/general", nil)
-	if code != 200 || out["language"] != "ru" || out["password_policy"].(map[string]any)["min_length"] != float64(12) {
+	if code != 200 || out["language"] != "ru" || out["password_policy"] != nil {
 		t.Fatal(code, out)
 	}
 	code, out = admin.do("PUT", "/api/settings/general", map[string]any{"language": "en", "theme": "dark", "timezone": "Europe/Moscow",
-		"public_url": "https://flow.example/", "password_policy": map[string]any{"min_length": 16}, "geoip": map[string]any{"databases": []string{}}})
-	if code != 200 || out["public_url"] != "https://flow.example" || out["password_policy"].(map[string]any)["min_length"] != float64(16) {
-		t.Fatal(code, out)
-	}
-	// the stricter policy applies to new passwords
-	if code, out := admin.do("POST", "/api/users", map[string]any{"username": "u2", "password": "fifteen-chars-x", "role_id": e.view.RoleID}); code != 400 || out["error"] != "weak_password" {
+		"public_url": "https://flow.example/", "geoip": map[string]any{"databases": []string{}}})
+	if code != 200 || out["public_url"] != "https://flow.example" {
 		t.Fatal(code, out)
 	}
 
@@ -503,7 +461,7 @@ func TestGeneralUmbrellaOpenBao(t *testing.T) {
 		t.Fatal(code, out)
 	}
 	viewer := e.client()
-	viewer.login("viewer", "viewer-password")
+	viewer.login("viewer")
 	if code, _ := viewer.do("GET", "/api/settings/openbao", nil); code != 403 {
 		t.Fatal(code)
 	}
@@ -514,7 +472,7 @@ func TestGeneralUmbrellaOpenBao(t *testing.T) {
 	for rows.Next() {
 		var s string
 		_ = rows.Scan(&s)
-		for _, secret := range []string{"umb-secret", "admin-password", "viewer-password"} {
+		for _, secret := range []string{"umb-secret", e.spa.Key.ClientSecret, e.spa.Key.Token} {
 			if strings.Contains(s, secret) {
 				t.Fatalf("plaintext secret in PostgreSQL: %s", s)
 			}
@@ -527,7 +485,7 @@ func toJSON(v any) string { b, _ := json.Marshal(v); return string(b) }
 func TestDetectorRules(t *testing.T) {
 	e := newEnv(t)
 	admin := e.client()
-	admin.login("admin", "admin-password")
+	admin.login("admin")
 	code, out := admin.do("GET", "/api/detector/rules", nil)
 	if code != 200 || out["default"] != true || len(out["rules"].([]any)) != 1 {
 		t.Fatal(code, out)
@@ -554,7 +512,7 @@ func TestDetectorRules(t *testing.T) {
 		t.Fatal(code)
 	}
 	viewer := e.client()
-	viewer.login("viewer", "viewer-password")
+	viewer.login("viewer")
 	if code, _ := viewer.do("GET", "/api/detector/rules", nil); code != 403 {
 		t.Fatal(code)
 	}
@@ -563,7 +521,7 @@ func TestDetectorRules(t *testing.T) {
 func TestDetectorNewDefaults(t *testing.T) {
 	e := newEnv(t)
 	admin := e.client()
-	admin.login("admin", "admin-password")
+	admin.login("admin")
 	ids := func(v any) []string {
 		var out []string
 		for _, r := range v.([]any) {
@@ -607,7 +565,7 @@ func TestDetectorNewDefaults(t *testing.T) {
 		t.Fatal(code, out)
 	}
 	viewer := e.client()
-	viewer.login("viewer", "viewer-password")
+	viewer.login("viewer")
 	if code, _ := viewer.do("POST", "/api/detector/rules/add-defaults", nil); code != 403 {
 		t.Fatal(code)
 	}

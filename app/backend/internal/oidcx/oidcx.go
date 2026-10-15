@@ -1,7 +1,7 @@
-// Package oidcx signs people in with external OpenID Connect providers: Google (Workspace),
-// Sign in with Apple and any standard provider (Keycloak, ADFS, Okta, Authentik…). It runs the
-// authorization code flow with PKCE, verifies ID tokens (RS256 and ES256, keys from the
-// provider's JWKS) and signs JWTs (the client secret of Apple, the ID tokens of Umbrella).
+// Package oidcx is the OpenID Connect relying party used by the SPA client
+// (internal/spa): discovery, the authorization code flow with PKCE S256, ID
+// token verification (RS256, keys from the issuer's JWKS) and JWT signing for
+// the fake SPA of the tests.
 package oidcx
 
 import (
@@ -12,10 +12,8 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -28,16 +26,8 @@ import (
 	"time"
 )
 
-// Well-known issuers.
-const (
-	GoogleIssuer = "https://accounts.google.com"
-	AppleIssuer  = "https://appleid.apple.com"
-)
-
-var (
-	ErrInvalidToken = errors.New("the ID token is invalid")
-	ErrNotAllowed   = errors.New("the account is not allowed to sign in")
-)
+// ErrInvalidToken: the ID token does not verify.
+var ErrInvalidToken = errors.New("the ID token is invalid")
 
 // Timeout bounds every call to a provider.
 var Timeout = 10 * time.Second
@@ -136,7 +126,7 @@ type Client struct {
 	Secret      string
 	RedirectURI string
 	Scopes      []string
-	// Extra are additional authorization parameters (Google hd, Apple response_mode).
+	// Extra are additional authorization parameters (login_hint, idp_hint, prompt).
 	Extra url.Values
 }
 
@@ -302,6 +292,16 @@ func Verify(ctx context.Context, m Metadata, clientID, raw, nonce string, now ti
 	return cl, nil
 }
 
+// Algorithm is the "alg" of a JWT header ("" when it cannot be read).
+func Algorithm(raw string) string {
+	head, _, _ := strings.Cut(raw, ".")
+	var h header
+	if decodePart(head, &h) != nil {
+		return ""
+	}
+	return h.Alg
+}
+
 func decodePart(s string, out any) error {
 	b, err := base64.RawURLEncoding.DecodeString(s)
 	if err != nil {
@@ -409,7 +409,8 @@ func VerifySignature(alg string, key crypto.PublicKey, signed, sig string) error
 	return fmt.Errorf("%w: algorithm %s", ErrInvalidToken, alg)
 }
 
-// Sign makes a JWT signed with an RSA (RS256) or P-256 (ES256) key.
+// Sign makes a JWT signed with an RSA (RS256) or P-256 (ES256) key (the fake
+// SPA of the tests).
 func Sign(key crypto.Signer, kid string, claims any) (string, error) {
 	alg := "RS256"
 	if _, ok := key.(*ecdsa.PrivateKey); ok {
@@ -441,38 +442,4 @@ func Sign(key crypto.Signer, kid string, claims any) (string, error) {
 		return "", err
 	}
 	return signed + "." + base64.RawURLEncoding.EncodeToString(sig), nil
-}
-
-// ParseKey reads a PEM private key (PKCS#8, PKCS#1 or SEC 1): the .p8 key of Apple or the
-// signing key of Umbrella.
-func ParseKey(pemText string) (crypto.Signer, error) {
-	b, _ := pem.Decode([]byte(strings.TrimSpace(pemText)))
-	if b == nil {
-		return nil, errors.New("not a PEM key")
-	}
-	if k, err := x509.ParsePKCS8PrivateKey(b.Bytes); err == nil {
-		if s, ok := k.(crypto.Signer); ok {
-			return s, nil
-		}
-	}
-	if k, err := x509.ParsePKCS1PrivateKey(b.Bytes); err == nil {
-		return k, nil
-	}
-	if k, err := x509.ParseECPrivateKey(b.Bytes); err == nil {
-		return k, nil
-	}
-	return nil, errors.New("unsupported private key")
-}
-
-// AppleSecret is the client secret of Sign in with Apple: a JWT signed with the team's key.
-func AppleSecret(teamID, keyID, clientID, keyPEM string, now time.Time) (string, error) {
-	key, err := ParseKey(keyPEM)
-	if err != nil {
-		return "", err
-	}
-	if _, ok := key.(*ecdsa.PrivateKey); !ok {
-		return "", errors.New("the Apple key must be a P-256 key (.p8)")
-	}
-	return Sign(key, keyID, map[string]any{"iss": teamID, "iat": now.Unix(), "exp": now.Add(10 * time.Minute).Unix(),
-		"aud": AppleIssuer, "sub": clientID})
 }

@@ -2,7 +2,8 @@ package store
 
 import (
 	"context"
-	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -11,14 +12,25 @@ import (
 	"github.com/sbrw-evc/network/app/backend/internal/access"
 )
 
-// User sources.
+// User sources: every person signs in through SPA. A legacy account was made
+// before Flow moved to SPA; it is bound to its SPA person by the user name on
+// the first SPA sign-in or synchronization, or disabled by it.
 const (
-	SourceLocal = "local"
-	SourceLDAP  = "ldap"
+	SourceSPA    = "spa"
+	SourceLegacy = "legacy"
+)
+
+// Role idents of the built-in roles in the catalogue published to SPA.
+const (
+	IdentAdmin  = "admin"
+	IdentViewer = "viewer"
 )
 
 type Role struct {
-	ID          int64     `json:"id"`
+	ID int64 `json:"id"`
+	// Ident is the stable identifier of the role in SPA (the role catalogue,
+	// the "roles" claim); it does not change when the role is renamed.
+	Ident       string    `json:"ident"`
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	Builtin     bool      `json:"builtin"`
@@ -28,34 +40,33 @@ type Role struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
+// User is a person, synchronized from SPA (read-only in Flow).
 type User struct {
 	ID          int64      `json:"id"`
 	Username    string     `json:"username"`
 	Name        string     `json:"name"`
 	Email       string     `json:"email"`
 	Source      string     `json:"source"`
-	PasswordRef string     `json:"-"` // openbao:// reference to the password hash
 	RoleID      int64      `json:"role_id"`
 	Role        string     `json:"role"`
+	RoleIdent   string     `json:"role_ident"`
 	Disabled    bool       `json:"disabled"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	LastLoginAt *time.Time `json:"last_login_at"`
-	// ExternalID is the subject of the provider (Google, Apple, OpenID
-	// Connect, the Umbrella hub) the account is bound to.
-	ExternalID        string     `json:"-"`
-	PasswordChangedAt *time.Time `json:"password_changed_at,omitempty"`
+	// ExternalID is the SPA user ID (the sub of the ID token) of the account.
+	ExternalID string `json:"spa_id,omitempty"`
 }
 
 // ---- roles
 
-const roleCols = `r.id, r.name, r.description, r.builtin, r.created_at, r.updated_at,
+const roleCols = `r.id, r.ident, r.name, r.description, r.builtin, r.created_at, r.updated_at,
 	coalesce((SELECT array_agg(permission ORDER BY permission) FROM role_permissions p WHERE p.role_id = r.id), '{}'),
 	(SELECT count(*) FROM users u WHERE u.role_id = r.id)`
 
 func scanRole(row pgx.Row) (Role, error) {
 	var r Role
-	err := row.Scan(&r.ID, &r.Name, &r.Description, &r.Builtin, &r.CreatedAt, &r.UpdatedAt, &r.Permissions, &r.Users)
+	err := row.Scan(&r.ID, &r.Ident, &r.Name, &r.Description, &r.Builtin, &r.CreatedAt, &r.UpdatedAt, &r.Permissions, &r.Users)
 	r.Permissions = access.NewSet(r.Permissions).List()
 	return r, pgErr(err)
 }
@@ -85,6 +96,27 @@ func (s *Store) RoleByName(ctx context.Context, name string) (Role, error) {
 	return scanRole(s.pool.QueryRow(ctx, `SELECT `+roleCols+` FROM roles r WHERE lower(r.name) = lower($1)`, name))
 }
 
+// RoleByIdent finds a role by its SPA identifier.
+func (s *Store) RoleByIdent(ctx context.Context, ident string) (Role, error) {
+	return scanRole(s.pool.QueryRow(ctx, `SELECT `+roleCols+` FROM roles r WHERE r.ident = $1`, ident))
+}
+
+var notIdent = regexp.MustCompile(`[^a-z0-9_.:]+`)
+
+// identFor makes the identifier of a new role from its name: lower-case
+// letters, digits and . _ : - (as SPA requires), or "role" for names in other
+// alphabets.
+func identFor(name string) string {
+	id := strings.Trim(notIdent.ReplaceAllString(strings.ToLower(name), "-"), "-")
+	if len(id) > 56 {
+		id = strings.TrimRight(id[:56], "-")
+	}
+	if id == "" || id == IdentAdmin || id == IdentViewer {
+		id = "role"
+	}
+	return id
+}
+
 func setPerms(ctx context.Context, tx pgx.Tx, roleID int64, perms []string) error {
 	if _, err := tx.Exec(ctx, `DELETE FROM role_permissions WHERE role_id = $1`, roleID); err != nil {
 		return err
@@ -101,8 +133,20 @@ func setPerms(ctx context.Context, tx pgx.Tx, roleID int64, perms []string) erro
 func (s *Store) CreateRole(ctx context.Context, name, description string, perms []string) (Role, error) {
 	var id int64
 	err := s.tx(ctx, func(tx pgx.Tx) error {
-		if err := tx.QueryRow(ctx, `INSERT INTO roles (name, description) VALUES ($1, $2) RETURNING id`,
-			strings.TrimSpace(name), strings.TrimSpace(description)).Scan(&id); err != nil {
+		base := identFor(name)
+		ident := base
+		for n := 2; ; n++ {
+			var taken bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM roles WHERE ident = $1)`, ident).Scan(&taken); err != nil {
+				return err
+			}
+			if !taken && ident != "role" {
+				break
+			}
+			ident = base + "-" + strconv.Itoa(n)
+		}
+		if err := tx.QueryRow(ctx, `INSERT INTO roles (ident, name, description) VALUES ($1, $2, $3) RETURNING id`,
+			ident, strings.TrimSpace(name), strings.TrimSpace(description)).Scan(&id); err != nil {
 			return err
 		}
 		return setPerms(ctx, tx, id, perms)
@@ -150,18 +194,24 @@ func (s *Store) DeleteRole(ctx context.Context, id int64) error {
 	}))
 }
 
-// EnsureBuiltinRoles creates Administrator and Viewer and resets their
-// permissions to the catalog (new permissions reach Administrator on upgrade).
+// EnsureBuiltinRoles creates Administrator ("admin" in SPA) and Viewer
+// ("viewer") and resets their permissions to the catalog (new permissions
+// reach Administrator on upgrade).
 func (s *Store) EnsureBuiltinRoles(ctx context.Context) error {
+	idents := map[string]string{access.RoleAdministrator: IdentAdmin, access.RoleViewer: IdentViewer}
 	return s.tx(ctx, func(tx pgx.Tx) error {
 		for _, b := range access.BuiltinRoles() {
 			var id int64
+			ident := idents[b.Name]
 			err := tx.QueryRow(ctx, `SELECT id FROM roles WHERE lower(name) = lower($1)`, b.Name).Scan(&id)
 			if err == pgx.ErrNoRows {
-				err = tx.QueryRow(ctx, `INSERT INTO roles (name, description, builtin) VALUES ($1, $2, true) RETURNING id`,
-					b.Name, b.Description).Scan(&id)
+				err = tx.QueryRow(ctx, `INSERT INTO roles (ident, name, description, builtin) VALUES ($1, $2, $3, true) RETURNING id`,
+					ident, b.Name, b.Description).Scan(&id)
 			} else if err == nil {
-				_, err = tx.Exec(ctx, `UPDATE roles SET builtin = true, description = $2 WHERE id = $1`, id, b.Description)
+				// A custom role holding the ident gives it up.
+				if _, err = tx.Exec(ctx, `UPDATE roles SET ident = 'role-' || id WHERE ident = $1 AND id <> $2`, ident, id); err == nil {
+					_, err = tx.Exec(ctx, `UPDATE roles SET builtin = true, description = $2, ident = $3 WHERE id = $1`, id, b.Description, ident)
+				}
 			}
 			if err != nil {
 				return err
@@ -186,13 +236,13 @@ func (s *Store) Permissions(ctx context.Context, userID int64) ([]string, error)
 
 // ---- users
 
-const userCols = `u.id, u.username, u.name, u.email, u.source, u.password_ref, u.role_id, r.name, u.disabled,
-	u.created_at, u.updated_at, u.last_login_at, u.external_id, u.password_changed_at`
+const userCols = `u.id, u.username, u.name, u.email, u.source, u.role_id, r.name, r.ident, u.disabled,
+	u.created_at, u.updated_at, u.last_login_at, u.external_id`
 
 func scanUser(row pgx.Row) (User, error) {
 	var u User
-	err := row.Scan(&u.ID, &u.Username, &u.Name, &u.Email, &u.Source, &u.PasswordRef, &u.RoleID, &u.Role, &u.Disabled,
-		&u.CreatedAt, &u.UpdatedAt, &u.LastLoginAt, &u.ExternalID, &u.PasswordChangedAt)
+	err := row.Scan(&u.ID, &u.Username, &u.Name, &u.Email, &u.Source, &u.RoleID, &u.Role, &u.RoleIdent, &u.Disabled,
+		&u.CreatedAt, &u.UpdatedAt, &u.LastLoginAt, &u.ExternalID)
 	return u, pgErr(err)
 }
 
@@ -234,62 +284,21 @@ type NewUser struct {
 	Username string
 	Name     string
 	Email    string
-	Source   string
 	RoleID   int64
 	Disabled bool
 }
 
+// CreateUser adds a legacy account (one made before SPA: imports and tests).
+// People come from SPA through UpsertSPAUser.
 func (s *Store) CreateUser(ctx context.Context, in NewUser) (User, error) {
-	if in.Source == "" {
-		in.Source = SourceLocal
-	}
 	var id int64
 	err := s.pool.QueryRow(ctx, `INSERT INTO users (username, name, email, source, role_id, disabled)
-		VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-		strings.TrimSpace(in.Username), strings.TrimSpace(in.Name), strings.TrimSpace(in.Email), in.Source,
-		in.RoleID, in.Disabled).Scan(&id)
+		VALUES ($1, $2, $3, 'legacy', $4, $5) RETURNING id`,
+		strings.TrimSpace(in.Username), strings.TrimSpace(in.Name), strings.TrimSpace(in.Email), in.RoleID, in.Disabled).Scan(&id)
 	if err != nil {
 		return User{}, pgErr(err)
 	}
 	return s.UserByID(ctx, id)
-}
-
-// UserUpdate changes the given fields (nil = keep).
-type UserUpdate struct {
-	Name     *string
-	Email    *string
-	RoleID   *int64
-	Disabled *bool
-}
-
-func (s *Store) UpdateUser(ctx context.Context, id int64, in UserUpdate) (User, error) {
-	tag, err := s.pool.Exec(ctx, `UPDATE users SET
-		name = coalesce($2, name), email = coalesce($3, email), role_id = coalesce($4, role_id),
-		disabled = coalesce($5, disabled), updated_at = now() WHERE id = $1`, id, in.Name, in.Email, in.RoleID, in.Disabled)
-	if err != nil {
-		return User{}, pgErr(err)
-	}
-	if tag.RowsAffected() == 0 {
-		return User{}, ErrNotFound
-	}
-	return s.UserByID(ctx, id)
-}
-
-// SetPasswordRef stores the OpenBao reference of a local user's password hash.
-func (s *Store) SetPasswordRef(ctx context.Context, id int64, ref string) error {
-	tag, err := s.pool.Exec(ctx, `UPDATE users SET password_ref = $2, password_changed_at = now(), updated_at = now() WHERE id = $1`, id, ref)
-	if err == nil && tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return pgErr(err)
-}
-
-func (s *Store) DeleteUser(ctx context.Context, id int64) error {
-	tag, err := s.pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, id)
-	if err == nil && tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return pgErr(err)
 }
 
 // TouchLogin records a successful sign-in.
@@ -299,7 +308,7 @@ func (s *Store) TouchLogin(ctx context.Context, id int64) error {
 }
 
 // CountEnabledAdmins counts enabled users whose role has users:edit and roles:edit,
-// so the last administrator cannot lock everybody out.
+// so a role change cannot take the administration away from everybody.
 func (s *Store) CountEnabledAdmins(ctx context.Context) (int, error) {
 	var n int
 	err := s.pool.QueryRow(ctx, `SELECT count(*) FROM users u WHERE NOT u.disabled
@@ -307,62 +316,4 @@ func (s *Store) CountEnabledAdmins(ctx context.Context) (int, error) {
 		AND EXISTS (SELECT 1 FROM role_permissions p WHERE p.role_id = u.role_id AND p.permission = $2)`,
 		access.UsersEdit, access.RolesEdit).Scan(&n)
 	return n, err
-}
-
-// UpsertDirectoryUser creates or refreshes a user signed in through LDAP / AD.
-// A local user with the same name is not taken over.
-func (s *Store) UpsertDirectoryUser(ctx context.Context, username, name, email string, roleID int64) (User, error) {
-	var id int64
-	err := s.pool.QueryRow(ctx, `INSERT INTO users (username, name, email, source, role_id) VALUES ($1, $2, $3, 'ldap', $4)
-		ON CONFLICT (lower(username)) DO UPDATE SET name = excluded.name, email = excluded.email, role_id = excluded.role_id,
-			updated_at = now() WHERE users.source = 'ldap'
-		RETURNING id`, strings.TrimSpace(username), name, email, roleID).Scan(&id)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return User{}, fmt.Errorf("%w: a local user %q exists", ErrConflict, username)
-		}
-		return User{}, pgErr(err)
-	}
-	return s.UserByID(ctx, id)
-}
-
-// ---- directory group -> role
-
-type GroupRole struct {
-	GroupDN string `json:"group_dn"`
-	RoleID  int64  `json:"role_id"`
-	Role    string `json:"role"`
-}
-
-// GroupRoles lists the mappings in priority order.
-func (s *Store) GroupRoles(ctx context.Context) ([]GroupRole, error) {
-	rows, err := s.pool.Query(ctx, `SELECT g.group_dn, g.role_id, r.name FROM group_roles g JOIN roles r ON r.id = g.role_id ORDER BY g.position, g.group_dn`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []GroupRole{}
-	for rows.Next() {
-		var g GroupRole
-		if err := rows.Scan(&g.GroupDN, &g.RoleID, &g.Role); err != nil {
-			return nil, err
-		}
-		out = append(out, g)
-	}
-	return out, rows.Err()
-}
-
-// SetGroupRoles replaces the mappings; the slice order is the priority.
-func (s *Store) SetGroupRoles(ctx context.Context, in []GroupRole) error {
-	return pgErr(s.tx(ctx, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `DELETE FROM group_roles`); err != nil {
-			return err
-		}
-		for i, g := range in {
-			if _, err := tx.Exec(ctx, `INSERT INTO group_roles (group_dn, role_id, position) VALUES ($1, $2, $3)`, g.GroupDN, g.RoleID, i); err != nil {
-				return err
-			}
-		}
-		return nil
-	}))
 }

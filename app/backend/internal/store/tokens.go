@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
@@ -11,11 +10,9 @@ import (
 	"github.com/sbrw-evc/network/app/backend/internal/access"
 )
 
-// Tables of migration 00003: service accounts, API tokens and Microsoft
-// Entra ID users.
-
-// SourceEntra marks users signed in through Microsoft Entra ID.
-const SourceEntra = "entra"
+// Tables of migration 00003: service accounts and API tokens. A token
+// belongs to the person who created it (migration 00007) and stops working
+// while SPA keeps that person disabled.
 
 // ServiceAccount is a machine identity with a role; its tokens carry the role.
 type ServiceAccount struct {
@@ -154,13 +151,18 @@ type NewAPIToken struct {
 	Display          string
 	ExpiresAt        *time.Time
 	CreatedBy        string
+	CreatedByID      int64 // the person (0 = none)
 }
 
 func (s *Store) CreateAPIToken(ctx context.Context, in NewAPIToken) (APIToken, error) {
 	var id int64
-	err := s.pool.QueryRow(ctx, `INSERT INTO api_tokens (service_account_id, name, token_hash, display, expires_at, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-		in.ServiceAccountID, strings.TrimSpace(in.Name), in.Hash, in.Display, in.ExpiresAt, in.CreatedBy).Scan(&id)
+	var by *int64
+	if in.CreatedByID > 0 {
+		by = &in.CreatedByID
+	}
+	err := s.pool.QueryRow(ctx, `INSERT INTO api_tokens (service_account_id, name, token_hash, display, expires_at, created_by, created_by_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+		in.ServiceAccountID, strings.TrimSpace(in.Name), in.Hash, in.Display, in.ExpiresAt, in.CreatedBy, by).Scan(&id)
 	if err != nil {
 		return APIToken{}, pgErr(err)
 	}
@@ -184,6 +186,8 @@ func (s *Store) RevokeAPIToken(ctx context.Context, id int64, by string) (APITok
 type TokenPrincipal struct {
 	Token   APIToken
 	Account ServiceAccount
+	// OwnerDisabled: the person who created the token is disabled (by SPA).
+	OwnerDisabled bool
 }
 
 // TokenByHash finds a token by its HMAC, with its service account.
@@ -195,6 +199,10 @@ func (s *Store) TokenByHash(ctx context.Context, hash string) (TokenPrincipal, e
 		return out, err
 	}
 	out.Token = t
+	if err := s.pool.QueryRow(ctx, `SELECT coalesce(u.disabled, false) FROM api_tokens t LEFT JOIN users u ON u.id = t.created_by_id
+		WHERE t.id = $1`, t.ID).Scan(&out.OwnerDisabled); err != nil {
+		return out, pgErr(err)
+	}
 	out.Account, err = s.ServiceAccount(ctx, t.ServiceAccountID)
 	return out, err
 }
@@ -210,29 +218,4 @@ func (s *Store) TouchAPIToken(ctx context.Context, id int64, remote string, at t
 		return false, pgErr(err)
 	}
 	return prev != remote, nil
-}
-
-// ---- Microsoft Entra ID users
-
-// UpsertEntraUser creates or refreshes a user signed in through Microsoft
-// Entra ID with the role of its groups (or the default role); created
-// reports a first sign-in. A local or LDAP user with the same name is not
-// taken over.
-func (s *Store) UpsertEntraUser(ctx context.Context, username, name, email string, roleID int64) (User, bool, error) {
-	username = strings.TrimSpace(username)
-	var id int64
-	var created bool
-	err := s.pool.QueryRow(ctx, `INSERT INTO users (username, name, email, source, role_id) VALUES ($1, $2, $3, 'entra', $4)
-		ON CONFLICT (lower(username)) DO UPDATE SET name = excluded.name, email = excluded.email,
-			role_id = excluded.role_id, updated_at = now()
-		WHERE users.source = 'entra'
-		RETURNING id, xmax = 0`, username, name, email, roleID).Scan(&id, &created)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return User{}, false, fmt.Errorf("%w: a %s user %q exists", ErrConflict, "non-Entra", username)
-		}
-		return User{}, false, pgErr(err)
-	}
-	u, err := s.UserByID(ctx, id)
-	return u, created, err
 }

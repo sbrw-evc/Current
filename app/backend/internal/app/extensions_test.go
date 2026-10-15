@@ -9,9 +9,9 @@ import (
 func TestExtensionSettings(t *testing.T) {
 	e := newEnv(t)
 	admin := e.client()
-	admin.login("admin", "admin-password")
+	admin.login("admin")
 	viewer := e.client()
-	viewer.login("viewer", "viewer-password")
+	viewer.login("viewer")
 
 	// Reverse DNS: disabled defaults, validation, reload.
 	code, out := admin.do("GET", "/api/settings/rdns", nil)

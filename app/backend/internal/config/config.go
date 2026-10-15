@@ -375,7 +375,12 @@ type Env struct {
 	NetFlowAddr    string         // FLOW_NETFLOW_ADDR, UDP for NetFlow v5/v9 and IPFIX (:2055)
 	SFlowAddr      string         // FLOW_SFLOW_ADDR, UDP for sFlow (:6343)
 	NATSURL        string         // FLOW_NATS_URL, empty = in-process bus
-
+	// SPA, the Single Point of Authorization: the connection key or the file
+	// holding it (without both, the key is read from OpenBao, spa#connection_key)
+	// and the address of Flow when it differs from the request address.
+	SPAConnectionKey     string // SPA_CONNECTION_KEY
+	SPAConnectionKeyFile string // SPA_CONNECTION_KEY_FILE
+	SPAPublicURL         string // SPA_PUBLIC_URL
 }
 
 // LoadEnv reads the environment through getenv (os.Getenv when nil).
@@ -397,6 +402,10 @@ func LoadEnv(getenv func(string) string) (Env, error) {
 		NetFlowAddr: get("FLOW_NETFLOW_ADDR", ":2055"),
 		SFlowAddr:   get("FLOW_SFLOW_ADDR", ":6343"),
 		NATSURL:     get("FLOW_NATS_URL", ""),
+
+		SPAConnectionKey:     get("SPA_CONNECTION_KEY", ""),
+		SPAConnectionKeyFile: get("SPA_CONNECTION_KEY_FILE", ""),
+		SPAPublicURL:         strings.TrimRight(get("SPA_PUBLIC_URL", ""), "/"),
 	}
 	var errs []error
 	wait, err := time.ParseDuration(get("FLOW_STARTUP_WAIT", "2m"))
@@ -417,6 +426,11 @@ func LoadEnv(getenv func(string) string) (Env, error) {
 	}
 	if e.Role, err = ParseRole(getenv("FLOW_ROLE")); err != nil {
 		errs = append(errs, err)
+	}
+	if e.SPAPublicURL != "" {
+		if u, err := url.Parse(e.SPAPublicURL); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+			errs = append(errs, errors.New("SPA_PUBLIC_URL must look like https://flow.example.com"))
+		}
 	}
 	return e, errors.Join(errs...)
 }

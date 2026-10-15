@@ -42,23 +42,29 @@ type Options struct {
 	// DataDir holds flow.json; moving the secrets to another OpenBao rewrites
 	// it (openbao_migrate.go). Empty = that move is not available.
 	DataDir string
+	// The SPA connection (spa.go): the connection key (SPA_CONNECTION_KEY)
+	// or the file holding it (SPA_CONNECTION_KEY_FILE); without both the key
+	// is read from OpenBao (spa#connection_key). SPAPublicURL
+	// (SPA_PUBLIC_URL) is the address of Flow for the redirect addresses.
+	SPAKey       string
+	SPAKeyFile   string
+	SPAPublicURL string
 }
 
 // App is the HTTP application.
 type App struct {
-	opt       Options
-	deps      Deps
-	st        *store.Store
-	sessions  *auth.Sessions
-	passwords *auth.Passwords
-	limiter   *auth.Limiter
-	syncMu    sync.Mutex
-	cfgMu     sync.RWMutex  // guards deps.Config (replaced by an OpenBao move)
-	umb       umbrellaState // Umbrella scopes and dependency discovery (umbrella_*.go)
+	opt      Options
+	deps     Deps
+	st       *store.Store
+	sessions *auth.Sessions
+	syncMu   sync.Mutex
+	cfgMu    sync.RWMutex  // guards deps.Config (replaced by an OpenBao move)
+	umb      umbrellaState // Umbrella scopes and dependency discovery (umbrella_*.go)
+	spa      spaState      // SPA sign-in and synchronization (spa.go)
 }
 
 // New builds the application. deps.Store and deps.Vault are required: every
-// secret (password hashes, session keys, tokens) lives in OpenBao.
+// secret (session keys, token keys, the SPA connection key) lives in OpenBao.
 func New(opt Options, deps Deps) *App {
 	if opt.Web == nil {
 		opt.Web = httpx.Web("")
@@ -69,8 +75,7 @@ func New(opt Options, deps Deps) *App {
 	if deps.Store == nil || deps.Vault == nil {
 		panic("app: Store and Vault are required")
 	}
-	return &App{opt: opt, deps: deps, st: deps.Store, sessions: auth.NewSessions(deps.Store, auth.NewKeys(deps.Vault), opt.SecureCookies),
-		passwords: auth.NewPasswords(deps.Vault), limiter: auth.NewLimiter()}
+	return &App{opt: opt, deps: deps, st: deps.Store, sessions: auth.NewSessions(deps.Store, auth.NewKeys(deps.Vault), opt.SecureCookies)}
 }
 
 // config returns flow.json as the App knows it. An OpenBao move replaces it
@@ -88,8 +93,8 @@ func (a *App) setConfig(f config.File) {
 	a.cfgMu.Unlock()
 }
 
-// Run does the background work until ctx ends: purging expired sessions and,
-// when enabled, the Inventory DB schedule.
+// Run does the background work until ctx ends: purging expired sessions,
+// synchronizing with SPA and, when enabled, the Inventory DB schedule.
 func (a *App) Run(ctx context.Context) {
 	var wg sync.WaitGroup
 	wg.Go(func() { a.sessions.Run(ctx) })
@@ -97,7 +102,7 @@ func (a *App) Run(ctx context.Context) {
 		wg.Go(func() { a.runInventorySchedule(ctx) })
 	}
 	wg.Go(func() { a.runDependencySchedule(ctx) })
-	wg.Go(func() { a.runIdentitySchedule(ctx) })
+	wg.Go(func() { a.runSPASchedule(ctx) })
 	wg.Wait()
 }
 
@@ -160,11 +165,11 @@ func (a *App) Handler() http.Handler {
 	h("GET /api/version", a.version)
 	// /api/setup* answer 404 after the setup (the /api/ fallback).
 
-	// sign-in
-	h("POST /api/auth/login", a.login)
+	// sign-in through SPA (spa.go): /api/auth/spa, /api/auth/spa/start,
+	// /api/auth/spa/callback, the SPA settings and "Synchronize now"
+	a.spaRoutes(h)
 	h("POST /api/auth/logout", a.logout)
 	h("GET /api/auth/me", a.guard(nil, a.me))
-	h("POST /api/auth/password", a.guard(nil, a.changeOwnPassword))
 	h("GET /api/access/catalog", a.guard(nil, a.catalog))
 	h("GET /api/schema", a.guard(nil, a.schema))
 
@@ -209,19 +214,12 @@ func (a *App) Handler() http.Handler {
 	h("PUT /api/classifiers", a.guard(perms(access.ClassifiersEdit), a.putClassifiers))
 	h("POST /api/classifiers/preview", a.guard(perms(access.ClassifiersView), a.previewClassifiers))
 
-	// users, roles, directory
+	// users (read-only, from SPA) and roles (the catalogue published to SPA)
 	h("GET /api/users", a.guard(perms(access.UsersView), a.listUsers))
-	h("POST /api/users", a.guard(perms(access.UsersEdit), a.createUser))
-	h("PUT /api/users/{id}", a.guard(perms(access.UsersEdit), a.updateUser))
-	h("DELETE /api/users/{id}", a.guard(perms(access.UsersEdit), a.deleteUser))
-	h("PUT /api/users/{id}/password", a.guard(perms(access.UsersEdit), a.setUserPassword))
 	h("GET /api/roles", a.guard(perms(access.RolesView, access.UsersView), a.listRoles))
 	h("POST /api/roles", a.guard(perms(access.RolesEdit), a.createRole))
 	h("PUT /api/roles/{id}", a.guard(perms(access.RolesEdit), a.updateRole))
 	h("DELETE /api/roles/{id}", a.guard(perms(access.RolesEdit), a.deleteRole))
-	h("GET /api/settings/ldap", a.guard(perms(access.UsersView), a.getLDAP))
-	h("PUT /api/settings/ldap", a.guard(perms(access.UsersEdit), a.putLDAP))
-	h("POST /api/settings/ldap/test", a.guard(perms(access.UsersEdit), a.testLDAP))
 
 	// Umbrella API: visibility scope, connection, dependency discovery (umbrella_routes.go)
 	a.umbrellaRoutes(h)
@@ -236,16 +234,9 @@ func (a *App) Handler() http.Handler {
 	h("GET /api/settings/openbao", a.guard(perms(access.OpenBaoView), a.getOpenBao))
 	h("POST /api/settings/openbao/test", a.guard(perms(access.OpenBaoTest), a.testOpenBao))
 
-	// API tokens, Entra ID sign-in, moving the secrets to another OpenBao
-	// (routes in tokens.go, entra.go, openbao_migrate.go)
+	// API tokens, moving the secrets to another OpenBao
+	// (routes in tokens.go, openbao_migrate.go)
 	a.tokenRoutes(h)
-	a.entraRoutes(h)
-	// Umbrella Identity: passkeys, Google / Apple / OpenID Connect, single
-	// sign-in and synchronization with Umbrella Monitoring, the password policy
-	a.passkeyRoutes(h)
-	a.providerRoutes(h)
-	a.identityRoutes(h)
-	a.passwordPolicyRoutes(h)
 	a.openbaoMigrateRoutes(h)
 
 	// gNMI / SNMP poller and BMP receiver settings (routing.go, gnmi.go)
@@ -294,9 +285,6 @@ type Principal struct {
 
 type handler func(w http.ResponseWriter, r *http.Request, p *Principal)
 
-// allowedWhenExpired are what a user whose password expired may still do.
-var allowedWhenExpired = map[string]bool{"GET /api/auth/me": true, "POST /api/auth/password": true, "GET /api/settings/password-policy": true}
-
 func perms(p ...string) []string { return p }
 
 // guard authenticates the request (a session cookie, or an API token in
@@ -344,10 +332,6 @@ func (a *App) guard(anyOf []string, next handler) http.HandlerFunc {
 			return
 		}
 		p := &Principal{User: u, Perms: access.NewSet(list), Session: ss, Remote: httpx.ClientIP(r, a.opt.TrustedProxies)}
-		if exp, ok := a.passwordExpiry(ctx, u); ok && !time.Now().Before(exp) && !allowedWhenExpired[r.Pattern] {
-			httpx.Error(w, http.StatusForbidden, "password_expired", "the password has expired: set a new one")
-			return
-		}
 		if len(anyOf) > 0 && !p.Perms.Any(anyOf...) {
 			httpx.Error(w, http.StatusForbidden, "forbidden", "you do not have the permission "+anyOf[0])
 			return

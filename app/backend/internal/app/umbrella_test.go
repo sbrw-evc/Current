@@ -16,6 +16,8 @@ import (
 	"github.com/sbrw-evc/network/app/backend/internal/query"
 	"github.com/sbrw-evc/network/app/backend/internal/secrets/secretstest"
 	"github.com/sbrw-evc/network/app/backend/internal/setup"
+	"github.com/sbrw-evc/network/app/backend/internal/spa"
+	"github.com/sbrw-evc/network/app/backend/internal/spa/spatest"
 	"github.com/sbrw-evc/network/app/backend/internal/store"
 	"github.com/sbrw-evc/network/app/backend/internal/store/storetest"
 	"github.com/sbrw-evc/network/app/backend/internal/umbrella"
@@ -109,7 +111,6 @@ func (f *fakeFinder) DependencyPairs(_ context.Context, p query.DependencyParams
 
 func newUmbrellaEnv(t *testing.T, finder DependencyFinder) (*env, *App) {
 	t.Helper()
-	auth.Iterations = 1000
 	st := storetest.New(t)
 	fake, vault := secretstest.New(t)
 	ctx := context.Background()
@@ -122,29 +123,19 @@ func newUmbrellaEnv(t *testing.T, finder DependencyFinder) (*env, *App) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mk := func(name string, roleID int64) store.User {
-		u, err := st.CreateUser(ctx, store.NewUser{Username: name, Name: name, RoleID: roleID})
-		if err != nil {
-			t.Fatal(err)
-		}
-		ref, err := auth.NewPasswords(vault).Set(ctx, u.ID, name+"-password")
-		if err != nil {
-			t.Fatal(err)
-		}
-		_ = st.SetPasswordRef(ctx, u.ID, ref)
-		return u
-	}
-	admin := mk("admin", adminRole.ID)
-	viewer := mk("viewer", viewerRole.ID)
-	mk("Scoped", scopedRole.ID)
+	admin := legacyUser(t, st, "admin", adminRole.ID)
+	viewer := legacyUser(t, st, "viewer", viewerRole.ID)
+	legacyUser(t, st, "Scoped", scopedRole.ID)
+	sp := spatest.New(t)
+	sp.Users = []spa.User{spaUser("admin", "admin"), spaUser("viewer", "viewer"), spaUser("Scoped", scopedRole.Ident)}
 	deps := Deps{Store: st, Vault: vault, Visualizer: scopeEcho{}}
 	if finder != nil {
 		deps.Dependencies = finder
 	}
-	a := New(Options{Version: "test"}, deps)
+	a := New(Options{Version: "test", SPAKey: sp.ConnectionKey()}, deps)
 	srv := httptest.NewServer(a.Handler())
 	t.Cleanup(srv.Close)
-	return &env{t: t, srv: srv, st: st, fake: fake, rel: &reloads{}, admin: admin, view: viewer}, a
+	return &env{t: t, srv: srv, st: st, fake: fake, rel: &reloads{}, admin: admin, view: viewer, spa: sp, app: a}, a
 }
 
 func configureUmbrella(t *testing.T, c *client, url string) {
@@ -159,7 +150,7 @@ func TestUmbrellaAPISettings(t *testing.T) {
 	um := newFakeUmbrella(t)
 	e, _ := newUmbrellaEnv(t, nil)
 	admin := e.client()
-	admin.login("admin", "admin-password")
+	admin.login("admin")
 	if code, out := admin.do("GET", "/api/settings/umbrella/api", nil); code != 200 || out["token_set"] != false {
 		t.Fatal(code, out)
 	}
@@ -191,7 +182,7 @@ func TestUmbrellaAPISettings(t *testing.T) {
 	}
 	// The viewer may not change it.
 	viewer := e.client()
-	viewer.login("viewer", "viewer-password")
+	viewer.login("viewer")
 	if code, _ := viewer.do("PUT", "/api/settings/umbrella/api", map[string]any{"url": um.srv.URL}); code != 403 {
 		t.Fatal(code)
 	}
@@ -208,11 +199,11 @@ func TestUmbrellaScopeRestrictsQueries(t *testing.T) {
 	um := newFakeUmbrella(t)
 	e, _ := newUmbrellaEnv(t, nil)
 	admin := e.client()
-	admin.login("admin", "admin-password")
+	admin.login("admin")
 	scoped := e.client()
-	scoped.login("Scoped", "Scoped-password")
+	scoped.login("Scoped")
 	viewer := e.client()
-	viewer.login("viewer", "viewer-password")
+	viewer.login("viewer")
 	body := map[string]any{"start": "2026-10-12T09:00:00Z", "end": "2026-10-12T10:00:00Z"}
 
 	// Not configured: the restricted user fails closed, the others are unaffected.
@@ -296,7 +287,7 @@ func TestDependencies(t *testing.T) {
 	ctx := context.Background()
 	_ = e.st.PutSetting(ctx, setup.SettingGeneral, setup.General{Language: "en", Theme: "system", Timezone: "UTC", PublicURL: "https://flow.corp"})
 	admin := e.client()
-	admin.login("admin", "admin-password")
+	admin.login("admin")
 
 	if code, out := admin.do("GET", "/api/dependencies", nil); code != 200 || out["last_run"] != nil || out["configured"] != false || out["available"] != true {
 		t.Fatal(code, out)
@@ -363,7 +354,7 @@ func TestDependencies(t *testing.T) {
 
 	// Permissions: the scoped role may view, not run; the viewer neither.
 	scoped := e.client()
-	scoped.login("Scoped", "Scoped-password")
+	scoped.login("Scoped")
 	if code, _ := scoped.do("GET", "/api/dependencies", nil); code != 200 {
 		t.Fatal(code)
 	}
@@ -371,7 +362,7 @@ func TestDependencies(t *testing.T) {
 		t.Fatal(code)
 	}
 	viewer := e.client()
-	viewer.login("viewer", "viewer-password")
+	viewer.login("viewer")
 	if code, _ := viewer.do("GET", "/api/dependencies", nil); code != 403 {
 		t.Fatal(code)
 	}

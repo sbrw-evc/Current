@@ -131,7 +131,7 @@ var pages = []Page{
 	}},
 	{"users", GroupOrg, Text{"Users", "Пользователи"}, []Feature{
 		view,
-		{"edit", Text{"Create, change, lock and delete users, set passwords, configure LDAP / AD", "Создание, изменение, блокировка и удаление пользователей, пароли, настройка LDAP / AD"}},
+		{"edit", Text{"Synchronize users with SPA now and manage the saved views of others (people and their roles are managed in SPA)", "Синхронизация пользователей с SPA и управление чужими сохранёнными видами (люди и их роли управляются в SPA)"}},
 	}},
 	{"roles", GroupOrg, Text{"Roles", "Роли"}, []Feature{view, edit}},
 	{"settings.inventory", GroupSettings, Text{"Inventory DB", "Inventory DB"}, []Feature{

@@ -2,9 +2,11 @@
 // wizard section). It runs while flow.json is missing: it checks the
 // setup code (written to the log and to <data>/setup-token, attempts are
 // rate-limited), tests every step, and on completion writes the secrets to
-// OpenBao, migrates PostgreSQL and ClickHouse, stores the settings, creates
-// the first administrator, writes flow.json and hands over to the
-// application without a restart.
+// OpenBao, migrates PostgreSQL and ClickHouse, stores the settings, keeps the
+// SPA connection key (when given here rather than in SPA_CONNECTION_KEY),
+// writes flow.json and hands over to the application without a restart.
+// There is no first administrator: people sign in through SPA, and the first
+// administrator is whoever SPA gives Flow's "admin" role.
 package setup
 
 import (
@@ -20,7 +22,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -28,11 +29,11 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/sbrw-evc/network/app/backend/internal/access"
 	"github.com/sbrw-evc/network/app/backend/internal/auth"
 	"github.com/sbrw-evc/network/app/backend/internal/config"
 	"github.com/sbrw-evc/network/app/backend/internal/httpx"
 	"github.com/sbrw-evc/network/app/backend/internal/secrets"
+	"github.com/sbrw-evc/network/app/backend/internal/spa"
 	chstore "github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse"
 	"github.com/sbrw-evc/network/app/backend/internal/store"
 )
@@ -47,11 +48,10 @@ const (
 
 // Settings keys written by the wizard (table settings).
 const (
-	SettingGeneral        = "general"
-	SettingCollector      = "collector"
-	SettingPasswordPolicy = "password_policy"
-	SettingUmbrella       = "umbrella"
-	SettingGeoIP          = "geoip"
+	SettingGeneral   = "general"
+	SettingCollector = "collector"
+	SettingUmbrella  = "umbrella"
+	SettingGeoIP     = "geoip"
 )
 
 // OpenBao paths of the secrets the wizard writes (mount "flow").
@@ -62,8 +62,6 @@ const (
 	SecretInventory  = "inventory-db" // #token
 	SecretUmbrella   = "umbrella"     // #token
 )
-
-var UsernameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._@-]{1,63}$`)
 
 type Options struct {
 	DataDir        string
@@ -254,12 +252,10 @@ type GeoIPInput struct {
 	Databases []string `json:"databases"`
 }
 
-type AdminInput struct {
-	Username       string               `json:"username"`
-	Name           string               `json:"name"`
-	Email          string               `json:"email"`
-	Password       string               `json:"password"`
-	PasswordPolicy *auth.PasswordPolicy `json:"password_policy,omitempty"`
+// SPAInput is the SPA connection key (spa1.…). It is optional here: the
+// deployment can give it in SPA_CONNECTION_KEY or SPA_CONNECTION_KEY_FILE.
+type SPAInput struct {
+	ConnectionKey string `json:"connection_key"`
 }
 
 // Input is the body of POST /api/setup.
@@ -277,10 +273,7 @@ type Input struct {
 	Inventory  *InventoryInput  `json:"inventory"`
 	Umbrella   *UmbrellaInput   `json:"umbrella"`
 	GeoIP      *GeoIPInput      `json:"geoip"`
-	Admin      *AdminInput      `json:"admin"`
-	// PasswordPolicy for local users (the console sends it here; the
-	// admin.password_policy field is also accepted).
-	PasswordPolicy *auth.PasswordPolicy `json:"password_policy,omitempty"`
+	SPA        *SPAInput        `json:"spa"`
 	// Retention of flows; the console sends it here, clickhouse.retention is
 	// also accepted (and wins).
 	Retention *config.Retention `json:"retention,omitempty"`
@@ -443,7 +436,7 @@ func (m *Module) clickhouseConfig(in *ClickHouseInput) (config.ClickHouse, strin
 
 // ---- step checks
 
-var steps = map[string]bool{"openbao": true, "postgres": true, "clickhouse": true, "nats": true, "inventory": true, "umbrella": true, "geoip": true}
+var steps = map[string]bool{"openbao": true, "postgres": true, "clickhouse": true, "nats": true, "inventory": true, "umbrella": true, "geoip": true, "spa": true}
 
 // decodeStep reads {setup_code, ...step fields} into the code and v.
 func decodeStep(w http.ResponseWriter, r *http.Request, v any) (string, bool) {
@@ -552,6 +545,16 @@ func (m *Module) testStep(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		res = CheckGeoIP(in.Databases)
+	case "spa":
+		var in struct {
+			SPAInput
+			PublicURL string `json:"public_url"`
+		}
+		code, ok := decodeStep(w, r, &in)
+		if !ok || !m.checkCode(w, r, code) {
+			return
+		}
+		res = CheckSPA(ctx, in.ConnectionKey, firstNonEmpty(in.PublicURL, m.opt.Defaults.PublicURL))
 	}
 	httpx.JSON(w, http.StatusOK, res)
 }
@@ -762,30 +765,13 @@ func (m *Module) apply(ctx context.Context, in Input, remote string) (Result, er
 		}
 	}
 
-	// administrator: required for a new database, optional when attaching
-	policy := auth.DefaultPolicy
-	if attach {
-		_, _ = st.Setting(ctx, SettingPasswordPolicy, &policy)
-	}
-	if in.PasswordPolicy != nil {
-		policy = *in.PasswordPolicy
-	}
-	var admin *AdminInput
-	if in.Admin != nil && (in.Admin.Username != "" || in.Admin.Password != "") {
-		admin = in.Admin
-		admin.Username = strings.TrimSpace(admin.Username)
-		if admin.PasswordPolicy != nil {
-			policy = *admin.PasswordPolicy
+	// SPA: optional (the deployment may give the key in SPA_CONNECTION_KEY).
+	spaKey := ""
+	if in.SPA != nil && strings.TrimSpace(in.SPA.ConnectionKey) != "" {
+		spaKey = strings.TrimSpace(in.SPA.ConnectionKey)
+		if c := CheckSPA(ctx, spaKey, general.PublicURL); !c.OK {
+			return res, bad("spa_unavailable", errors.New(c.Error))
 		}
-		policy = policy.Normalize()
-		if !UsernameRe.MatchString(admin.Username) {
-			return res, bad("admin_invalid", errors.New("user name: 2-64 letters, digits, . _ @ -"))
-		}
-		if err := policy.Validate(admin.Password, admin.Username); err != nil {
-			return res, bad("weak_password", err)
-		}
-	} else if !pgd.HasState {
-		return res, bad("admin_required", errors.New("the first administrator is required"))
 	}
 
 	// ---- everything checked: write.
@@ -836,9 +822,6 @@ func (m *Module) apply(ctx context.Context, in Input, remote string) (Result, er
 	if err := pgWrite(st.PutSetting(ctx, SettingCollector, col)); err != nil {
 		return res, err
 	}
-	if err := pgWrite(st.PutSetting(ctx, SettingPasswordPolicy, policy.Normalize())); err != nil {
-		return res, err
-	}
 	if !attach || len(geo.Databases) > 0 {
 		if err := pgWrite(st.PutSetting(ctx, SettingGeoIP, geo)); err != nil {
 			return res, err
@@ -864,18 +847,14 @@ func (m *Module) apply(ctx context.Context, in Input, remote string) (Result, er
 			return res, err
 		}
 	}
-	if admin != nil {
-		if err := m.createAdmin(ctx, st, vault, admin); err != nil {
+	if spaKey != "" {
+		if _, err := put(spa.SecretPath, spa.SecretKey, spaKey, ""); err != nil {
 			return res, err
 		}
 	}
-	actor := "setup"
-	if admin != nil {
-		actor = admin.Username
-	}
-	_ = st.Audit(ctx, actor, "setup.complete", "", remote, map[string]any{
+	_ = st.Audit(ctx, "setup", "setup.complete", "", remote, map[string]any{
 		"postgres": pg.Host + "/" + pg.Database, "attached": attach, "clickhouse": ch.Addr, "openbao": ob.Addr,
-		"nats": nc.URL != "", "inventory": inv.Enabled, "umbrella": umb.Enabled, "geoip": len(geo.Databases)})
+		"nats": nc.URL != "", "inventory": inv.Enabled, "umbrella": umb.Enabled, "geoip": len(geo.Databases), "spa": spaKey != ""})
 
 	now := time.Now().UTC()
 	pg.Password = pgRef
@@ -886,42 +865,6 @@ func (m *Module) apply(ctx context.Context, in Input, remote string) (Result, er
 	}
 	keep = true
 	return Result{Config: file, Vault: vault, Store: st}, nil
-}
-
-func (m *Module) createAdmin(ctx context.Context, st *store.Store, vault *secrets.Client, a *AdminInput) error {
-	role, err := st.RoleByName(ctx, access.RoleAdministrator)
-	if err != nil {
-		return fail(http.StatusBadGateway, "postgres_write_failed", err)
-	}
-	name := strings.TrimSpace(a.Name)
-	if name == "" {
-		name = a.Username
-	}
-	u, err := st.UserByUsername(ctx, a.Username)
-	switch {
-	case err == nil:
-		if u.Source != store.SourceLocal {
-			return fail(http.StatusConflict, "admin_invalid", errors.New("a directory user with this name exists"))
-		}
-		enabled := false
-		if _, err := st.UpdateUser(ctx, u.ID, store.UserUpdate{RoleID: &role.ID, Disabled: &enabled}); err != nil {
-			return fail(http.StatusBadGateway, "postgres_write_failed", err)
-		}
-	case errors.Is(err, store.ErrNotFound):
-		if u, err = st.CreateUser(ctx, store.NewUser{Username: a.Username, Name: name, Email: strings.TrimSpace(a.Email), RoleID: role.ID}); err != nil {
-			return fail(http.StatusBadGateway, "postgres_write_failed", err)
-		}
-	default:
-		return fail(http.StatusBadGateway, "postgres_unavailable", err)
-	}
-	ref, err := auth.NewPasswords(vault).Set(ctx, u.ID, a.Password)
-	if err != nil {
-		return fail(http.StatusBadGateway, "openbao_write_failed", err)
-	}
-	if err := st.SetPasswordRef(ctx, u.ID, ref); err != nil {
-		return fail(http.StatusBadGateway, "postgres_write_failed", err)
-	}
-	return nil
 }
 
 // Token returns the setup code: FLOW_SETUP_TOKEN (fixed), the code saved in

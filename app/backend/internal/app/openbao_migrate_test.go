@@ -11,12 +11,12 @@ import (
 	"github.com/sbrw-evc/network/app/backend/internal/auth"
 	"github.com/sbrw-evc/network/app/backend/internal/config"
 	"github.com/sbrw-evc/network/app/backend/internal/secrets/secretstest"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
+	"github.com/sbrw-evc/network/app/backend/internal/spa"
+	"github.com/sbrw-evc/network/app/backend/internal/spa/spatest"
 	"github.com/sbrw-evc/network/app/backend/internal/store/storetest"
 )
 
 func TestOpenBaoMigrate(t *testing.T) {
-	auth.Iterations = 1000
 	ctx := context.Background()
 	st := storetest.New(t)
 	srcFake, vault := secretstest.New(t)
@@ -25,9 +25,13 @@ func TestOpenBaoMigrate(t *testing.T) {
 		t.Fatal(err)
 	}
 	adminRole, _ := st.RoleByName(ctx, access.RoleAdministrator)
-	u, _ := st.CreateUser(ctx, store.NewUser{Username: "admin", RoleID: adminRole.ID})
-	ref, _ := auth.NewPasswords(vault).Set(ctx, u.ID, "admin-password")
-	_ = st.SetPasswordRef(ctx, u.ID, ref)
+	legacyUser(t, st, "admin", adminRole.ID)
+	// The SPA connection key is in OpenBao (written by the setup wizard).
+	sp := spatest.New(t)
+	sp.Users = []spa.User{spaUser("admin", "admin")}
+	if _, err := vault.PutRef(ctx, spa.SecretPath, spa.SecretKey, sp.ConnectionKey()); err != nil {
+		t.Fatal(err)
+	}
 	// References in a column and in a JSON setting.
 	invRef, _ := vault.PutRef(ctx, "inventory-db", "token", "inv-token")
 	inv, _ := st.InventoryDB(ctx)
@@ -45,9 +49,9 @@ func TestOpenBaoMigrate(t *testing.T) {
 	a := New(Options{Version: "test", DataDir: dir}, Deps{Config: file, Store: st, Vault: vault})
 	srv := httptest.NewServer(a.Handler())
 	t.Cleanup(srv.Close)
-	e := &env{t: t, srv: srv, st: st, fake: srcFake}
+	e := &env{t: t, srv: srv, st: st, fake: srcFake, spa: sp, app: a}
 	c := e.client()
-	c.login("admin", "admin-password")
+	c.login("admin")
 
 	target := map[string]any{"addr": dstFake.Server.URL, "mount": "flow-new", "auth": "approle", "role_id": secretstest.RoleID, "secret_id": secretstest.SecretID}
 	if code, out := c.do("POST", "/api/settings/openbao/probe", target); code != 200 || out["ok"] != true || out["secrets"] != float64(0) {
@@ -67,7 +71,7 @@ func TestOpenBaoMigrate(t *testing.T) {
 	// Readers of the configuration run during the move (go test -race: no data race on flow.json).
 	stop, readers, ready := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	rc := e.client()
-	rc.login("admin", "admin-password")
+	rc.login("admin")
 	go func() {
 		defer close(readers)
 		for i := 0; ; i++ {
@@ -93,7 +97,7 @@ func TestOpenBaoMigrate(t *testing.T) {
 
 	// Copied as is; the source is intact.
 	if dstFake.Get("flow-new/inventory-db")["token"] != "inv-token" || dstFake.Get("flow-new/keys")["session"] == nil ||
-		dstFake.Get("flow-new/users/" + itoa(int(u.ID)))["password_hash"] == nil {
+		dstFake.Get("flow-new/spa")["connection_key"] != sp.ConnectionKey() {
 		t.Fatal("not copied", dstFake.Paths())
 	}
 	if srcFake.Get("flow/inventory-db") == nil {
@@ -125,7 +129,7 @@ func TestOpenBaoMigrate(t *testing.T) {
 		t.Fatal("session lost after the switch", code)
 	}
 	c2 := e.client()
-	c2.login("admin", "admin-password") // password hash from the new OpenBao
+	c2.login("admin") // the SPA connection key from the new OpenBao
 	if code, out := c.do("GET", "/api/settings/openbao", nil); code != 200 || out["addr"] != dstFake.Server.URL || out["mount"] != "flow-new" {
 		t.Fatal(code, out)
 	}

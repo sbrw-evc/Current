@@ -37,9 +37,9 @@ func TestAPITokens(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	admin := e.client()
-	admin.login("admin", "admin-password")
+	admin.login("admin")
 	viewer := e.client()
-	viewer.login("viewer", "viewer-password")
+	viewer.login("viewer")
 	viewerRole, _ := e.st.RoleByName(ctx, access.RoleViewer)
 	adminRole, _ := e.st.RoleByName(ctx, access.RoleAdministrator)
 

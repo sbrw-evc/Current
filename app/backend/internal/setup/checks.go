@@ -19,6 +19,7 @@ import (
 
 	"github.com/sbrw-evc/network/app/backend/internal/config"
 	"github.com/sbrw-evc/network/app/backend/internal/secrets"
+	"github.com/sbrw-evc/network/app/backend/internal/spa"
 	"github.com/sbrw-evc/network/app/backend/internal/store"
 )
 
@@ -55,7 +56,7 @@ func CheckOpenBao(ctx context.Context, o config.OpenBao) (*secrets.Client, Check
 // PostgresDetails is what CheckPostgres finds.
 type PostgresDetails struct {
 	Version  string `json:"version"`
-	HasState bool   `json:"has_state"` // the database already has Flow users
+	HasState bool   `json:"has_state"` // the database already has Flow users or settings
 	Users    int    `json:"users"`
 	Schema   int64  `json:"schema"`
 }
@@ -233,6 +234,25 @@ func CheckUmbrella(ctx context.Context, ingestURL, token string) CheckResult {
 		return CheckResult{Error: msg, Details: map[string]any{"status": resp.StatusCode}}
 	}
 	return CheckResult{OK: true, Details: map[string]any{"status": resp.StatusCode}}
+}
+
+// CheckSPA parses an SPA connection key and asks SPA whether it accepts it
+// (discovery, the federation token, the client secret).
+func CheckSPA(ctx context.Context, key, publicURL string) CheckResult {
+	k, err := spa.ParseKey(key)
+	if err != nil {
+		return failed(err)
+	}
+	redirect := ""
+	if publicURL != "" {
+		redirect = strings.TrimRight(publicURL, "/") + spa.CallbackPath
+	}
+	cfg, err := k.Check(ctx, redirect)
+	if err != nil {
+		return failed(fmt.Errorf("SPA %s: %w", k.Issuer, err))
+	}
+	return CheckResult{OK: true, Details: map[string]any{"issuer": k.Issuer, "application": cfg.Application.Name,
+		"type": cfg.Application.Type, "redirect_uri": redirect}}
 }
 
 // CheckGeoIP opens every MaxMind database file.

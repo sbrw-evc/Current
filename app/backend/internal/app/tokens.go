@@ -16,7 +16,9 @@ import (
 )
 
 // API tokens (docs/integrations.md §1): service accounts with a role and
-// bearer tokens "flow_…" that carry it. Tokens need no CSRF header.
+// bearer tokens "flow_…" that carry it. Tokens need no CSRF header. A token
+// belongs to the person who created it and stops working while SPA keeps
+// that person disabled.
 
 // SourceService is the source of the principal of a token request.
 const SourceService = "service"
@@ -41,7 +43,7 @@ func (a *App) tokenGuard(w http.ResponseWriter, r *http.Request, token string, a
 	}
 	tp, err := a.st.TokenByHash(ctx, hash)
 	now := time.Now()
-	if errors.Is(err, store.ErrNotFound) || (err == nil && (!tp.Token.Active(now) || tp.Account.Disabled)) {
+	if errors.Is(err, store.ErrNotFound) || (err == nil && (!tp.Token.Active(now) || tp.Account.Disabled || tp.OwnerDisabled)) {
 		httpx.Error(w, http.StatusUnauthorized, "invalid_token", "the API token is invalid, expired or revoked")
 		return
 	}
@@ -264,7 +266,7 @@ func (a *App) createToken(w http.ResponseWriter, r *http.Request, p *Principal) 
 		return
 	}
 	t, err := a.st.CreateAPIToken(ctx, store.NewAPIToken{ServiceAccountID: sa.ID, Name: in.Name, Hash: hash,
-		Display: auth.TokenDisplay(token), ExpiresAt: exp, CreatedBy: p.User.Username})
+		Display: auth.TokenDisplay(token), ExpiresAt: exp, CreatedBy: p.User.Username, CreatedByID: p.User.ID})
 	if err != nil {
 		storeErr(w, err)
 		return

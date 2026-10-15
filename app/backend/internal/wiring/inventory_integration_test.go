@@ -30,6 +30,8 @@ import (
 	"github.com/sbrw-evc/network/app/backend/internal/query"
 	"github.com/sbrw-evc/network/app/backend/internal/secrets/secretstest"
 	"github.com/sbrw-evc/network/app/backend/internal/setup"
+	"github.com/sbrw-evc/network/app/backend/internal/spa"
+	"github.com/sbrw-evc/network/app/backend/internal/spa/spatest"
 	chstore "github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse"
 	"github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse/chtest"
 	"github.com/sbrw-evc/network/app/backend/internal/store"
@@ -99,6 +101,7 @@ type integrationEnv struct {
 	ii    *wiring.InventoryIntegration
 	month time.Time // start of the month of the fixed clock
 	now   time.Time
+	spa   *spatest.SPA
 }
 
 // newIntegrationEnv: flows of edge-01 (inventory-db:dcim.device:1) every
@@ -149,7 +152,6 @@ func newIntegrationEnv(t *testing.T) *integrationEnv {
 		t.Fatal(err)
 	}
 
-	auth.Iterations = 1000
 	st := storetest.New(t)
 	_, vault := secretstest.New(t)
 	if err := auth.NewKeys(vault).Ensure(ctx); err != nil {
@@ -166,30 +168,21 @@ func newIntegrationEnv(t *testing.T) *integrationEnv {
 	if err := st.PutSetting(ctx, setup.SettingGeneral, setup.General{PublicURL: "https://flow.example"}); err != nil {
 		t.Fatal(err)
 	}
+	sp := spatest.New(t)
 	for _, u := range []struct{ name, role string }{{"admin", access.RoleAdministrator}, {"viewer", access.RoleViewer}} {
 		role, err := st.RoleByName(ctx, u.role)
 		if err != nil {
 			t.Fatal(err)
 		}
-		usr, err := st.CreateUser(ctx, store.NewUser{Username: u.name, Name: u.name, RoleID: role.ID})
-		if err != nil {
-			t.Fatal(err)
-		}
-		ref, err := auth.NewPasswords(vault).Set(ctx, usr.ID, u.name+"-password")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := st.SetPasswordRef(ctx, usr.ID, ref); err != nil {
-			t.Fatal(err)
-		}
+		sp.Users = append(sp.Users, spa.User{ID: "usr_" + u.name, Username: u.name, Name: u.name, Roles: []string{role.Ident}})
 	}
 	q := query.New(conn, query.Config{Storage: cfg, Now: func() time.Time { return now }})
 	// No local Inventory loop (api role): the snapshot is loaded on demand.
 	ii := wiring.NewInventoryIntegration(q, st, vault, nil, nil)
-	a := app.New(app.Options{Version: "test"}, app.Deps{Store: st, Vault: vault, InventoryIntegration: ii})
+	a := app.New(app.Options{Version: "test", SPAKey: sp.ConnectionKey()}, app.Deps{Store: st, Vault: vault, InventoryIntegration: ii})
 	srv := httptest.NewServer(a.Handler())
 	t.Cleanup(srv.Close)
-	return &integrationEnv{t: t, srv: srv, st: st, inv: inv, ii: ii, month: month, now: now}
+	return &integrationEnv{t: t, srv: srv, st: st, inv: inv, ii: ii, month: month, now: now, spa: sp}
 }
 
 type session struct {
@@ -201,7 +194,14 @@ type session struct {
 func (e *integrationEnv) login(user string) *session {
 	jar, _ := cookiejar.New(nil)
 	s := &session{e: e, c: &http.Client{Jar: jar}}
-	code, out := s.do("POST", "/api/auth/login", map[string]string{"username": user, "password": user + "-password"})
+	// Sign in through the fake SPA: start → authorize → callback.
+	e.spa.SignedIn = "usr_" + user
+	res, err := s.c.Get(e.srv.URL + "/api/auth/spa/start")
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	res.Body.Close()
+	code, out := s.do("GET", "/api/auth/me", nil)
 	if code != 200 {
 		e.t.Fatalf("login %s: %d %v", user, code, out)
 	}

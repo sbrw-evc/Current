@@ -2,11 +2,8 @@ package auth
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
-	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -14,19 +11,6 @@ import (
 	"github.com/sbrw-evc/network/app/backend/internal/secrets/secretstest"
 	"github.com/sbrw-evc/network/app/backend/internal/store"
 )
-
-func TestPassword(t *testing.T) {
-	old := Iterations
-	Iterations = 1000
-	defer func() { Iterations = old }()
-	h, err := HashPassword("correct horse")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !CheckPassword(h, "correct horse") || CheckPassword(h, "wrong") || CheckPassword("", "") {
-		t.Fatal("password check")
-	}
-}
 
 type memStore struct {
 	mu sync.Mutex
@@ -112,46 +96,8 @@ func TestSessions(t *testing.T) {
 	}
 }
 
-func TestLimiter(t *testing.T) {
-	l := NewLimiter()
-	now := time.Now()
-	l.now = func() time.Time { return now }
-	for i := 0; i < 4; i++ {
-		l.Fail("user:a", "ip:1")
-	}
-	if locked, _ := l.Locked("user:a"); locked {
-		t.Fatal("locked too early")
-	}
-	l.Fail("user:a", "ip:1")
-	if locked, d := l.Locked("user:b", "ip:1"); !locked || d != 5*time.Minute {
-		t.Fatal(locked, d)
-	}
-	now = now.Add(6 * time.Minute)
-	if locked, _ := l.Locked("user:a"); locked {
-		t.Fatal("lock did not expire")
-	}
-}
-
-func TestPasswordsInVault(t *testing.T) {
-	Iterations = 1000
+func TestKeys(t *testing.T) {
 	fake, vault := secretstest.New(t)
-	p := NewPasswords(vault)
-	ref, err := p.Set(context.Background(), 42, "secret-password")
-	if err != nil || ref != "openbao://flow/users/42#password_hash" {
-		t.Fatal(ref, err)
-	}
-	if h, _ := fake.Get("flow/users/42")["password_hash"].(string); h == "" || h == "secret-password" {
-		t.Fatal("hash not stored", h)
-	}
-	if ok, err := p.Verify(ref, "secret-password"); !ok || err != nil {
-		t.Fatal(ok, err)
-	}
-	if ok, _ := p.Verify(ref, "wrong"); ok {
-		t.Fatal("wrong password accepted")
-	}
-	if ok, _ := p.Verify("", "x"); ok {
-		t.Fatal("empty ref accepted")
-	}
 	keys := NewKeys(vault)
 	if err := keys.Ensure(context.Background()); err != nil {
 		t.Fatal(err)
@@ -166,56 +112,10 @@ func TestPasswordsInVault(t *testing.T) {
 	if h1 == "" || c1 == "" || h1 == c1 {
 		t.Fatal(h1, c1)
 	}
-}
-
-func TestPolicy(t *testing.T) {
-	violated := func(p PasswordPolicy, pw, user string) []string {
-		var pe *PolicyError
-		if err := p.Validate(pw, user); err != nil && !errors.As(err, &pe) {
-			t.Fatal(err)
-		} else if pe != nil {
-			return pe.Violations
-		}
-		return nil
-	}
-	if v := violated(DefaultPolicy, "Short-1", "x"); !slices.Contains(v, ViolationLength) {
-		t.Fatal("short accepted", v)
-	}
-	if v := violated(DefaultPolicy, "Correct-Horse-9", "x"); v != nil {
-		t.Fatal(v)
-	}
-	if v := violated(DefaultPolicy, "Qwerty123456!", "x"); !slices.Contains(v, ViolationCommon) {
-		t.Error("common password accepted", v)
-	}
-	if v := violated(DefaultPolicy, "Admin2024!xx", "admin2024"); !slices.Contains(v, ViolationCommon) {
-		t.Error("user name with a few characters accepted", v)
-	}
-	if v := violated(DefaultPolicy, "Correct-Horse-Ж9", "x"); !slices.Contains(v, ViolationLetters) {
-		t.Error("cyrillic accepted by a latin policy", v)
-	}
-	if err := (PasswordPolicy{MinLength: 12, RequireDigits: true, MinDigits: 4}).Check(); err != nil {
-		t.Error(err)
-	}
-	if err := (PasswordPolicy{MinLength: 8, RequireDigits: true, MinDigits: 8, RequireMixedCase: true}).Check(); err == nil {
-		t.Error("impossible policy accepted")
-	}
-	if err := (PasswordPolicy{MinLength: 12, LockoutAttempts: 2, LockoutMinutes: 5}).Check(); err == nil {
-		t.Error("lockout below 3 accepted")
-	}
-}
-
-func TestPolicyLegacyJSON(t *testing.T) {
-	var p PasswordPolicy
-	if err := json.Unmarshal([]byte(`{"min_length":14,"letters":true,"digits":true,"symbols":false,"not_username":true}`), &p); err != nil {
-		t.Fatal(err)
-	}
-	if p.MinLength != 14 || !p.RequireDigits || p.MinDigits != 1 || p.RequireSpecial || !p.BlockCommon || p.Letters != LettersAny {
-		t.Fatalf("%+v", p)
-	}
-	b, _ := json.Marshal(DefaultPolicy)
-	var q PasswordPolicy
-	if err := json.Unmarshal(b, &q); err != nil || q != DefaultPolicy {
-		t.Fatalf("%+v %v", q, err)
+	m1, err1 := keys.StateMAC(context.Background(), "s1")
+	m2, _ := keys.StateMAC(context.Background(), "s2")
+	if err1 != nil || len(m1) != 32 || string(m1) == string(m2) || fake.Get("flow/keys")["state"] == nil {
+		t.Fatal("state key", err1)
 	}
 }
 

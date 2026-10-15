@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/sbrw-evc/network/app/backend/internal/store"
@@ -167,86 +166,5 @@ func (s *Sessions) Run(ctx context.Context) {
 			return
 		case <-t.C:
 		}
-	}
-}
-
-// Limiter locks sign-in for a key (user name, client address) after
-// MaxFailures failures within the window, for LockFor.
-type Limiter struct {
-	MaxFailures int
-	Window      time.Duration
-	LockFor     time.Duration
-
-	mu  sync.Mutex
-	m   map[string]*attempts
-	now func() time.Time
-}
-
-type attempts struct {
-	n     int
-	first time.Time
-	until time.Time
-}
-
-// NewLimiter: 5 failures in 15 minutes lock the key for 5 minutes.
-func NewLimiter() *Limiter {
-	return &Limiter{MaxFailures: 5, Window: 15 * time.Minute, LockFor: 5 * time.Minute, m: map[string]*attempts{}, now: time.Now}
-}
-
-// Locked reports whether any key is locked and for how long.
-func (l *Limiter) Locked(keys ...string) (bool, time.Duration) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	now := l.now()
-	for _, k := range keys {
-		if a := l.m[k]; a != nil && now.Before(a.until) {
-			return true, a.until.Sub(now)
-		}
-	}
-	return false, 0
-}
-
-// Fail counts a failure for every key.
-func (l *Limiter) Fail(keys ...string) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	now := l.now()
-	for k, a := range l.m { // keep the map small
-		if now.Sub(a.first) > l.Window && now.After(a.until) {
-			delete(l.m, k)
-		}
-	}
-	for _, k := range keys {
-		a := l.m[k]
-		if a == nil || now.Sub(a.first) > l.Window {
-			a = &attempts{first: now}
-			l.m[k] = a
-		}
-		a.n++
-		if a.n >= l.MaxFailures {
-			a.until, a.n, a.first = now.Add(l.LockFor), 0, now
-		}
-	}
-}
-
-// Reset forgets the failures of the keys after a successful sign-in.
-func (l *Limiter) Reset(keys ...string) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	for _, k := range keys {
-		delete(l.m, k)
-	}
-}
-
-// Tune changes the threshold and the lock duration (the password policy's
-// lockout); zero values keep the current ones.
-func (l *Limiter) Tune(maxFailures int, lockFor time.Duration) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if maxFailures > 0 {
-		l.MaxFailures = maxFailures
-	}
-	if lockFor > 0 {
-		l.LockFor = lockFor
 	}
 }
