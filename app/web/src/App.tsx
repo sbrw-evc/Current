@@ -25,7 +25,6 @@ const InventoryPage = lazy(() => import('./pages/InventoryDB'))
 const ClassifiersPage = lazy(() => import('./pages/Classifiers'))
 const OpenBaoPage = lazy(() => import('./pages/OpenBao'))
 const ApiTokensPage = lazy(() => import('./pages/settings/ApiTokens'))
-const EntraPage = lazy(() => import('./pages/settings/Entra'))
 const ThreatPage = lazy(() => import('./pages/settings/Threat'))
 const RdnsPage = lazy(() => import('./pages/settings/Rdns'))
 const FlowLogsPage = lazy(() => import('./pages/settings/FlowLogs'))
@@ -34,10 +33,8 @@ const SnmpPage = lazy(() => import('./pages/settings/Snmp'))
 const BmpPage = lazy(() => import('./pages/settings/Bmp'))
 const UmbrellaSettingsPage = lazy(() => import('./pages/umbrella/UmbrellaSettings'))
 const DependenciesPage = lazy(() => import('./pages/umbrella/Dependencies'))
-const ProfilePage = lazy(() => import('./pages/identity/Profile'))
 const UsersPage = lazy(() => import('./pages/identity/Users'))
-const PolicyPage = lazy(() => import('./pages/identity/Users').then((m) => ({ default: m.PolicyPage })))
-const SignInSettingsPage = lazy(() => import('./pages/identity/SignInSettings'))
+const SpaSettingsPage = lazy(() => import('./pages/spa/SpaSettings'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -87,7 +84,6 @@ const router = createBrowserRouter([
       { path: 'go/incident', element: <GoIncident /> },
       { path: 'settings/openbao', element: <Guard perm="settings.openbao:view">{lazyPage(<OpenBaoPage />)}</Guard> },
       { path: 'settings/api-tokens', element: <Guard perm="tokens:view">{lazyPage(<ApiTokensPage />)}</Guard> },
-      { path: 'settings/entra', element: <Guard perm="users:view">{lazyPage(<EntraPage />)}</Guard> },
       { path: 'settings/threat', element: <Guard perm="settings.threat:view">{lazyPage(<ThreatPage />)}</Guard> },
       { path: 'settings/rdns', element: <Guard perm="settings.rdns:view">{lazyPage(<RdnsPage />)}</Guard> },
       { path: 'settings/flowlogs', element: <Guard perm="settings.flowlogs:view">{lazyPage(<FlowLogsPage />)}</Guard> },
@@ -95,10 +91,8 @@ const router = createBrowserRouter([
       { path: 'settings/snmp', element: <Guard perm="settings.snmp:view">{lazyPage(<SnmpPage />)}</Guard> },
       { path: 'settings/bmp', element: <Guard perm="settings.bmp:view">{lazyPage(<BmpPage />)}</Guard> },
       { path: 'settings/umbrella', element: <Guard perm="settings.umbrella:view">{lazyPage(<UmbrellaSettingsPage />)}</Guard> },
-      { path: 'profile', element: lazyPage(<ProfilePage />) },
       { path: 'settings/users', element: <Guard perm="users:view">{lazyPage(<UsersPage />)}</Guard> },
-      { path: 'settings/sign-in', element: <Guard perm="users:view">{lazyPage(<SignInSettingsPage />)}</Guard> },
-      { path: 'settings/password-policy', element: <Guard perm="users:view">{lazyPage(<PolicyPage />)}</Guard> },
+      { path: 'settings/spa', element: <Guard perm="users:view">{lazyPage(<SpaSettingsPage />)}</Guard> },
       { path: 'dependencies', element: <Guard perm="dependencies:view">{lazyPage(<DependenciesPage />)}</Guard> },
       { path: '*', element: <NotFound /> },
     ],

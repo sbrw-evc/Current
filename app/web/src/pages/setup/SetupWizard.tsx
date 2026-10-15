@@ -11,16 +11,15 @@ import { useTheme } from '../../theme'
 import { Choice, Choices, Pop } from '../../ui/Choice'
 import { SecretField } from '../../ui/SecretField'
 import { Banner, Brand, Button, Chip, Field, Input, Password, Preferences, Rows, Select, spring, Stepper, Switch, type Tone } from '../../ui/ui'
-import { DEFAULT_POLICY, failed, publicURLOk, USERNAME } from './policy'
-import { PolicyChecklist, PolicyEditor } from '../identity/components'
+import { publicURLOk, spaKeyOk } from './url'
 import { setupStrings } from './strings'
-import type { Admin, ClickHouse, Collector, GeoIP, Inventory, Nats, OpenBao, PasswordPolicy, Postgres, Retention, SetupBody, SetupDefaults, SetupTheme, TestResult, TestStep, Umbrella } from './types'
+import type { ClickHouse, Collector, GeoIP, Inventory, Nats, OpenBao, Postgres, Retention, SetupBody, SetupDefaults, SetupTheme, Spa, TestResult, TestStep, Umbrella } from './types'
 
 // The first-run wizard in Umbrella's look (Umbrella app/web/src/setup/SetupApp.tsx): a step list,
 // animated step transitions, connection forms with a "Check" button and result chips, a summary.
 
-export type StepId = 'code' | 'general' | 'openbao' | 'postgres' | 'clickhouse' | 'nats' | 'collector' | 'inventory' | 'umbrella' | 'geoip' | 'admin' | 'review'
-export const STEPS: StepId[] = ['code', 'general', 'openbao', 'postgres', 'clickhouse', 'nats', 'collector', 'inventory', 'umbrella', 'geoip', 'admin', 'review']
+export type StepId = 'code' | 'general' | 'openbao' | 'postgres' | 'clickhouse' | 'nats' | 'collector' | 'inventory' | 'umbrella' | 'geoip' | 'spa' | 'review'
+export const STEPS: StepId[] = ['code', 'general', 'openbao', 'postgres', 'clickhouse', 'nats', 'collector', 'inventory', 'umbrella', 'geoip', 'spa', 'review']
 const OPTIONAL: StepId[] = ['inventory', 'umbrella', 'geoip']
 
 const stepVariants: Variants = {
@@ -76,9 +75,9 @@ export default function SetupWizard({ defaults }: { defaults: SetupDefaults }) {
   const [inv, setInv] = useState<Inventory>({ enabled: true, url: '', token: '', interval: '15m' })
   const [um, setUm] = useState<Umbrella>({ enabled: true, ingest_url: '', token: '' })
   const [geo, setGeo] = useState<GeoIP & { enabled: boolean }>({ enabled: true, databases: ['/geoip/GeoLite2-City.mmdb', '/geoip/GeoLite2-ASN.mmdb'] })
-  const [admin, setAdmin] = useState<Admin & { confirm: string }>({ username: 'admin', name: '', email: '', password: '', confirm: '' })
-  const [policy, setPolicy] = useState<PasswordPolicy>(DEFAULT_POLICY)
-  const [policyOpen, setPolicyOpen] = useState(false)
+  // SPA: people sign in there; the key may also come from the deployment (SPA_CONNECTION_KEY).
+  const spaFromEnv = !!d.spa?.from_env
+  const [spa, setSpa] = useState<Spa & { enabled: boolean }>({ enabled: !spaFromEnv, connection_key: '' })
   const [checks, setChecks] = useState<Partial<Record<TestStep, CheckState>>>({})
   const [testing, setTesting] = useState<TestStep | null>(null)
   const [busy, setBusy] = useState(false)
@@ -103,6 +102,7 @@ export default function SetupWizard({ defaults }: { defaults: SetupDefaults }) {
     inventory: { url: inv.url.trim(), token: nonEmpty(inv.token), interval: inv.interval },
     umbrella: { ingest_url: um.ingest_url.trim(), token: nonEmpty(um.token) },
     geoip: { databases: geo.databases.map((x) => x.trim()).filter(Boolean) },
+    spa: { connection_key: spa.connection_key.trim(), public_url: general.public_url.trim().replace(/\/+$/, '') },
   }
   const keyOf = (s: TestStep) => JSON.stringify(bodies[s])
   const passed = (s: TestStep) => {
@@ -112,9 +112,6 @@ export default function SetupWizard({ defaults }: { defaults: SetupDefaults }) {
   const hasState = passed('postgres') && checks.postgres?.result.details?.has_state === true
   const attach = hasState && pg.attach_existing
 
-  const policyFails = failed(admin.password, admin.username.trim(), policy)
-  const adminEmpty = admin.password === '' && admin.confirm === ''
-  const adminValid = USERNAME.test(admin.username.trim()) && policyFails.length === 0 && admin.password === admin.confirm && (admin.email.trim() === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(admin.email.trim()))
   const publicValid = publicURLOk(general.public_url)
 
   const canNext: Record<StepId, boolean> = {
@@ -128,7 +125,7 @@ export default function SetupWizard({ defaults }: { defaults: SetupDefaults }) {
     inventory: !inv.enabled || passed('inventory'),
     umbrella: !um.enabled || passed('umbrella'),
     geoip: !geo.enabled || geo.databases.filter((x) => x.trim()).length === 0 || passed('geoip'),
-    admin: adminValid || (attach && adminEmpty),
+    spa: spaFromEnv || !spa.enabled || passed('spa'),
     review: false,
   }
 
@@ -157,6 +154,7 @@ export default function SetupWizard({ defaults }: { defaults: SetupDefaults }) {
     if (step === 'inventory') setInv({ ...inv, enabled: false })
     if (step === 'umbrella') setUm({ ...um, enabled: false })
     if (step === 'geoip') setGeo({ ...geo, enabled: false })
+    if (step === 'spa') setSpa({ ...spa, enabled: false })
     go(STEPS[STEPS.indexOf(step) + 1])
   }
 
@@ -211,8 +209,7 @@ export default function SetupWizard({ defaults }: { defaults: SetupDefaults }) {
       inventory: inv.enabled ? { enabled: true, ...(bodies.inventory as Partial<Inventory>) } : { enabled: false },
       umbrella: um.enabled ? { enabled: true, ...(bodies.umbrella as Partial<Umbrella>) } : { enabled: false },
       geoip: { databases: geo.enabled ? (bodies.geoip.databases as string[]) : [] },
-      admin: attach && adminEmpty ? { username: '', name: '', email: '', password: '' } : { username: admin.username.trim(), name: admin.name.trim(), email: admin.email.trim(), password: admin.password },
-      password_policy: policy,
+      ...(spa.enabled && !spaFromEnv ? { spa: { connection_key: spa.connection_key.trim() } } : {}),
     }
     try {
       await post('/api/setup', body)
@@ -240,7 +237,7 @@ export default function SetupWizard({ defaults }: { defaults: SetupDefaults }) {
             <motion.path d="M15 27l7 7 15-15" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.4, delay: 0.65 }} />
           </svg>
           <h1>{t('done.title')}</h1>
-          <p className="muted">{t('done.text', { user: admin.username.trim() || 'admin' })}</p>
+          <p className="muted">{t('done.text')}</p>
           <Button
             variant="primary"
             onClick={() => {
@@ -280,11 +277,12 @@ export default function SetupWizard({ defaults }: { defaults: SetupDefaults }) {
 
   const chipFor = (s: StepId): { tone: Tone; label: string } | null => {
     if (OPTIONAL.includes(s)) {
-      const off = (s === 'inventory' && !inv.enabled) || (s === 'umbrella' && !um.enabled) || (s === 'geoip' && (!geo.enabled || geo.databases.every((x) => !x.trim())))
+      const off = (s === 'inventory' && !inv.enabled) || (s === 'umbrella' && !um.enabled) || (s === 'geoip' && (!geo.enabled || geo.databases.every((x) => !x.trim()))) || (s === 'spa' && !spa.enabled && !spaFromEnv)
       if (off) return { tone: 'off', label: t('chip.skipped') }
     }
     if (s === 'nats' && nats.url.trim() === '') return { tone: 'info', label: t('chip.builtin') }
-    if (!['openbao', 'postgres', 'clickhouse', 'nats', 'inventory', 'umbrella', 'geoip'].includes(s)) return null
+    if (s === 'spa' && spaFromEnv) return { tone: 'info', label: t('chip.env') }
+    if (!['openbao', 'postgres', 'clickhouse', 'nats', 'inventory', 'umbrella', 'geoip', 'spa'].includes(s)) return null
     const c = checks[s as TestStep]
     if (!c) return { tone: 'warn', label: t('chip.none') }
     if (c.key !== keyOf(s as TestStep)) return { tone: 'warn', label: t('chip.changed') }
@@ -620,47 +618,30 @@ export default function SetupWizard({ defaults }: { defaults: SetupDefaults }) {
                   </div>
                 )}
 
-                {step === 'admin' && (
-                  <form
-                    className="stack"
-                    noValidate
-                    onSubmit={(e) => {
-                      e.preventDefault()
-                      next()
-                    }}
-                  >
-                    <Head refEl={heading} title={t('ad.title')} text={t('ad.text')} />
-                    {attach && <Banner kind="info" title={t('ad.skipped')} />}
-                    <div className="grid-2">
-                      <Field label={t('ad.username')} hint={admin.username && !USERNAME.test(admin.username.trim()) ? t('ad.username.bad') : undefined}>
-                        {(id) => <Input id={id} value={admin.username} autoComplete="username" spellCheck={false} onChange={(e) => setAdmin({ ...admin, username: e.target.value })} />}
-                      </Field>
-                      <Field label={t('ad.name')} optional={t('optional')}>{(id) => <Input id={id} value={admin.name} autoComplete="name" onChange={(e) => setAdmin({ ...admin, name: e.target.value })} />}</Field>
-                    </div>
-                    <Field label={t('ad.email')} optional={t('optional')}>{(id) => <Input id={id} type="email" value={admin.email} autoComplete="email" onChange={(e) => setAdmin({ ...admin, email: e.target.value })} />}</Field>
-                    <div className="grid-2">
-                      <Field label={t('ad.password')}>{(id) => <Password id={id} value={admin.password} autoComplete="new-password" onChange={(e) => setAdmin({ ...admin, password: e.target.value })} />}</Field>
-                      <Field label={t('ad.confirm')}>{(id) => <Password id={id} value={admin.confirm} autoComplete="new-password" onChange={(e) => setAdmin({ ...admin, confirm: e.target.value })} />}</Field>
-                    </div>
-                    <PolicyChecklist policy={policy} password={admin.password} username={admin.username.trim()} confirm={admin.confirm} />
-                    <section className="section">
-                      <header className="section-head">
-                        <h3>{t(JSON.stringify(policy) === JSON.stringify(DEFAULT_POLICY) ? 'pol.default' : 'pol.custom')}</h3>
-                        <Button variant="ghost" aria-expanded={policyOpen} onClick={() => setPolicyOpen((o) => !o)}>
-                          {t(policyOpen ? 'pol.collapse' : 'pol.change')}
-                        </Button>
-                      </header>
-                      <p className="hint">{t('pol.later')}</p>
-                      <AnimatePresence initial={false}>
-                        {policyOpen && (
-                          <motion.div key="policy" className="reveal-box" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.3 }}>
-                            <PolicyEditor value={policy} onChange={setPolicy} />
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </section>
-                    {footer({})}
-                  </form>
+                {step === 'spa' && (
+                  <div className="stack">
+                    <Head refEl={heading} title={t('spa.title')} text={t('spa.text')} />
+                    {spaFromEnv ? (
+                      <Banner kind="info" title={t('spa.env')} />
+                    ) : (
+                      <>
+                        <Switch checked={spa.enabled} onChange={(enabled) => setSpa({ ...spa, enabled })} label={t('spa.enable')} />
+                        <Reveal on={spa.enabled} off={<Banner kind="info" title={t('spa.off')} />}>
+                          <div className="section">
+                            <div className="section-title">{t('spa.where')}</div>
+                            <p>{t('spa.where.text', { redirect: `${(general.public_url.trim() || window.location.origin).replace(/\/+$/, '')}/api/auth/spa/callback` })}</p>
+                          </div>
+                          <Field label={t('spa.key')} hint={t('spa.key.hint')}>
+                            {(id) => <Password id={id} value={spa.connection_key} placeholder="spa1.…" spellCheck={false} autoComplete="off" onChange={(e) => setSpa({ ...spa, connection_key: e.target.value })} />}
+                          </Field>
+                          {checkView('spa')}
+                        </Reveal>
+                      </>
+                    )}
+                    <p className="hint">{t('spa.admin')}</p>
+                    {errorBanner}
+                    {footer({ optional: !spaFromEnv, test: spa.enabled && !spaFromEnv ? 'spa' : undefined, testDisabled: !spaKeyOk(spa.connection_key) })}
+                  </div>
                 )}
 
                 {step === 'review' && (
@@ -682,7 +663,13 @@ export default function SetupWizard({ defaults }: { defaults: SetupDefaults }) {
                       <Summary title="Inventory DB" chip={chipFor('inventory')} edit={() => setStep('inventory')} t={t} rows={inv.enabled ? [[t('rv.address'), <code key="i">{inv.url}</code>], [t('inv.interval'), inv.interval]] : [[t('step.inventory'), t('rv.off')]]} />
                       <Summary title="Umbrella" chip={chipFor('umbrella')} edit={() => setStep('umbrella')} t={t} rows={um.enabled ? [[t('rv.address'), <code key="u">{um.ingest_url}</code>]] : [[t('step.umbrella'), t('rv.off')]]} />
                       <Summary title="GeoIP" chip={chipFor('geoip')} edit={() => setStep('geoip')} t={t} rows={geo.enabled && geo.databases.some((x) => x.trim()) ? [[t('rv.files'), geo.databases.filter((x) => x.trim()).join(', ')]] : [[t('step.geoip'), t('rv.off')]]} />
-                      <Summary title={t('step.admin')} edit={() => setStep('admin')} t={t} rows={[[t('rv.user'), attach && adminEmpty ? t('ad.skipped') : [admin.username.trim(), admin.name.trim(), admin.email.trim()].filter(Boolean).join(' · ')], [t('pol.min'), String(policy.min_length)]]} />
+                      <Summary
+                        title="SPA"
+                        chip={chipFor('spa')}
+                        edit={() => setStep('spa')}
+                        t={t}
+                        rows={[[t('step.spa'), spaFromEnv ? t('spa.env') : spa.enabled ? String(checks.spa?.result.details?.issuer ?? '—') : t('rv.off')]]}
+                      />
                     </div>
                     {error && (
                       <Banner kind="error" title={`${t('rv.failed')}: ${error.message}`}>

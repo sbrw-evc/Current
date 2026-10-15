@@ -1,4 +1,4 @@
-import { Fingerprint, ShieldCheck, UserCog, AtSign, CloudUpload, Cable, Waypoints, Route, Activity, Network, Umbrella, BarChart3, Building2, KeyRound, BellRing, Cpu, Database, Home, Layers, Plug, LineChart, ListChecks, ListTree, LockKeyhole, Radar, Router, Settings, ShieldAlert, Tags, type LucideIcon } from 'lucide-react'
+import { ShieldCheck, UserCog, AtSign, CloudUpload, Cable, Waypoints, Route, Activity, Network, Umbrella, BarChart3, KeyRound, BellRing, Cpu, Database, Home, Layers, Plug, LineChart, ListChecks, ListTree, LockKeyhole, Radar, Router, Settings, ShieldAlert, Tags, type LucideIcon } from 'lucide-react'
 
 // The menu: groups of pages in Umbrella's sidebar style. A page the role can't see is hidden
 // (the API enforces the permissions anyway).
@@ -61,9 +61,7 @@ export const NAV: NavGroup[] = [
     icon: Settings,
     pages: [
       { id: 'users', path: '/settings/users', icon: UserCog, perm: 'users:view' },
-      { id: 'signin', path: '/settings/sign-in', icon: Fingerprint, perm: 'users:view' },
-      { id: 'password-policy', path: '/settings/password-policy', icon: ShieldCheck, perm: 'users:view' },
-      { id: 'entra', path: '/settings/entra', icon: Building2, perm: 'users:view' },
+      { id: 'spa', path: '/settings/spa', icon: ShieldCheck, perm: 'users:view' },
       { id: 'tokens', path: '/settings/api-tokens', icon: KeyRound, perm: 'tokens:view' },
       { id: 'openbao', path: '/settings/openbao', icon: LockKeyhole, perm: 'settings.openbao:view' },
     ],

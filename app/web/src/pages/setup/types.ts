@@ -1,7 +1,7 @@
 // The first-run wizard (docs/api.md, "Мастер первичной настройки").
 
 export type SetupTheme = 'light' | 'dark' | 'system'
-export type TestStep = 'openbao' | 'postgres' | 'clickhouse' | 'nats' | 'inventory' | 'umbrella' | 'geoip'
+export type TestStep = 'openbao' | 'postgres' | 'clickhouse' | 'nats' | 'inventory' | 'umbrella' | 'geoip' | 'spa'
 
 export type OpenBao = { addr: string; mount: string; auth: 'token' | 'approle'; token: string; role_id: string; secret_id: string }
 export type Postgres = { host: string; port: number; database: string; username: string; password: string; sslmode: string; attach_existing: boolean }
@@ -12,9 +12,8 @@ export type Collector = { netflow_addr: string; sflow_addr: string; default_samp
 export type Inventory = { enabled: boolean; url: string; token: string; interval: string }
 export type Umbrella = { enabled: boolean; ingest_url: string; token: string }
 export type GeoIP = { databases: string[] }
-export type Admin = { username: string; name: string; email: string; password: string }
-import type { PasswordPolicy } from '../../lib/policy'
-export type { PasswordPolicy }
+// Spa: the connection key SPA shows (spa1.…); optional when the deployment gives SPA_CONNECTION_KEY.
+export type Spa = { connection_key: string }
 
 export type SetupDefaults = {
   language?: 'ru' | 'en'
@@ -26,6 +25,7 @@ export type SetupDefaults = {
   clickhouse?: Partial<Omit<ClickHouse, 'password'>> & { password_set?: boolean; retention?: Partial<Retention> }
   nats?: Partial<Nats>
   collector?: Partial<Collector>
+  spa?: { from_env?: boolean }
 }
 
 export type SetupInfo = { required: boolean; defaults?: SetupDefaults }
@@ -45,8 +45,7 @@ export type SetupBody = {
   inventory: Partial<Inventory>
   umbrella: Partial<Umbrella>
   geoip: GeoIP
-  admin: Admin
-  password_policy: PasswordPolicy
+  spa?: Spa
 }
 
 export type TestResult = { ok: boolean; error?: string; details?: Record<string, unknown> }

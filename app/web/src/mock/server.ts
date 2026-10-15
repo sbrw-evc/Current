@@ -115,6 +115,9 @@ function setupTest(step: string, b: Record<string, unknown>) {
     case 'umbrella':
       if (!b.token) return bad('401 Unauthorized')
       return { ok: true, details: { connector: 'umbrella-flow', event: 'accepted (flow.setup.test)' } }
+    case 'spa':
+      if (!str('connection_key').startsWith('spa1.')) return bad('this is not an SPA connection key (spa1.…): copy it again from SPA → Applications')
+      return { ok: true, details: { issuer: 'https://spa.example.net', application: 'Umbrella Flow', type: 'umbrella-flow', redirect_uri: `${str('public_url') || 'https://flow.example.net'}/api/auth/spa/callback` } }
     case 'geoip': {
       const files = (b.databases as string[]) ?? []
       const wrong = files.find((f) => !f.endsWith('.mmdb'))
@@ -386,19 +389,19 @@ export async function handle(method: string, path: string, body: unknown): Promi
       return ok({ ok: true })
     }
   }
-  if (p === '/api/auth/login') {
-    const b = body as { username?: string; password?: string }
-    if (!b.username || !b.password || b.password === 'wrong') return fail(401, 'invalid_credentials')
+  // Sign-in is SPA's: the mock says it is connected and signs in without leaving the page.
+  if (p === '/api/auth/spa') return ok({ connected: true, issuer: 'https://spa.example.net', application: 'Umbrella Flow', mock: true })
+  if (p === '/api/auth/spa/mock' && method === 'POST') {
     state.signedIn = true
-    return ok({ user, csrf: 'mock-csrf' })
+    return ok({ ok: true })
   }
   if (p === '/api/auth/logout') {
     state.signedIn = false
-    return { status: 204 }
+    return ok({ ok: true, redirect: '' })
   }
   if (state.setupRequired) return fail(503, 'setup_required')
   if (!state.signedIn) return fail(401, 'unauthenticated')
-  if (p === '/api/auth/me') return ok({ user, csrf: 'mock-csrf' })
+  if (p === '/api/auth/me') return ok({ user, csrf: 'mock-csrf', account_url: 'https://spa.example.net/profile' })
   if (p === '/api/schema') return ok({ columns })
   if (p === '/api/visualize') {
     const req = body as VisualizeRequest

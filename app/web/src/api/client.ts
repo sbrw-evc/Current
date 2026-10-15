@@ -5,15 +5,12 @@ export class ApiError extends Error {
   status: number
   code: string
   detail?: string
-  // violations of the password policy (weak_password)
-  violations?: string[]
 
-  constructor(status: number, code: string, detail?: string, violations?: string[]) {
+  constructor(status: number, code: string, detail?: string) {
     super(detail ? `${code}: ${detail}` : code)
     this.status = status
     this.code = code
     this.detail = detail
-    this.violations = violations
   }
 }
 
@@ -29,7 +26,7 @@ export function setUnauthorizedHandler(fn: (() => void) | null) {
 }
 
 // Requests whose 401 is an answer, not an expired session.
-const QUIET_401 = ['/api/auth/login', '/api/auth/me', '/api/setup/check-code']
+const QUIET_401 = ['/api/auth/me', '/api/setup/check-code']
 
 export async function api<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   let res: Response
@@ -59,8 +56,8 @@ export async function api<T>(method: string, path: string, body?: unknown, signa
     data = undefined
   }
   if (!res.ok) {
-    const d = (data ?? {}) as { error?: string; message?: string; violations?: string[] }
-    throw new ApiError(res.status, d.error ?? `http_${res.status}`, d.message, d.violations)
+    const d = (data ?? {}) as { error?: string; message?: string }
+    throw new ApiError(res.status, d.error ?? `http_${res.status}`, d.message)
   }
   return data as T
 }

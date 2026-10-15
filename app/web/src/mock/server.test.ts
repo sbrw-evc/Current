@@ -25,7 +25,7 @@ describe('mock server', () => {
   })
   it('answers the settings pages added later', async () => {
     const paths = [
-      '/api/roles', '/api/service-accounts', '/api/tokens', '/api/settings/entra', '/api/auth/entra', '/api/inventory-db/integration',
+      '/api/roles', '/api/service-accounts', '/api/tokens', '/api/settings/spa', '/api/users', '/api/auth/spa', '/api/inventory-db/integration',
       '/api/settings/umbrella/api', '/api/umbrella/scope', '/api/dependencies', '/api/settings/threat', '/api/settings/rdns', '/api/settings/flowlogs',
     ]
     for (const p of paths) expect((await handle('GET', p, undefined)).status, p).toBe(200)

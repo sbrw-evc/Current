@@ -8,6 +8,7 @@ import { Banner, Button } from '../ui/ui'
 import { Sidebar, SidebarResizer, useCollapsed, useSidebarWidth } from './Sidebar'
 import { SessionProvider, type Session } from './session'
 import { TopBar } from './TopBar'
+import { markSignedOut } from '../pages/spa/model'
 import { ScopeBanner } from './ScopeBanner'
 import { DesktopOnly, forcedPages } from './mobile/DesktopOnly'
 import { MobileFrame } from './mobile/MobileFrame'
@@ -39,19 +40,27 @@ export function Shell() {
     if (me.data) setCsrf(me.data.csrf)
   }, [me.data])
 
+  // Sign out: the session of Flow ends, then SPA's sign-out ends the SPA session and returns to
+  // Flow, whose sign-in page then waits for a click instead of going to SPA again.
   const signOut = useCallback(async () => {
+    let redirect = ''
     try {
-      await post('/api/auth/logout')
+      redirect = (await post<{ redirect?: string }>('/api/auth/logout'))?.redirect ?? ''
     } catch {
       // Signed out locally anyway.
     }
     setCsrf('')
     qc.clear()
-    navigate('/login', { replace: true })
+    markSignedOut()
+    if (redirect) window.location.assign(redirect)
+    else navigate('/login', { replace: true })
   }, [qc, navigate])
 
   const perms = useMemo(() => new Set(me.data?.user.permissions ?? []), [me.data])
-  const session = useMemo<Session | null>(() => (me.data ? { user: me.data.user, can: (p) => perms.has(p), signOut } : null), [me.data, perms, signOut])
+  const session = useMemo<Session | null>(
+    () => (me.data ? { user: me.data.user, can: (p) => perms.has(p), signOut, accountURL: me.data.account_url ?? '' } : null),
+    [me.data, perms, signOut],
+  )
 
   if (me.isPending) return <div className="center-page boot">{t('loading')}</div>
   if (me.error) {
@@ -67,8 +76,6 @@ export function Shell() {
     )
   }
   if (!session) return null
-  // An expired password leaves only the profile, where a new one is set.
-  if (session.user.password_expired && loc.pathname !== '/profile') return <Navigate to="/profile" replace />
 
   if (mobile)
     return (

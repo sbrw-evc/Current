@@ -24,13 +24,11 @@ export type User = {
   email?: string
   source?: string
   role: string
+  role_ident?: string
   permissions: string[]
-  passkeys_enabled?: boolean
-  password_expired?: boolean
-  password_expiry_warning?: boolean
-  password_expires_at?: string
 }
-export type Me = { user: User; csrf: string }
+// account_url: SPA's "Account and security" page (password, passkeys).
+export type Me = { user: User; csrf: string; account_url?: string }
 
 
 export type ColumnKind = 'string' | 'ip' | 'prefix' | 'uint' | 'time' | 'uint[]' | 'string[]'

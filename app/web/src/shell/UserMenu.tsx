@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { Check, ChevronDown, ChevronRight, Fingerprint, Languages, LogOut, Moon, Sun } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Languages, LogOut, Moon, ShieldCheck, Sun } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import type { Locale, Theme } from '../api/types'
 import { useLocale, useT } from '../i18n'
 import { useTheme } from '../theme'
@@ -10,12 +10,12 @@ import { Avatar } from './Avatar'
 import { useSession } from './session'
 import { navStrings } from './strings'
 
-// The user menu of Umbrella: who is signed in, language and theme accordions, sign out.
+// The user menu of Umbrella: who is signed in, language and theme accordions, "Account and security"
+// (password and passkeys, in SPA), sign out.
 export function UserMenu() {
   const t = useT(navStrings)
-  const { user, signOut } = useSession()
+  const { user, signOut, accountURL } = useSession()
   const { pathname } = useLocation()
-  const navigate = useNavigate()
   const { theme, setTheme } = useTheme()
   const { locale, setLocale } = useLocale()
   const [open, setOpen] = useState(false)
@@ -102,10 +102,12 @@ export function UserMenu() {
               }))}
             />
             <div className="menu-sep" />
-            <button type="button" role="menuitem" className="menu-item" onClick={() => navigate('/profile')}>
-              <Fingerprint size={18} />
-              {t('menu.profile')}
-            </button>
+            {accountURL && (
+              <a role="menuitem" className="menu-item" href={accountURL} target="_blank" rel="noreferrer">
+                <ShieldCheck size={18} />
+                {t('menu.account')}
+              </a>
+            )}
             <button type="button" role="menuitem" className="menu-item danger" onClick={signOut}>
               <LogOut size={18} />
               {t('menu.signout')}

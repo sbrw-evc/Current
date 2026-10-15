@@ -1,5 +1,5 @@
 import type { ApiToken, IssuedToken, Role, ServiceAccount } from '../pages/settings/ApiTokensModel'
-import type { EntraView } from '../pages/settings/EntraModel'
+import type { SpaView } from '../pages/spa/model'
 import type { InventoryIntegration } from '../pages/settings/InventoryDbModel'
 import type { ThreatList, ThreatView } from '../pages/settings/ThreatModel'
 import type { RdnsSettings, RdnsView } from '../pages/settings/RdnsModel'
@@ -7,7 +7,7 @@ import type { FlowLogsView, Provider } from '../pages/settings/FlowLogsModel'
 import type { Dependencies, DependencyRun, Proposal, ScopeView, UmbrellaAPI } from '../api/umbrella'
 
 // Mock handlers (VITE_MOCK=1) of the settings added after the first console: API tokens and
-// service accounts, Entra ID, moving OpenBao, the Inventory DB integration, the Umbrella API
+// service accounts, SPA (sign-in and people), moving OpenBao, the Inventory DB integration, the Umbrella API
 // connection, visibility scope and dependencies, threat intelligence, reverse DNS and cloud flow
 // logs. Secrets are write-only, as on the server: only *_set flags come back.
 
@@ -23,6 +23,30 @@ const roles: Role[] = [
   { id: 3, name: 'Inventory DB integration', builtin: false },
   { id: 4, name: 'NOC (Umbrella scope)', builtin: false },
 ]
+
+const spaUsers = [
+  { id: 1, username: 'admin', name: 'Administrator', email: 'admin@example.net', source: 'spa', role: 'Administrator', role_ident: 'admin', disabled: false, last_login_at: ago(60e3) },
+  { id: 2, username: 'noc', name: 'NOC engineer', email: 'noc@example.net', source: 'spa', role: 'NOC (Umbrella scope)', role_ident: 'noc-umbrella-scope', disabled: false, last_login_at: ago(3 * 3600e3) },
+  { id: 3, username: 'jdoe', name: 'John Doe', email: 'jdoe@example.net', source: 'legacy', role: 'Viewer', role_ident: 'viewer', disabled: true },
+]
+
+function spaView(): SpaView {
+  return {
+    connected: true, key_source: 'env', redirect_uri: 'https://flow.example.net/api/auth/spa/callback', post_logout_redirect_uri: 'https://flow.example.net/',
+    issuer: 'https://spa.example.net', client_id: 'app_7f3c', application: { id: 'app_7f3c', name: 'Umbrella Flow', type: 'umbrella-flow' },
+    account_url: 'https://spa.example.net/profile', sign_out_url: 'https://spa.example.net/oauth2/logout',
+    methods: [{ id: 'passkey', title: 'Passkey' }, { id: 'ldap', title: 'Active Directory' }, { id: 'password', title: 'Password' }],
+    last_sync: state.spaSynced, ok: true, users: 2, created: 0, updated: 2, bound: 0, disabled: 0, conflicts: [], no_role: [],
+    catalogue: { at: ago(86400e3), roles: roles.length }, counts: { enabled: 2, disabled: 1, legacy: 1 },
+    roles: [
+      { id: 'admin', name: 'Administrator', description: 'All permissions' },
+      { id: 'viewer', name: 'Viewer', description: 'Traffic pages: visualize, flows, exporters' },
+      { id: 'inventory-db-integration', name: 'Inventory DB integration' },
+      { id: 'noc-umbrella-scope', name: 'NOC (Umbrella scope)' },
+    ],
+    interval: '5m0s',
+  }
+}
 
 const DEFAULT_LISTS: ThreatList[] = [
   { name: 'firehol_level1', url: 'https://iplists.firehol.org/files/firehol_level1.netset', enabled: true, terms: 'https://iplists.firehol.org/' },
@@ -70,7 +94,7 @@ const state = {
   tokens: [
     { id: 1, service_account_id: 1, service_account: 'inventory-db', name: 'production', display: 'flow_Xq7R…', expires_at: null, last_used_at: ago(40e3), last_used_from: '10.10.0.21', created_by: 'admin', created_at: ago(20 * 86400e3), revoked_at: null, revoked_by: '', active: true },
   ] as ApiToken[],
-  entra: { enabled: false, cloud: 'global', tenant_id: '', client_id: '', redirect_url: '', client_secret_set: false, default_role_id: 2, group_roles: [], users: 0 } as EntraView,
+  spaSynced: ago(120e3),
   inventoryIntegration: { hook_secret_set: true, write_token_set: false, hook_url: 'https://flow.example.net/api/integrations/inventory-db/hook', inventory_url: 'https://inventory.example.net' } as InventoryIntegration,
   umbrellaApi: { url: 'https://umbrella.example.net', token_set: true } as UmbrellaAPI,
   deps: {
@@ -175,23 +199,13 @@ export function extensionsMock(method: string, p: string, body: unknown): Reply 
     Object.assign(t, { revoked_at: now(), revoked_by: 'admin', active: false })
     return ok(t)
   }
-  // ---- Entra ID
-  if (p === '/api/auth/entra') return ok({ enabled: state.entra.enabled })
-  if (p === '/api/settings/entra' && method === 'GET') return ok(state.entra)
-  if (p === '/api/settings/entra' && method === 'PUT') {
-    const secret = String(b.client_secret ?? '')
-    if (b.enabled && !secret && !state.entra.client_secret_set) return fail(400, 'entra_secret_required', 'a client secret is required')
-    const roleName = (id: number) => roles.find((r) => r.id === id)?.name
-    const groups = ((b.group_roles as { group_id: string; role_id: number }[]) ?? []).map((g) => ({ ...g, role: roleName(g.role_id) }))
-    state.entra = { ...state.entra, ...(b as Partial<EntraView>), group_roles: groups, client_secret_set: state.entra.client_secret_set || !!secret }
-    delete (state.entra as Record<string, unknown>).client_secret
-    return ok(state.entra)
+  // ---- SPA and the people it gives Flow
+  if (p === '/api/settings/spa' && method === 'GET') return ok(spaView())
+  if (p === '/api/settings/spa/sync' && method === 'POST') {
+    state.spaSynced = now()
+    return ok(spaView())
   }
-  if (p === '/api/settings/entra/test') {
-    const tenant = String(b.tenant_id ?? '')
-    if (!tenant) return ok({ ok: false, probe: { credentials: false }, error: 'tenant_id is required' })
-    return ok({ ok: true, probe: { issuer: `https://login.microsoftonline.com/${tenant}/v2.0`, tenant_id: tenant, credentials: true } })
-  }
+  if (p === '/api/users' && method === 'GET') return ok({ results: spaUsers })
   // ---- OpenBao move
   if (p === '/api/settings/openbao/probe') {
     const addr = String(b.addr ?? '')

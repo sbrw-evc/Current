@@ -1,51 +1,48 @@
-import { useState, type FormEvent } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useEffect, useRef, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { LogIn } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { post, setCsrf } from '../api/client'
-import type { Me } from '../api/types'
-import { errorText, useT, type Dict } from '../i18n'
-import { Banner, Brand, Button, Field, Input, Password, Preferences } from '../ui/ui'
-import { EntraLoginButton, EntraSignInError } from './settings/EntraLoginButton'
-import { SignInMethods } from './identity/SignInMethods'
-import { strings as idStrings } from './identity/strings'
+import { get, post } from '../api/client'
+import { useT } from '../i18n'
+import { Banner, Brand, Button, Loading, Preferences } from '../ui/ui'
+import { autoRedirect, safeNext, SPA_PROTOCOL, ssoErrorKey, startURL, takeSignedOut, type SpaInfo } from './spa/model'
+import { spaStrings } from './spa/strings'
 
-const strings: Dict = {
-  en: { 'signin.title': 'Sign in', 'signin.username': 'Username', 'signin.password': 'Password', 'signin.submit': 'Sign in', 'signin.hint': 'The same account as in Umbrella Monitoring (LDAP / AD or local).' },
-  ru: { 'signin.title': 'Вход', 'signin.username': 'Логин', 'signin.password': 'Пароль', 'signin.submit': 'Войти', 'signin.hint': 'Та же учётная запись, что в Umbrella Monitoring (LDAP / AD или локальная).' },
-}
-
-const loginStrings: Dict = { en: { ...idStrings.en, ...strings.en }, ru: { ...idStrings.ru, ...strings.ru } }
-
+// LoginPage: one button, "Sign in with SPA" (docs/identity-federation.md). Without a session the
+// page goes to SPA by itself, except right after a sign-out or when SPA sent an error back
+// (/login?sso_error=…). An application not connected to SPA says so, with the instructions.
 export function LoginPage() {
-  const t = useT(loginStrings)
+  const t = useT(spaStrings)
   const navigate = useNavigate()
-  const [params] = useSearchParams()
   const qc = useQueryClient()
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<{ message: string; detail?: string } | null>(null)
+  const [params] = useSearchParams()
+  const next = safeNext(params.get('next'))
+  const ssoError = params.get('sso_error')
+  const ssoDescription = params.get('sso_error_description')
+  // Read once: the mark of a sign-out lasts for one visit of the page.
+  const [signedOut] = useState(takeSignedOut)
+  const info = useQuery({ queryKey: ['spa-info'], queryFn: ({ signal }) => get<SpaInfo>('/api/auth/spa', signal), retry: 1 })
+  const went = useRef(false)
 
-  const done = (me: Me) => {
-    setCsrf(me.csrf)
-    qc.setQueryData(['me'], me)
-    const next = params.get('next')
-    navigate(next && next.startsWith('/') && !next.startsWith('//') ? next : '/', { replace: true })
+  const go = (prompt?: 'login') => {
+    window.location.assign(startURL(next, { prompt }))
+  }
+  // The mock API (VITE_MOCK=1) signs in without leaving the page.
+  const mockSignIn = async () => {
+    await post('/api/auth/spa/mock')
+    await qc.invalidateQueries({ queryKey: ['me'] })
+    navigate(next, { replace: true })
   }
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault()
-    setBusy(true)
-    setError(null)
-    try {
-      done(await post<Me>('/api/auth/login', { username, password }))
-    } catch (err) {
-      setError(errorText(t, err))
-      setPassword('')
-    } finally {
-      setBusy(false)
+  useEffect(() => {
+    if (!went.current && autoRedirect(info.data, ssoError, signedOut)) {
+      went.current = true
+      window.location.assign(startURL(next))
     }
-  }
+  }, [info.data, ssoError, signedOut, next])
+
+  const redirecting = autoRedirect(info.data, ssoError, signedOut)
+  const redirect = `${window.location.origin}/api/auth/spa/callback`
 
   return (
     <div className="center-page signin-page">
@@ -54,24 +51,49 @@ export function LoginPage() {
           <Brand />
           <Preferences />
         </div>
-        <form onSubmit={submit} noValidate>
+        <div className="stack">
           <h1>{t('signin.title')}</h1>
-          {!error && <EntraSignInError />}
-          <SignInMethods position="top" onSignedIn={done} />
-          {error && (
-            <Banner kind="error" title={error.message}>
-              {error.detail}
+          {info.isPending && <Loading />}
+          {info.isError && <Banner kind="error" title={t('signin.unavailable')} />}
+          {ssoError && (
+            <Banner kind="error" title={t(ssoErrorKey(ssoError))}>
+              {ssoDescription}
             </Banner>
           )}
-          <Field label={t('signin.username')}>{(id) => <Input id={id} value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoFocus />}</Field>
-          <Field label={t('signin.password')}>{(id) => <Password id={id} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />}</Field>
-          <Button variant="primary" type="submit" busy={busy} disabled={!username || !password}>
-            {t('signin.submit')}
-          </Button>
-          <EntraLoginButton />
-          <SignInMethods position="bottom" onSignedIn={done} />
-          <p className="hint">{t('signin.hint')}</p>
-        </form>
+          {signedOut && !ssoError && <Banner kind="info" title={t('signin.signedout')} />}
+          {info.data && !info.data.connected && (
+            <Banner kind="warn" title={t('notconnected.title')}>
+              {info.data.error === 'invalid_key' && <p>{t('notconnected.badkey')}</p>}
+              <p>{t('notconnected.text')}</p>
+              <ol className="spa-steps">
+                <li>{t('notconnected.step1', { redirect })}</li>
+                <li>{t('notconnected.step2')}</li>
+                <li>{t('notconnected.step3')}</li>
+              </ol>
+              <a href={SPA_PROTOCOL} target="_blank" rel="noreferrer">
+                {t('notconnected.docs')}
+              </a>
+            </Banner>
+          )}
+          {info.data?.connected && (
+            <>
+              <p className="muted">{t('signin.lead')}</p>
+              {redirecting ? (
+                <p className="muted">{t('signin.redirecting')}</p>
+              ) : (
+                <Button variant="primary" onClick={() => (info.data?.mock ? void mockSignIn() : go())}>
+                  <LogIn size={16} /> {ssoError ? t('signin.again') : t('signin.spa')}
+                </Button>
+              )}
+              {(signedOut || ssoError) && !info.data.mock && (
+                <Button variant="ghost" onClick={() => go('login')}>
+                  {t('signin.other')}
+                </Button>
+              )}
+              {info.data.issuer && <p className="hint">{info.data.application ? `${info.data.application} · ${info.data.issuer}` : info.data.issuer}</p>}
+            </>
+          )}
+        </div>
       </div>
     </div>
   )
