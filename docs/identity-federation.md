@@ -78,7 +78,7 @@ Violations returned by the APIs: `length`, `digits`, `special`, `mixed_case`, `l
 
 ### Connected applications
 
-*Settings → Connected applications → Connect an application* has three steps:
+*Settings → Sign-in and Umbrella Identity → Connected applications → Connect an application* has three steps:
 
 1. **Application** — the type (Network Control, Umbrella Flow, Inventory DB or another OpenID Connect application),
    its name and address (`https://…`). The redirect address is filled in from the type
@@ -186,7 +186,8 @@ Passkeys are included only when the application has "Receive passkeys" on and th
 
 ### Connecting
 
-*Settings → Umbrella single sign-in* has three steps:
+The single sign-in settings page of the member (Umbrella Flow: *Settings → Sign-in*; Inventory DB and Network
+Control: *Settings → Single sign-in*) connects in three steps:
 
 1. **Connection key** — paste the key from the hub; the member checks the hub, the client secret and the token.
 2. **Roles** — how hub roles and directory groups become the member's roles (a table "hub role or group →
