@@ -67,6 +67,14 @@ func New(t testing.TB) *SPA {
 	return s
 }
 
+// kid names the signing key of this fake. It differs between fakes: a later
+// test can get the same address, and the verifier keeps the keys of an
+// address for an hour, so a fixed kid would find a previous fake's key.
+func (s *SPA) kid() string {
+	h := sha256.Sum256(s.key.N.Bytes())
+	return hex.EncodeToString(h[:8])
+}
+
 // ConnectionKey is the key SPA would show.
 func (s *SPA) ConnectionKey() string { return s.Key.String() }
 
@@ -124,7 +132,7 @@ func (s *SPA) serve(w http.ResponseWriter, r *http.Request) {
 			"end_session_endpoint": iss + "/oauth2/logout", "id_token_signing_alg_values_supported": []string{"RS256"},
 			"code_challenge_methods_supported": []string{"S256"}})
 	case "/oauth2/jwks":
-		writeJSON(w, 200, map[string]any{"keys": []oidcx.JWK{oidcx.RSAJWK("k1", &s.key.PublicKey)}})
+		writeJSON(w, 200, map[string]any{"keys": []oidcx.JWK{oidcx.RSAJWK(s.kid(), &s.key.PublicKey)}})
 	case "/oauth2/authorize":
 		q := r.URL.Query()
 		s.Requests = append(s.Requests, q)
@@ -178,7 +186,7 @@ func (s *SPA) serve(w http.ResponseWriter, r *http.Request) {
 		if s.Issuer != "" {
 			claims["iss"] = s.Issuer
 		}
-		tok, _ := oidcx.Sign(s.key, "k1", claims)
+		tok, _ := oidcx.Sign(s.key, s.kid(), claims)
 		if s.Alg == "none" {
 			b, _ := json.Marshal(claims)
 			tok = "eyJhbGciOiJub25lIn0." + base64.RawURLEncoding.EncodeToString(b) + "."
