@@ -386,6 +386,17 @@ func TestUsersAndRoles(t *testing.T) {
 	if e.spa.Published != published+1 || !slices.ContainsFunc(e.spa.Catalogue.Roles, func(r spa.Role) bool { return r.ID == "noc" && r.Name == "NOC engineers" }) {
 		t.Fatal("rename not published", e.spa.Catalogue)
 	}
+	// Deleting an unused role (Settings → Roles) takes it out of the catalogue in SPA.
+	code, temp := admin.do("POST", "/api/roles", map[string]any{"name": "Temp", "permissions": []string{"flows:view"}})
+	if code != 201 || e.spa.Published != published+2 {
+		t.Fatal(code, temp, e.spa.Published)
+	}
+	if code, out := admin.do("DELETE", "/api/roles/"+itoa(int(temp["id"].(float64))), nil); code != 200 {
+		t.Fatal(code, out)
+	}
+	if e.spa.Published != published+3 || slices.ContainsFunc(e.spa.Catalogue.Roles, func(r spa.Role) bool { return r.ID == "temp" }) {
+		t.Fatal("deletion not published", e.spa.Catalogue)
+	}
 
 	users := usersByName(t, admin)
 	if users["noc1"]["source"] != "spa" || users["noc1"]["role"] != "NOC engineers" || users["noc1"]["spa_id"] != "usr_noc1" || users["noc1"]["password_ref"] != nil {

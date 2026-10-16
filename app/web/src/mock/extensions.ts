@@ -1,4 +1,5 @@
-import type { ApiToken, IssuedToken, Role, ServiceAccount } from '../pages/settings/ApiTokensModel'
+import type { ApiToken, IssuedToken, ServiceAccount } from '../pages/settings/ApiTokensModel'
+import { roles, rolesMock } from './roles'
 import type { SpaView } from '../pages/spa/model'
 import type { InventoryIntegration } from '../pages/settings/InventoryDbModel'
 import type { ThreatList, ThreatView } from '../pages/settings/ThreatModel'
@@ -17,13 +18,6 @@ const fail = (status: number, error: string, message?: string): Reply => ({ stat
 const now = () => new Date().toISOString()
 const ago = (ms: number) => new Date(Date.now() - ms).toISOString()
 
-const roles: Role[] = [
-  { id: 1, name: 'Administrator', builtin: true },
-  { id: 2, name: 'Viewer', builtin: true },
-  { id: 3, name: 'Inventory DB integration', builtin: false },
-  { id: 4, name: 'NOC (Umbrella scope)', builtin: false },
-]
-
 const spaUsers = [
   { id: 1, username: 'admin', name: 'Administrator', email: 'admin@example.net', source: 'spa', role: 'Administrator', role_ident: 'admin', disabled: false, last_login_at: ago(60e3) },
   { id: 2, username: 'noc', name: 'NOC engineer', email: 'noc@example.net', source: 'spa', role: 'NOC (Umbrella scope)', role_ident: 'noc-umbrella-scope', disabled: false, last_login_at: ago(3 * 3600e3) },
@@ -38,12 +32,7 @@ function spaView(): SpaView {
     methods: [{ id: 'passkey', title: 'Passkey' }, { id: 'ldap', title: 'Active Directory' }, { id: 'password', title: 'Password' }],
     last_sync: state.spaSynced, ok: true, users: 2, created: 0, updated: 2, bound: 0, disabled: 0, conflicts: [], no_role: [],
     catalogue: { at: ago(86400e3), roles: roles.length }, counts: { enabled: 2, disabled: 1, legacy: 1 },
-    roles: [
-      { id: 'admin', name: 'Administrator', description: 'All permissions' },
-      { id: 'viewer', name: 'Viewer', description: 'Traffic pages: visualize, flows, exporters' },
-      { id: 'inventory-db-integration', name: 'Inventory DB integration' },
-      { id: 'noc-umbrella-scope', name: 'NOC (Umbrella scope)' },
-    ],
+    roles: roles.map((r) => ({ id: r.ident, name: r.name, description: r.description || undefined })),
     interval: '5m0s',
   }
 }
@@ -163,7 +152,8 @@ function randomToken() {
 export function extensionsMock(method: string, p: string, body: unknown): Reply | null {
   const b = (body ?? {}) as Record<string, unknown>
   // ---- roles, service accounts and API tokens
-  if (p === '/api/roles' && method === 'GET') return ok({ results: roles })
+  const rolesReply = rolesMock(method, p, body)
+  if (rolesReply) return rolesReply
   if (p === '/api/service-accounts' && method === 'GET') return ok({ results: state.accounts.map((a) => ({ ...a, tokens: state.tokens.filter((x) => x.service_account_id === a.id && x.active).length })) })
   if (p === '/api/service-accounts' && method === 'POST') {
     const name = String(b.name ?? '').trim()

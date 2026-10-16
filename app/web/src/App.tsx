@@ -34,6 +34,7 @@ const BmpPage = lazy(() => import('./pages/settings/Bmp'))
 const UmbrellaSettingsPage = lazy(() => import('./pages/umbrella/UmbrellaSettings'))
 const DependenciesPage = lazy(() => import('./pages/umbrella/Dependencies'))
 const UsersPage = lazy(() => import('./pages/identity/Users'))
+const RolesPage = lazy(() => import('./pages/settings/Roles'))
 const SpaSettingsPage = lazy(() => import('./pages/spa/SpaSettings'))
 
 const queryClient = new QueryClient({
@@ -92,6 +93,7 @@ const router = createBrowserRouter([
       { path: 'settings/bmp', element: <Guard perm="settings.bmp:view">{lazyPage(<BmpPage />)}</Guard> },
       { path: 'settings/umbrella', element: <Guard perm="settings.umbrella:view">{lazyPage(<UmbrellaSettingsPage />)}</Guard> },
       { path: 'settings/users', element: <Guard perm="users:view">{lazyPage(<UsersPage />)}</Guard> },
+      { path: 'settings/roles', element: <Guard perm="roles:view">{lazyPage(<RolesPage />)}</Guard> },
       { path: 'settings/spa', element: <Guard perm="users:view">{lazyPage(<SpaSettingsPage />)}</Guard> },
       { path: 'dependencies', element: <Guard perm="dependencies:view">{lazyPage(<DependenciesPage />)}</Guard> },
       { path: '*', element: <NotFound /> },

@@ -3,6 +3,7 @@ import { navStrings } from '../../shell/strings'
 import { setupStrings } from '../setup/strings'
 import { autoRedirect, safeNext, ssoErrorKey, SSO_ERRORS, startURL } from './model'
 import { spaStrings } from './strings'
+import { rolesStrings } from '../settings/rolesStrings'
 
 describe('sign-in through SPA', () => {
   it('keeps the return page inside Flow', () => {
@@ -33,7 +34,7 @@ describe('sign-in through SPA', () => {
 
 describe('translations', () => {
   it('have the same keys in English and Russian', () => {
-    for (const [name, dict] of Object.entries({ spaStrings, navStrings, setupStrings })) {
+    for (const [name, dict] of Object.entries({ spaStrings, navStrings, setupStrings, rolesStrings })) {
       const en = Object.keys(dict.en).sort()
       const ru = Object.keys(dict.ru).sort()
       expect(ru, name).toEqual(en)

@@ -59,6 +59,7 @@ const ALL_PERMISSIONS = [
   'users:view',
   'users:edit',
   'roles:view',
+  'roles:edit',
   'dependencies:view',
   'dependencies:run',
 ]

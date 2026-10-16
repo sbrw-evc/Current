@@ -70,10 +70,14 @@ Accounts made before Flow moved to SPA keep their IDs (saved views, tokens, audi
 sign-in or synchronization binds one to the SPA person with the same user name, once; from then on only the SPA user
 ID counts. A legacy account no SPA person claims is disabled by the first successful synchronization.
 
-**Settings → Users** is read-only ("Managed in SPA"): creating people, roles, enabling and disabling them is done in
-SPA. What is not identity stays in Flow: saved views, service accounts and API tokens.
+**Settings → Users** is read-only ("Managed in SPA"): creating people, giving them roles, enabling and disabling them
+is done in SPA. What is not identity stays in Flow: saved views, service accounts and API tokens.
 
 ## Roles
+
+What a role allows is Flow's: **Settings → Roles** lists the roles and creates, edits (name, description,
+permissions of `GET /api/access/catalog`) and deletes custom ones through `/api/roles`; the built-in Administrator and
+Viewer are read-only, and a role given to people cannot be deleted.
 
 Flow publishes its roles as SPA's catalogue (`PUT /api/spa/v1/roles`) at start, at every synchronization when they
 changed, and whenever a role is created, renamed or deleted:
