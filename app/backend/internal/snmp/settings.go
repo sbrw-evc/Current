@@ -203,3 +203,30 @@ func (s Settings) timeout() time.Duration  { return time.Duration(s.TimeoutSecon
 
 // SecretPath is the OpenBao path of a profile secret (community, auth, priv).
 func SecretPath(profileID, what string) string { return "snmp/" + profileID + "/" + what }
+
+// ProfileFor returns the first profile whose prefixes contain a (a profile
+// without prefixes covers every device). Managed network devices use it for
+// "the SNMP profile that covers this address" (internal/devices).
+func (s Settings) ProfileFor(a netip.Addr) (Profile, bool) {
+	a = a.Unmap()
+	for _, pr := range s.Profiles {
+		nets, err := parsePrefixes(pr.Prefixes)
+		if err != nil {
+			continue
+		}
+		if len(nets) == 0 {
+			return pr, true
+		}
+		for _, n := range nets {
+			if n.Contains(a) {
+				return pr, true
+			}
+		}
+	}
+	return Profile{}, false
+}
+
+// ResolveCredentials resolves the secrets of a profile.
+func ResolveCredentials(p Profile, resolve Resolver) (Credentials, error) {
+	return credentials(p, resolve)
+}

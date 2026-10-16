@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/netip"
 	"slices"
 	"strconv"
 	"strings"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/sbrw-evc/network/app/backend/internal/classifier"
 	"github.com/sbrw-evc/network/app/backend/internal/collector"
+	"github.com/sbrw-evc/network/app/backend/internal/devices"
 	"github.com/sbrw-evc/network/app/backend/internal/filter"
 	"github.com/sbrw-evc/network/app/backend/internal/httpx"
 	"github.com/sbrw-evc/network/app/backend/internal/query"
@@ -55,6 +57,8 @@ type Traffic struct {
 	// Collector of this process (role all): its registry is merged into the
 	// exporters list. nil in the api role.
 	Collector *collector.Collector
+	// Devices links exporters to managed network devices; nil = none.
+	Devices *devices.Service
 }
 
 // Visualize implements app.Visualizer.
@@ -121,7 +125,27 @@ func (t *Traffic) Exporters(ctx context.Context) (any, error) {
 	if t.Collector != nil && !query.Scoped(ctx) {
 		resp.Results = MergeExporters(resp.Results, t.Collector.Exporters())
 	}
+	if t.Devices != nil {
+		LinkExporterDevices(ctx, resp.Results, t.Devices)
+	}
 	return resp, nil
+}
+
+// LinkExporterDevices marks the exporters that are managed devices.
+func LinkExporterDevices(ctx context.Context, exps []query.Exporter, svc *devices.Service) {
+	links, err := svc.ExporterDevices(ctx)
+	if err != nil || len(links) == 0 {
+		return
+	}
+	for i := range exps {
+		a, err := netip.ParseAddr(exps[i].Address)
+		if err != nil {
+			continue
+		}
+		if d, ok := links[a.Unmap()]; ok {
+			exps[i].Device = &query.ExporterDevice{ID: d.ID, Name: d.Name, Status: d.Status, Platform: d.Platform}
+		}
+	}
 }
 
 // MergeExporters merges the collector registry into the ClickHouse exporters.

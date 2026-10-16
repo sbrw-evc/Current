@@ -127,6 +127,16 @@ type Exporter struct {
 	FlowsPerSecond float64             `json:"flows_per_second"`
 	SamplingRates  []uint64            `json:"sampling_rates"`
 	Interfaces     []ExporterInterface `json:"interfaces"`
+	// Device is the managed network device this exporter is (Devices).
+	Device *ExporterDevice `json:"device,omitempty"`
+}
+
+// ExporterDevice links an exporter to its managed network device.
+type ExporterDevice struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	Status   string `json:"status"`
+	Platform string `json:"platform"`
 }
 
 // ExporterInterface is the recent traffic of one interface of an exporter.

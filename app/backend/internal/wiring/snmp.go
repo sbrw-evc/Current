@@ -13,6 +13,7 @@ import (
 
 	"github.com/sbrw-evc/network/app/backend/internal/app"
 	"github.com/sbrw-evc/network/app/backend/internal/collector"
+	"github.com/sbrw-evc/network/app/backend/internal/devices"
 	"github.com/sbrw-evc/network/app/backend/internal/secrets"
 	"github.com/sbrw-evc/network/app/backend/internal/snmp"
 	"github.com/sbrw-evc/network/app/backend/internal/store"
@@ -26,6 +27,11 @@ type SNMP struct {
 	st    *store.Store
 	vault *secrets.Client
 	log   *slog.Logger
+
+	// Extra adds credential profiles of other parts of Flow (the SNMP
+	// credentials of managed network devices, devices.SNMPProfiles) ahead of
+	// the configured ones; nil = none.
+	Extra func(ctx context.Context) ([]snmp.Profile, error)
 
 	mu      sync.Mutex
 	applied string
@@ -77,6 +83,13 @@ func (s *SNMP) Refresh(ctx context.Context) error {
 	}
 	if !found {
 		set.PollExporters = true
+	}
+	if s.Extra != nil {
+		extra, err := s.Extra(ctx)
+		if err != nil {
+			s.log.Warn("device SNMP credentials not loaded", "err", err)
+		}
+		set = devices.MergeSNMP(set, extra)
 	}
 	key, _ := json.Marshal(set)
 	s.mu.Lock()

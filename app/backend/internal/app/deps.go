@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/sbrw-evc/network/app/backend/internal/config"
+	"github.com/sbrw-evc/network/app/backend/internal/devices"
 	"github.com/sbrw-evc/network/app/backend/internal/secrets"
 	"github.com/sbrw-evc/network/app/backend/internal/store"
 )
@@ -151,6 +152,9 @@ type Deps struct {
 	InventoryIntegration InventoryIntegration
 	// Dependencies finds CI ↔ CI pairs for Umbrella proposals (query.Querier).
 	Dependencies DependencyFinder
+	// Devices manages network devices, their clients and the network map
+	// (devices.go); nil answers 501.
+	Devices *devices.Service
 	// Routing is the SNMP poller / BMP receiver status of this process (routing.go).
 	Routing RoutingService
 

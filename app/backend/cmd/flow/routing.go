@@ -10,7 +10,9 @@ import (
 	"github.com/sbrw-evc/network/app/backend/internal/app"
 	"github.com/sbrw-evc/network/app/backend/internal/bus"
 	"github.com/sbrw-evc/network/app/backend/internal/collector"
+	"github.com/sbrw-evc/network/app/backend/internal/devices"
 	"github.com/sbrw-evc/network/app/backend/internal/secrets"
+	"github.com/sbrw-evc/network/app/backend/internal/snmp"
 	"github.com/sbrw-evc/network/app/backend/internal/store"
 	"github.com/sbrw-evc/network/app/backend/internal/wiring"
 )
@@ -30,6 +32,8 @@ func routingExtension(ctx context.Context, ec *wiring.EnricherConfig, st *store.
 		r.BMP.UseJetStream(js.JetStream())
 	}
 	r.SNMP.UseCollector(col)
+	// The SNMP credentials of managed devices also name their interfaces.
+	r.SNMP.Extra = func(ctx context.Context) ([]snmp.Profile, error) { return devices.SNMPProfiles(ctx, st, vault) }
 	ec.Routing = r
 	deps.Routing = r
 	deps.Reloaders = append(deps.Reloaders, r)

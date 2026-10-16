@@ -160,6 +160,7 @@ func main() {
 			return
 		}
 		apiDeps(cfg, st, chConn, parts, &deps)
+		devicesExtension(ctx, env.DataDir, st, vault, parts, &deps, func(f func()) { bg.Go(f) })
 		a := app.New(app.Options{Version: version, Commit: commit, BuiltAt: builtAt, Role: string(role),
 			SecureCookies: env.SecureCookies, TrustedProxies: env.TrustedProxies, Web: webHandler,
 			// Inventory DB synchronization is scheduled by the enricher /

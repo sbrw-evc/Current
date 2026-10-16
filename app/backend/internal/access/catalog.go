@@ -33,6 +33,7 @@ const (
 	View = "view"
 
 	GroupTraffic  = "traffic"
+	GroupNetwork  = "network"
 	GroupOrg      = "org"
 	GroupSettings = "settings"
 )
@@ -93,6 +94,22 @@ const (
 	BMPEdit  = "settings.bmp:edit"
 )
 
+// Permissions of managed network devices (internal/devices): the Devices,
+// Clients and Network map pages.
+const (
+	DevicesView = "devices:view"
+	// DevicesEdit adds, changes and deletes devices and their credentials,
+	// tests connections, runs discovery and changes the device settings.
+	DevicesEdit = "devices:edit"
+	// DevicesOperate polls now and applies the everyday settings (name,
+	// interfaces, DNS, NTP, flow export), blocks clients, names and forgets
+	// clients and arranges the network map.
+	DevicesOperate = "devices:operate"
+	// DevicesAdmin reboots devices, runs custom CLI commands and downloads
+	// configuration backups.
+	DevicesAdmin = "devices:admin"
+)
+
 // Permissions of the enrichment extensions and cloud flow log ingestion.
 const (
 	RDNSView     = "settings.rdns:view"
@@ -110,6 +127,7 @@ var (
 
 var groups = []Group{
 	{GroupTraffic, Text{"Traffic", "Трафик"}},
+	{GroupNetwork, Text{"Network", "Сеть"}},
 	{GroupOrg, Text{"Organization", "Организация"}},
 	{GroupSettings, Text{"Settings", "Настройки"}},
 }
@@ -128,6 +146,12 @@ var pages = []Page{
 	{"detector", GroupTraffic, Text{"Detector", "Детектор"}, []Feature{
 		{View, Text{"See detection rules, active alerts and the Umbrella outbox", "Правила обнаружения, активные оповещения и очередь в Umbrella"}},
 		{"edit", Text{"Change detection rules", "Изменение правил обнаружения"}},
+	}},
+	{"devices", GroupNetwork, Text{"Network devices", "Сетевые устройства"}, []Feature{
+		{View, Text{"See managed devices, their clients and the network map", "Управляемые устройства, их клиенты и карта сети"}},
+		{"edit", Text{"Add, change and delete devices and their credentials, test connections, run discovery", "Добавление, изменение и удаление устройств и их учётных данных, проверка подключения, поиск устройств"}},
+		{"operate", Text{"Poll now, change names, interfaces, DNS, NTP and flow export, block clients, arrange the map", "Опрос, изменение имени, интерфейсов, DNS, NTP и экспорта потоков, блокировка клиентов, раскладка карты"}},
+		{"admin", Text{"Reboot devices, run CLI commands and download configuration backups", "Перезагрузка, произвольные команды CLI и выгрузка резервных копий конфигурации"}},
 	}},
 	{"users", GroupOrg, Text{"Users", "Пользователи"}, []Feature{
 		view,

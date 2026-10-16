@@ -11,7 +11,8 @@ func TestCatalog(t *testing.T) {
 		GeneralView, GeneralEdit, UmbrellaView, UmbrellaEdit, OpenBaoView, OpenBaoTest, DetectorView, DetectorEdit,
 		OpenBaoMigrate, TokensView, TokensEdit, IntegrationsInventoryRead, ScopeUmbrella,
 		GNMIView, GNMIEdit, SNMPView, SNMPEdit, BMPView, BMPEdit,
-		RDNSView, RDNSEdit, ThreatView, ThreatEdit, FlowLogsView, FlowLogsEdit}
+		RDNSView, RDNSEdit, ThreatView, ThreatEdit, FlowLogsView, FlowLogsEdit,
+		DevicesView, DevicesEdit, DevicesOperate, DevicesAdmin}
 	for _, p := range want {
 		if !Valid(p) {
 			t.Errorf("%s missing", p)

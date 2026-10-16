@@ -242,6 +242,9 @@ func (a *App) Handler() http.Handler {
 	// gNMI / SNMP poller and BMP receiver settings (routing.go, gnmi.go)
 	a.routingRoutes(h)
 
+	// network devices, clients, the network map (devices.go)
+	a.deviceRoutes(h)
+
 	// status
 	h("GET /api/status", a.guard(perms(access.StatusView), a.status))
 	h("GET /api/audit", a.guard(perms(access.StatusView), a.listAudit))

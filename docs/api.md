@@ -169,7 +169,10 @@ Filter language: `Column op value`, `AND`, `OR`, `NOT`, parentheses; strings in 
 
 ## Exporters
 
-`GET /api/exporters` → `{results: [{address, name, ref, site, role, last_seen, flows_per_second, sampling_rates: [..], interfaces: [{index, name, description, speed, boundary, provider, in_bps, out_bps}]}]}`
+`GET /api/exporters` → `{results: [{address, name, ref, site, role, last_seen, flows_per_second, sampling_rates: [..], interfaces: [{index, name, description, speed, boundary, provider, in_bps, out_bps}], device?: {id, name, status, platform}}]}`
+
+`device` is the managed network device this exporter is (its flow exporter address, host or an interface address;
+see [Network devices](#network-devices)).
 
 From the raw flows of the last 5 minutes; in role `all` merged with the collector's registry (exporters silent in
 ClickHouse, sampling rates, last seen, flows/s, interface names and speeds learned from option data / sFlow
@@ -608,6 +611,75 @@ over replicated ones: send BMP from a router to one station (or one load-balance
 | GET | `/api/settings/bmp` | `{enabled, policy: prefer-post\|post\|pre, routers: [addr or prefix] (allowed sources, empty = any), as_providers, status?: {enabled, listen, error?, replication: {enabled, caught_up?, error?, routers?: [{router, peers_up, last_record}]}, rib: {prefixes_v4, prefixes_v6, vpn_prefixes, vrfs, routes, attribute_sets, peers, bytes}, sessions: [{router, sys_name?, sys_descr?, since, peers_up, messages, errors, last_error?}], peers: [{router, address, as, distinguisher?, rd?, post_policy, routes, since, last_update}]}}` — `status` when the receiver runs in this process |
 | PUT | `/api/settings/bmp` | `{enabled, policy, routers, as_providers}` → as GET; 400 `bmp_invalid`; applied at once (same process) or within a minute |
 | GET | `/api/bmp/lookup?address=&rd=` (`settings.bmp:view`) | `rd` (optional) selects a VPN table, as for flows; → `{prefix, rd (table found in, empty = global), origin_as, as_path, communities: ["a:b"], large_communities, next_hop, peer: {router, address, as, post_policy}}`; 400 `invalid_rd`; 404 `no_route`; 501 when the receiver runs in another process |
+
+## Network devices
+
+Management of network equipment (`internal/devices`, runs in the API process; see [devices.md](devices.md)): the
+registry, scheduled polling, settings applied on devices, clients merged by MAC and the network map. Permissions
+`devices:view` (read), `devices:edit` (add, change, delete, test, discover, clients' names, map positions,
+settings), `devices:operate` (poll, actions, client blocking) and `devices:admin` (the actions `reboot`, `command`,
+`backup` and the configuration download; it also allows every `devices:operate` route). Every change goes to the
+audit log (`device.*`, `endpoint.*`; secrets never). Without the device manager in the process every route answers
+501 `not_implemented`.
+
+**Inventory DB is the source of truth.** When it is connected (`/api/inventory-db` enabled), a device is created by
+picking an Inventory DB device that is not managed yet (`inventory_id`); its `name`, `site` and `role` come from
+Inventory DB and are read-only (400 `invalid_device` on a change), `source_ref` is `inventory-db:dcim.device:<id>`,
+and unbinding is refused. Without Inventory DB a device is a standalone record with its own name, site and role
+(`router`, `switch`, `firewall`, `ap`, `controller`, `server`, `other`). One record per Inventory DB device and per
+address (+ controller site): a duplicate is 409 `duplicate_device`.
+
+**Credentials** live only in OpenBao (mount `flow`, path `devices/<id>`). Plain fields (`username`, `snmp_version`,
+`snmp_user`, `snmp_auth_protocol`, `snmp_priv_protocol`) are returned; secret fields (`password`, `api_key`,
+`api_secret`, `private_key`, `enable_password`, `snmp_community`, `snmp_auth_password`, `snmp_priv_password`) are
+write-only: the view tells only `credentials.set.<field>`. In `credentials`, a secret `""` or `null` keeps the stored
+value; `clear_credentials: [field]` removes it. `snmp_source: "profile"` uses the Flow SNMP profile that covers the
+address (Settings → SNMP) instead of own SNMP credentials; the `gnmi` platform uses the gNMI profile that covers it.
+A device's own SNMPv2c / v3 credentials also serve the SNMP interface-name fallback for its exporter addresses.
+
+Device view (`View`): `{id, name, platform, platform_title, vendor, kind, host, port, transport, verify_tls,
+controller_site, inventory_id, source_ref, bound, inventory_missing, site, role, tags, note, enabled, poll_seconds
+(60–86400, default 300), flow_exporter_ip, ssh_host_key (SHA-256 fingerprint of the pinned key), status
+(unknown|up|error|down), failures, last_poll_at, last_ok_at, last_error, down_since, alerted, facts: {hostname,
+vendor, model, os, version, serial, mac, uptime_seconds, cpu_percent, memory_percent}, capabilities: [action],
+counts: {interfaces, interfaces_up, neighbors, children, endpoints}, credentials: {username, snmp_version, snmp_user,
+snmp_auth_protocol, snmp_priv_protocol, snmp_source, set: {field: bool}}, exporter_ips, created_by, created_at,
+updated_at}`.
+
+| Method | Path | |
+|---|---|---|
+| GET | `/api/devices/platforms` | `{platforms: [{key, vendor, title, segment, kind, transports: [{name, port}], credentials: [field], hint, aliases, capabilities: {transport: [action]}}], actions, action_titles, admin_actions, secret_fields, roles, flow_protocols, snmp_auth_protocols, snmp_priv_protocols}` |
+| GET | `/api/devices` | `{results: [View]}` |
+| POST | `/api/devices` | `{platform, host, port? (0 = default), transport?, verify_tls?, controller_site?, inventory_id?, name?, site?, role?, tags?, note?, enabled?, poll_seconds?, flow_exporter_ip?, snmp_source?: own\|profile, credentials?: {field: value}}` → 201 View; the first poll starts at once. 400 `invalid_device`, 409 `duplicate_device` |
+| GET | `/api/devices/inventory-candidates?q=` | `{connected, loaded, devices: [{id, name, ref, site, role, status, manufacturer, model, platform, host, platform_guess}]}` — Inventory DB devices not managed yet |
+| POST | `/api/devices/test` | the body of POST (or `{id, …}` to test a saved device with its stored secrets and pinned key) → `{ok, facts, interfaces, neighbors, endpoints, children, host_key}`; 422 `device_error` with what the device said |
+| POST | `/api/devices/discover` | `{target: address\|host name\|subnet up to /22, community?: "public"}` → `{results: [{host, reachable, ports, evidence, snmp, platforms: [key], name, known, device_id?}]}` |
+| GET | `/api/devices/{id}` | View + `{interfaces: [{…, rx_bps, tx_bps, utilization}], neighbors, children, endpoints: [Client], collector: {address, ip, netflow_port, sflow_port, source}, platform_info, inventory?, snmp_profile?: {id, name}}` |
+| PATCH | `/api/devices/{id}` | fields of POST (omitted = kept; `clear_credentials`) → View. A new host, port or controller site forgets the pinned SSH key |
+| DELETE | `/api/devices/{id}` | 204; the OpenBao path is deleted, an open Umbrella event is resolved |
+| POST | `/api/devices/{id}/poll` | → `{ok, status, failures, error}`; 409 `poll_running` |
+| POST | `/api/devices/{id}/actions` | `{action, params}` → `{ok, output}`. Actions: `hostname {name}`, `interface {name, enabled?, description?}`, `dns {servers}`, `ntp {servers}`, `flow_export {enabled?, collector?, port?, protocol: netflow5\|netflow9\|ipfix\|sflow, interfaces?}` (collector / port default to this installation's collector), `reboot {mac?}`, `endpoint_block {mac, blocked?}`, `command {command}`, `backup`. 400 `invalid_params`, `unsupported_action`, `unknown_action`, `collector_unknown`; 403 for an admin action without `devices:admin`; 422 `device_error` |
+| GET | `/api/devices/{id}/backup` (`devices:admin`) | the configuration as `text/plain` (attachment) |
+| POST | `/api/devices/{id}/reset-host-key` | forgets the pinned SSH host key (trusted again on the next connection) → View |
+| GET | `/api/endpoints?q=&online=true\|false&device_id=&limit=` | `{results: [Client]}` — Client: `{mac, ip, hostname, alias, note, vendor, device_id, device_name, interface, source: wifi\|controller\|bridge\|dhcp\|arp, attached_to, port, ssid, signal, vlan, blocked, first_seen, last_seen, name (alias, else hostname), online}`; the MACs of network equipment are left out |
+| GET | `/api/endpoints/{mac}` | Client + `{sightings: [{mac, device_id, source, ip, hostname, interface, ssid, signal, vlan, attached_to, port, blocked, seen_at}]}` |
+| PATCH | `/api/endpoints/{mac}` | `{alias?, note?}` → Client; 400 `invalid_mac` |
+| DELETE | `/api/endpoints/{mac}` | 204 (the client and its sightings) |
+| POST | `/api/endpoints/{mac}/block` (`devices:operate`) | `{blocked?: true}` → `{ok, output, device_id, device_name}` — on the first device that saw it and can block clients |
+| GET | `/api/topology?offline=false&endpoints=true` | `{nodes: [{id (dev:<id>\|mac:<mac>\|nb:<key>\|ep:<mac>\|internet), type: device\|child\|neighbor\|endpoint\|internet, label, role, status, vendor, model, ip, mac, device_id, platform, site, x, y, clients, interfaces, error, controller, platform_guess, …}], edges: [{source, target, kind: link\|managed\|wired\|wifi\|wan, source_port, target_port, protocol, label, bps, utilization, speed_mbps}], stats: {devices, children, neighbors, endpoints, online, down}, generated_at}` |
+| PUT | `/api/topology/positions` | `{"dev:<id>": [x, y] \| null}` → 204 (null = automatic layout) |
+| GET | `/api/settings/devices` | `{settings: {collector_address, netflow_port, sflow_port, endpoint_offline_minutes (15), endpoint_retention_days (90), concurrency (6)}, collector}` |
+| PUT | `/api/settings/devices` | `settings` → as GET; 400 `invalid_device` |
+
+Merging clients: each poll replaces the sightings of the device; a client's attachment point is its freshest
+(30 min) sighting with the most specific source (Wi-Fi 5 > controller 4 > bridge 3 > DHCP 2 > ARP 1), its address
+the first one by that order, its name the first known host name. Multicast and broadcast MACs are skipped.
+
+Down / up events: two failed polls in a row make a device `down`; the scheduler then sends one firing event to
+Umbrella (same connector as the detector, signal `use.device.down`, method USE, severity critical, `ci` = the device
+name, `source_ref` = its Inventory DB reference, `ip` = its address, `links.flow` = `/devices/<id>`), and the
+resolved event with the same `id` when it answers again, is disabled or deleted. Nothing is sent while the Umbrella
+connector is not configured.
 
 ## Incident link
 
