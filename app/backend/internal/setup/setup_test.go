@@ -270,6 +270,15 @@ func TestSPAStep(t *testing.T) {
 	}
 }
 
+// setupFailed fails the test, naming ClickHouse when it is what the setup could not reach.
+func setupFailed(t *testing.T, code int, out map[string]any) {
+	t.Helper()
+	if out["error"] == "clickhouse_unavailable" {
+		t.Fatal("this test needs ClickHouse at FLOW_TEST_CLICKHOUSE (default localhost:9000):", code, out)
+	}
+	t.Fatal(code, out)
+}
+
 func TestCompleteDockerStyle(t *testing.T) {
 	fake, _ := secretstest.New(t)
 	db := storetest.NewOwnedDatabase(t)
@@ -307,24 +316,21 @@ func TestCompleteDockerStyle(t *testing.T) {
 		"umbrella":  map[string]any{"enabled": true, "ingest_url": umb.URL + "/api/ingest/network-flow", "token": "umb-token-secret"},
 		"spa":       map[string]any{"connection_key": "spa1.garbage"}}
 	if code, out := post(t, h, "/api/setup", in); code != 400 || out["error"] != "spa_unavailable" {
-		t.Fatal(code, out)
+		setupFailed(t, code, out)
 	}
 	in["spa"] = map[string]any{"connection_key": sp.ConnectionKey()}
 	in["timezone"] = "Mars/Olympus"
 	if code, out := post(t, h, "/api/setup", in); code != 400 || out["error"] != "general_invalid" {
-		t.Fatal(code, out)
+		setupFailed(t, code, out)
 	}
 	in["timezone"] = "Europe/Moscow"
 	in["umbrella"].(map[string]any)["token"] = "wrong"
 	if code, out := post(t, h, "/api/setup", in); code != 400 || out["error"] != "umbrella_unavailable" {
-		t.Fatal(code, out)
+		setupFailed(t, code, out)
 	}
 	in["umbrella"].(map[string]any)["token"] = "umb-token-secret"
 	if code, out := post(t, h, "/api/setup", in); code != 200 {
-		if out["error"] == "clickhouse_unavailable" {
-			t.Fatal("this test needs ClickHouse at FLOW_TEST_CLICKHOUSE (default localhost:9000):", code, out)
-		}
-		t.Fatal(code, out)
+		setupFailed(t, code, out)
 	}
 	if got == nil || got.Store == nil || got.Vault == nil {
 		t.Fatal("done not called")
