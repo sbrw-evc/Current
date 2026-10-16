@@ -94,7 +94,8 @@ make build && make run  # http://localhost:8080, data in backend/data
 Development: `make dev-api` and `make dev-web` (Vite on :5173). Checks: `make test` (`go vet`, `go test`, web
 typecheck and tests). Tests use PostgreSQL at `localhost:5432` (`postgres` / `postgres`, a fresh database per test,
 `FLOW_TEST_POSTGRES=<dsn>` to change, `=off` to skip) and ClickHouse at `localhost:9000` (`FLOW_TEST_CLICKHOUSE`);
-OpenBao is faked. `FLOW_TEST_E2E=1 go test ./internal/wiring` runs the pipeline end to end in one process (demo
+OpenBao is faked. `TestStepChecks` and `TestCompleteDockerStyle` (`internal/setup`) need ClickHouse and a PostgreSQL
+that checks passwords (not `trust`), see [Development](../README.md#development). `FLOW_TEST_E2E=1 go test ./internal/wiring` runs the pipeline end to end in one process (demo
 exporter → collector → in-process bus → enricher → writer → query). Image: `make image`. Whole stack: `make stack`,
 with demo traffic `make stack-demo`.
 

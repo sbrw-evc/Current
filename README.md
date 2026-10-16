@@ -266,6 +266,16 @@ Backend tests use real PostgreSQL on `localhost:5432` (`postgres` / `postgres`) 
 `FLOW_TEST_POSTGRES=off` and `FLOW_TEST_CLICKHOUSE=off` skip those tests. OpenBao is faked.
 `FLOW_TEST_E2E=1 go test ./internal/wiring` runs the whole pipeline in one process.
 
+Tests that need the environment (they fail, not skip, when it is missing; CI provides both):
+
+| Test | Needs | Fails without it with |
+|---|---|---|
+| `TestStepChecks` (`internal/setup`) | a PostgreSQL that checks passwords on TCP (`scram-sha-256` or `md5` in `pg_hba.conf`; a `trust` line for `127.0.0.1` accepts any password) and ClickHouse at `FLOW_TEST_CLICKHOUSE` | `wrong password accepted: …`, then `this test needs ClickHouse …` |
+| `TestCompleteDockerStyle` (`internal/setup`) | ClickHouse at `FLOW_TEST_CLICKHOUSE` (the setup migrates its schema) | `this test needs ClickHouse …` (`clickhouse_unavailable`) |
+
+The other ClickHouse tests (`chtest`) skip when the server is unreachable. A PostgreSQL elsewhere:
+`FLOW_TEST_POSTGRES=postgres://postgres:postgres@127.0.0.1:55432/postgres?sslmode=disable`.
+
 CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs on every pull request: `gofmt`, `go vet`,
 `go test -race` against PostgreSQL and ClickHouse, the web typecheck, tests and build, the Compose configuration
 checks and the image build. Work goes to a branch from `main` and is merged by pull request once CI is green.

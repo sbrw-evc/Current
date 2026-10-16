@@ -156,10 +156,13 @@ func TestStepChecks(t *testing.T) {
 		t.Fatal(out)
 	}
 	if ok, _ := step("postgres", map[string]any{"host": db.Host, "port": db.Port, "database": db.Database, "username": db.User, "password": "wrong", "sslmode": "disable"}); ok {
-		t.Fatal("wrong password accepted")
+		t.Fatal("wrong password accepted: the test PostgreSQL must check passwords on TCP (scram-sha-256 or md5 in pg_hba.conf, not trust)")
 	}
 	if ok, out := step("clickhouse", map[string]any{"addr": ch.Addr, "database": ch.Database, "username": ch.Username, "password": ch.Password}); !ok || out["details"].(map[string]any)["version"] == "" {
-		t.Fatal(out)
+		if ok {
+			t.Fatal(out)
+		}
+		t.Fatal("this test needs ClickHouse at FLOW_TEST_CLICKHOUSE (default localhost:9000):", out)
 	}
 	if ok, _ := step("clickhouse", map[string]any{"addr": "127.0.0.1:1"}); ok {
 		t.Fatal("closed port accepted")
@@ -318,6 +321,9 @@ func TestCompleteDockerStyle(t *testing.T) {
 	}
 	in["umbrella"].(map[string]any)["token"] = "umb-token-secret"
 	if code, out := post(t, h, "/api/setup", in); code != 200 {
+		if out["error"] == "clickhouse_unavailable" {
+			t.Fatal("this test needs ClickHouse at FLOW_TEST_CLICKHOUSE (default localhost:9000):", code, out)
+		}
 		t.Fatal(code, out)
 	}
 	if got == nil || got.Store == nil || got.Vault == nil {
