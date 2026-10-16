@@ -6,7 +6,7 @@ network devices: traffic (NetFlow / IPFIX / sFlow, cloud flow logs), routing (BM
 The other members of the family: [Keystone](https://github.com/sbrw-evc/keystone) (sign-in and access; formerly SPA),
 [Beacon](https://github.com/sbrw-evc/beacon) (incidents; formerly Umbrella Monitoring),
 [Ledger](https://github.com/sbrw-evc/ledger) (inventory; formerly Inventory DB) and Network Control, whose device
-management Current took over.
+management Current took over. Who owns what between them: [docs/family.md](docs/family.md).
 
 Network traffic analysis for NetFlow v5 / v9, IPFIX and sFlow and management of the network devices, built into the
 Umbrella family:
@@ -316,6 +316,8 @@ docs/
   plan.md           goals, architecture, stack and stages
   api.md            REST API contract
   devices.md        network device management
+  family.md         the Umbrella family: who owns what, processes between the applications
+  processes.md      business processes inside Current
   integrations.md   contracts with Beacon and Ledger
 ```
 
@@ -330,6 +332,8 @@ docs/
 | [docs/plan.md](docs/plan.md) | plan, architecture, data model, stack |
 | [docs/api.md](docs/api.md) | REST API |
 | [docs/devices.md](docs/devices.md) | network devices: platforms, Ledger binding, polling, actions, clients, map, events |
+| [docs/family.md](docs/family.md) | the Umbrella family: which application owns which data, processes between the applications |
+| [docs/processes.md](docs/processes.md) | business processes inside Current: install, devices, traffic, detection, Ledger, operations |
 | [docs/integrations.md](docs/integrations.md) | cross-application contracts |
 
 ## Troubleshooting
