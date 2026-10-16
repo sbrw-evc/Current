@@ -194,6 +194,18 @@ func subscribeGNMI(ctx context.Context, a netip.Addr, p Profile, c Credentials, 
 // errEncoding wraps a rejection of the subscription before any data.
 var errEncoding = errors.New("subscription rejected")
 
+// subscribeRejection classifies an error the device ended the stream with
+// before sending any data.
+func subscribeRejection(err error) error {
+	switch status.Code(err) {
+	case codes.Unimplemented:
+		return fmt.Errorf("%w: %w", ErrSubscribeUnsupported, grpcError(err))
+	case codes.InvalidArgument:
+		return fmt.Errorf("%w: %w", errEncoding, grpcError(err))
+	}
+	return grpcError(err)
+}
+
 func subscribeOnce(ctx context.Context, cl gpb.GNMIClient, enc gpb.Encoding, s Settings, update func(map[uint32]Interface)) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -206,6 +218,13 @@ func subscribeOnce(ctx context.Context, cl gpb.GNMIClient, enc gpb.Encoding, s S
 		list.Subscription = append(list.Subscription, &gpb.Subscription{Path: q.path, Mode: gpb.SubscriptionMode_TARGET_DEFINED})
 	}
 	if err := st.Send(&gpb.SubscribeRequest{Request: &gpb.SubscribeRequest_Subscribe{Subscribe: list}}); err != nil {
+		// io.EOF means the device already ended the stream (for example
+		// with Unimplemented); its status comes with Recv.
+		if errors.Is(err, io.EOF) {
+			if _, rerr := st.Recv(); rerr != nil && !errors.Is(rerr, io.EOF) {
+				return subscribeRejection(rerr)
+			}
+		}
 		return grpcError(err)
 	}
 	type recv struct {
@@ -245,12 +264,7 @@ func subscribeOnce(ctx context.Context, cl gpb.GNMIClient, enc gpb.Encoding, s S
 				return false, errors.New("the device closed the subscription")
 			}
 			if !got {
-				switch status.Code(x.err) {
-				case codes.Unimplemented:
-					return false, fmt.Errorf("%w: %w", ErrSubscribeUnsupported, grpcError(x.err))
-				case codes.InvalidArgument:
-					return false, fmt.Errorf("%w: %w", errEncoding, grpcError(x.err))
-				}
+				return false, subscribeRejection(x.err)
 			}
 			return false, grpcError(x.err)
 		}
