@@ -1,14 +1,14 @@
 import type { ApiToken, IssuedToken, ServiceAccount } from '../pages/settings/ApiTokensModel'
 import { roles, rolesMock } from './roles'
-import type { SpaView } from '../pages/spa/model'
-import type { InventoryIntegration } from '../pages/settings/InventoryDbModel'
+import type { SpaView } from '../pages/keystone/model'
+import type { InventoryIntegration } from '../pages/settings/LedgerModel'
 import type { ThreatList, ThreatView } from '../pages/settings/ThreatModel'
 import type { RdnsSettings, RdnsView } from '../pages/settings/RdnsModel'
 import type { FlowLogsView, Provider } from '../pages/settings/FlowLogsModel'
-import type { Dependencies, DependencyRun, Proposal, ScopeView, UmbrellaAPI } from '../api/umbrella'
+import type { Dependencies, DependencyRun, Proposal, ScopeView, UmbrellaAPI } from '../api/beacon'
 
 // Mock handlers (VITE_MOCK=1) of the settings added after the first console: API tokens and
-// service accounts, SPA (sign-in and people), moving OpenBao, the Inventory DB integration, the Umbrella API
+// service accounts, Keystone (sign-in and people), moving OpenBao, the Ledger integration, the Beacon API
 // connection, visibility scope and dependencies, threat intelligence, reverse DNS and cloud flow
 // logs. Secrets are write-only, as on the server: only *_set flags come back.
 
@@ -20,14 +20,14 @@ const ago = (ms: number) => new Date(Date.now() - ms).toISOString()
 
 const spaUsers = [
   { id: 1, username: 'admin', name: 'Administrator', email: 'admin@example.net', source: 'spa', role: 'Administrator', role_ident: 'admin', disabled: false, last_login_at: ago(60e3) },
-  { id: 2, username: 'noc', name: 'NOC engineer', email: 'noc@example.net', source: 'spa', role: 'NOC (Umbrella scope)', role_ident: 'noc-umbrella-scope', disabled: false, last_login_at: ago(3 * 3600e3) },
+  { id: 2, username: 'noc', name: 'NOC engineer', email: 'noc@example.net', source: 'spa', role: 'NOC (Beacon scope)', role_ident: 'noc-umbrella-scope', disabled: false, last_login_at: ago(3 * 3600e3) },
   { id: 3, username: 'jdoe', name: 'John Doe', email: 'jdoe@example.net', source: 'legacy', role: 'Viewer', role_ident: 'viewer', disabled: true },
 ]
 
 function spaView(): SpaView {
   return {
     connected: true, key_source: 'env', redirect_uri: 'https://flow.example.net/api/auth/spa/callback', post_logout_redirect_uri: 'https://flow.example.net/',
-    issuer: 'https://spa.example.net', client_id: 'app_7f3c', application: { id: 'app_7f3c', name: 'Umbrella Flow', type: 'umbrella-flow' },
+    issuer: 'https://spa.example.net', client_id: 'app_7f3c', application: { id: 'app_7f3c', name: 'Current', type: 'umbrella-flow' },
     account_url: 'https://spa.example.net/profile', sign_out_url: 'https://spa.example.net/oauth2/logout',
     methods: [{ id: 'passkey', title: 'Passkey' }, { id: 'ldap', title: 'Active Directory' }, { id: 'password', title: 'Password' }],
     last_sync: state.spaSynced, ok: true, users: 2, created: 0, updated: 2, bound: 0, disabled: 0, conflicts: [], no_role: [],
@@ -78,7 +78,7 @@ const run = (id: number, ms: number, dry: boolean, accepted: number): Dependency
 
 const state = {
   accounts: [
-    { id: 1, name: 'inventory-db', description: 'Inventory DB: traffic chips and prefix addresses', role_id: 3, role: 'Inventory DB integration', disabled: false, tokens: 1, created_by: 'admin', created_at: ago(20 * 86400e3), updated_at: ago(20 * 86400e3) },
+    { id: 1, name: 'inventory-db', description: 'Ledger: traffic chips and prefix addresses', role_id: 3, role: 'Ledger integration', disabled: false, tokens: 1, created_by: 'admin', created_at: ago(20 * 86400e3), updated_at: ago(20 * 86400e3) },
   ] as ServiceAccount[],
   tokens: [
     { id: 1, service_account_id: 1, service_account: 'inventory-db', name: 'production', display: 'flow_Xq7R…', expires_at: null, last_used_at: ago(40e3), last_used_from: '10.10.0.21', created_by: 'admin', created_at: ago(20 * 86400e3), revoked_at: null, revoked_by: '', active: true },
@@ -189,7 +189,7 @@ export function extensionsMock(method: string, p: string, body: unknown): Reply 
     Object.assign(t, { revoked_at: now(), revoked_by: 'admin', active: false })
     return ok(t)
   }
-  // ---- SPA and the people it gives Flow
+  // ---- Keystone and the people it gives Current
   if (p === '/api/settings/spa' && method === 'GET') return ok(spaView())
   if (p === '/api/settings/spa/sync' && method === 'POST') {
     state.spaSynced = now()
@@ -209,7 +209,7 @@ export function extensionsMock(method: string, p: string, body: unknown): Reply 
     if (String(target.addr ?? '').includes('used') && !b.overwrite) return fail(409, 'openbao_target_not_empty', 'the target mount has secrets')
     return ok({ addr: target.addr, mount: target.mount || 'flow', copied: 14, refs: 9 })
   }
-  // ---- Inventory DB integration
+  // ---- Ledger integration
   if (p === '/api/inventory-db/integration' && method === 'GET') return ok(state.inventoryIntegration)
   if (p === '/api/inventory-db/integration' && method === 'PUT') {
     const i = state.inventoryIntegration
@@ -218,11 +218,11 @@ export function extensionsMock(method: string, p: string, body: unknown): Reply 
     return ok(i)
   }
   if (p === '/api/inventory-db/unknown/create') {
-    if (!state.inventoryIntegration.write_token_set) return fail(409, 'write_token_required', 'no Inventory DB editor token')
+    if (!state.inventoryIntegration.write_token_set) return fail(409, 'write_token_required', 'no Ledger editor token')
     const address = String(b.address ?? '')
     return ok({ ok: true, address, object: { id: 9000 + Math.floor(Math.random() * 999), address: `${address}/32`, display: `${address}/32`, display_url: `${state.inventoryIntegration.inventory_url}/ipam/ip-addresses` } }, 201)
   }
-  // ---- Umbrella API, scope and dependencies
+  // ---- Beacon API, scope and dependencies
   if (p === '/api/settings/umbrella/api' && method === 'GET') return ok(state.umbrellaApi)
   if (p === '/api/settings/umbrella/api' && method === 'PUT') {
     if (typeof b.url === 'string') state.umbrellaApi.url = b.url.replace(/\/+$/, '').replace(/\/api$/, '')
@@ -230,7 +230,7 @@ export function extensionsMock(method: string, p: string, body: unknown): Reply 
     return ok(state.umbrellaApi)
   }
   if (p === '/api/settings/umbrella/api/test') {
-    if (!state.umbrellaApi.token_set && !b.token) return ok({ ok: false, error: 'no Umbrella service-account token' })
+    if (!state.umbrellaApi.token_set && !b.token) return ok({ ok: false, error: 'no Beacon service-account token' })
     return ok({ ok: true, details: { restricted: false, known: true, mode: 'all', cis: 0, services: 0, refs: 0, addresses: 0 } })
   }
   if (p === '/api/umbrella/scope') return ok({ ...scope, configured: state.umbrellaApi.token_set, checked_at: now() })

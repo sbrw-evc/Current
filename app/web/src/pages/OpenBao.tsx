@@ -8,8 +8,8 @@ import { useSession } from '../shell/session'
 import { Banner, Button, Card, Chip, formatDate, Loading, Rows } from '../ui/ui'
 import { OpenBaoMigrate } from './settings/OpenBaoMigrate'
 
-// Settings → OpenBao, as in Umbrella (app/settings/openbao): where the secrets live and whether
-// Flow can reach them. Proposed contract (not yet in docs/api.md):
+// Settings → OpenBao, as in Beacon (app/settings/openbao): where the secrets live and whether
+// Current can reach them. Proposed contract (not yet in docs/api.md):
 //   GET  /api/settings/openbao      → OpenBaoView
 //   POST /api/settings/openbao/test → {ok, error?, details?}
 // Token renewal (secrets.Renewal): renewed in place, or a new AppRole sign-in for a non-renewable token.
@@ -26,9 +26,9 @@ type OpenBaoView = {
 
 const strings: Dict = {
   en: {
-    'ob.sub': 'Every password and token of Flow is kept in OpenBao; nothing secret is stored on disk or shown in the interface',
+    'ob.sub': 'Every password and token of Current is kept in OpenBao; nothing secret is stored on disk or shown in the interface',
     'ob.current': 'Current connection',
-    'ob.current.text': 'Flow reads its secrets from this KV v2 mount and caches them for 30 seconds.',
+    'ob.current.text': 'Current reads its secrets from this KV v2 mount and caches them for 30 seconds.',
     'ob.state.ok': 'Connected',
     'ob.state.fail': 'Unavailable',
     'ob.addr': 'Address',
@@ -54,13 +54,13 @@ const strings: Dict = {
     'ob.test.ok': 'OpenBao answers, the mount is readable and writable',
     'ob.test.fail': 'Check failed',
     'ob.what': 'What is kept there',
-    'ob.what.text': 'PostgreSQL and ClickHouse passwords, the Inventory DB token, the Umbrella ingest token, the NATS credentials. Forms show such fields as "set · kept in OpenBao" with a Replace button.',
+    'ob.what.text': 'PostgreSQL and ClickHouse passwords, the Ledger token, the Beacon ingest token, the NATS credentials. Forms show such fields as "set · kept in OpenBao" with a Replace button.',
     'ob.change': 'The connection to OpenBao itself is set by the setup wizard and the AppRole file of the container (FLOW_SETUP_DEFAULTS_OPENBAO_*), or changed by moving the secrets to another OpenBao.',
   },
   ru: {
-    'ob.sub': 'Все пароли и токены Flow хранятся в OpenBao; на диске и в интерфейсе секретов нет',
+    'ob.sub': 'Все пароли и токены Current хранятся в OpenBao; на диске и в интерфейсе секретов нет',
     'ob.current': 'Текущее подключение',
-    'ob.current.text': 'Flow читает секреты из этого хранилища KV v2 и кеширует их на 30 секунд.',
+    'ob.current.text': 'Current читает секреты из этого хранилища KV v2 и кеширует их на 30 секунд.',
     'ob.state.ok': 'Подключено',
     'ob.state.fail': 'Недоступно',
     'ob.addr': 'Адрес',
@@ -86,7 +86,7 @@ const strings: Dict = {
     'ob.test.ok': 'OpenBao отвечает, хранилище доступно на чтение и запись',
     'ob.test.fail': 'Проверка не прошла',
     'ob.what': 'Что там хранится',
-    'ob.what.text': 'Пароли PostgreSQL и ClickHouse, токен Inventory DB, токен приёма Umbrella, учётные данные NATS. В формах такие поля показываются как «задан · хранится в OpenBao» с кнопкой «Заменить».',
+    'ob.what.text': 'Пароли PostgreSQL и ClickHouse, токен Ledger, токен приёма Beacon, учётные данные NATS. В формах такие поля показываются как «задан · хранится в OpenBao» с кнопкой «Заменить».',
     'ob.change': 'Само подключение к OpenBao задаётся мастером настройки и файлом AppRole контейнера (FLOW_SETUP_DEFAULTS_OPENBAO_*) или меняется переносом секретов в другой OpenBao.',
   },
 }

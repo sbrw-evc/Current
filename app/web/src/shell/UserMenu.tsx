@@ -10,8 +10,8 @@ import { Avatar } from './Avatar'
 import { useSession } from './session'
 import { navStrings } from './strings'
 
-// The user menu of Umbrella: who is signed in, language and theme accordions, "Account and security"
-// (password and passkeys, in SPA), sign out.
+// The user menu of Beacon: who is signed in, language and theme accordions, "Account and security"
+// (password and passkeys, in Keystone), sign out.
 export function UserMenu() {
   const t = useT(navStrings)
   const { user, signOut, accountURL } = useSession()

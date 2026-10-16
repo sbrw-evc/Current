@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/sbrw-evc/network/app/backend/internal/schema"
+	"github.com/sbrw-evc/current/app/backend/internal/schema"
 )
 
 // quoteSQL returns s as a ClickHouse single-quoted string literal. Quotes and

@@ -11,10 +11,10 @@ import (
 	ch "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/sbrw-evc/network/app/backend/internal/flow"
-	"github.com/sbrw-evc/network/app/backend/internal/schema"
-	chstore "github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse"
-	"github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse/chtest"
+	"github.com/sbrw-evc/current/app/backend/internal/flow"
+	"github.com/sbrw-evc/current/app/backend/internal/schema"
+	chstore "github.com/sbrw-evc/current/app/backend/internal/storage/clickhouse"
+	"github.com/sbrw-evc/current/app/backend/internal/storage/clickhouse/chtest"
 )
 
 func TestMigrateIdempotentAndUpgrade(t *testing.T) {

@@ -27,7 +27,7 @@ export type User = {
   role_ident?: string
   permissions: string[]
 }
-// account_url: SPA's "Account and security" page (password, passkeys).
+// account_url: Keystone's "Account and security" page (password, passkeys).
 export type Me = { user: User; csrf: string; account_url?: string }
 
 

@@ -9,7 +9,7 @@ import (
 	"github.com/netsampler/goflow2/v2/decoders/netflow"
 	"github.com/netsampler/goflow2/v2/decoders/netflowlegacy"
 
-	"github.com/sbrw-evc/network/app/backend/internal/flow"
+	"github.com/sbrw-evc/current/app/backend/internal/flow"
 )
 
 // Information element numbers used below (IANA IPFIX registry; NetFlow v9

@@ -10,11 +10,11 @@ import (
 	"time"
 )
 
-// Traffic of Inventory DB objects (docs/integrations.md §2.1): current rates,
+// Traffic of Ledger objects (docs/integrations.md §2.1): current rates,
 // a sparkline and the 95th percentile since the start of the month, for many
 // objects of one type in a fixed number of queries.
 
-// Inventory DB object types served by the integration.
+// Ledger object types served by the integration.
 const (
 	ObjectDevice    = "dcim.device"
 	ObjectInterface = "dcim.interface"

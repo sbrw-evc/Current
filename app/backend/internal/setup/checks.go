@@ -17,10 +17,10 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/oschwald/maxminddb-golang/v2"
 
-	"github.com/sbrw-evc/network/app/backend/internal/config"
-	"github.com/sbrw-evc/network/app/backend/internal/secrets"
-	"github.com/sbrw-evc/network/app/backend/internal/spa"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/config"
+	"github.com/sbrw-evc/current/app/backend/internal/keystone"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
 )
 
 // CheckResult is the reply of a step check: {ok, error?, details?}.
@@ -56,12 +56,12 @@ func CheckOpenBao(ctx context.Context, o config.OpenBao) (*secrets.Client, Check
 // PostgresDetails is what CheckPostgres finds.
 type PostgresDetails struct {
 	Version  string `json:"version"`
-	HasState bool   `json:"has_state"` // the database already has Flow users or settings
+	HasState bool   `json:"has_state"` // the database already has Current users or settings
 	Users    int    `json:"users"`
 	Schema   int64  `json:"schema"`
 }
 
-// CheckPostgres connects with the DSN and looks for existing Flow state.
+// CheckPostgres connects with the DSN and looks for existing Current state.
 func CheckPostgres(ctx context.Context, dsn string) CheckResult {
 	st, err := store.Open(ctx, dsn)
 	if err != nil {
@@ -125,7 +125,7 @@ func CheckNATS(ctx context.Context, rawURL, token string) CheckResult {
 	if err := checkNATSURL(rawURL); err != nil {
 		return failed(err)
 	}
-	opts := []nats.Option{nats.Name("umbrella-flow-setup"), nats.Timeout(5 * time.Second), nats.MaxReconnects(0)}
+	opts := []nats.Option{nats.Name("current-setup"), nats.Timeout(5 * time.Second), nats.MaxReconnects(0)}
 	if token != "" {
 		opts = append(opts, nats.Token(token))
 	}
@@ -161,15 +161,15 @@ func checkNATSURL(raw string) error {
 	return nil
 }
 
-// CheckInventory asks Inventory DB for one device and returns the device count.
+// CheckInventory asks Ledger for one device and returns the device count.
 func CheckInventory(ctx context.Context, baseURL, token string) CheckResult {
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	u, err := url.Parse(baseURL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return failed(errors.New("Inventory DB address must look like https://inventory.example"))
+		return failed(errors.New("Ledger address must look like https://inventory.example"))
 	}
 	if token == "" {
-		return failed(errors.New("the Inventory DB token is required"))
+		return failed(errors.New("the Ledger token is required"))
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/api/v1/dcim/devices/?limit=1", nil)
 	if err != nil {
@@ -179,21 +179,21 @@ func CheckInventory(ctx context.Context, baseURL, token string) CheckResult {
 	req.Header.Set("Accept", "application/json")
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return failed(fmt.Errorf("Inventory DB is unreachable: %w", err))
+		return failed(fmt.Errorf("Ledger is unreachable: %w", err))
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		return failed(fmt.Errorf("Inventory DB rejected the token (%d)", resp.StatusCode))
+		return failed(fmt.Errorf("Ledger rejected the token (%d)", resp.StatusCode))
 	case resp.StatusCode/100 != 2:
-		return failed(fmt.Errorf("Inventory DB answered %d", resp.StatusCode))
+		return failed(fmt.Errorf("Ledger answered %d", resp.StatusCode))
 	}
 	var page struct {
 		Count *int `json:"count"`
 	}
 	if err := json.Unmarshal(body, &page); err != nil || page.Count == nil {
-		return failed(errors.New("the answer is not a NetBox-style list: is this the Inventory DB address?"))
+		return failed(errors.New("the answer is not a NetBox-style list: is this the Ledger address?"))
 	}
 	return CheckResult{OK: true, Details: map[string]any{"devices": *page.Count}}
 }
@@ -201,9 +201,9 @@ func CheckInventory(ctx context.Context, baseURL, token string) CheckResult {
 // UmbrellaTestEvent is sent by CheckUmbrella (network-flow connector format;
 // the title is a user-facing Russian string, as specified in docs/api.md).
 var UmbrellaTestEvent = map[string]any{"id": "flow-setup-test", "status": "resolved", "signal": "flow.setup.test", "severity": "info",
-	"title": "Umbrella Flow: проверка подключения", "ci": "umbrella-flow", "labels": map[string]string{"umbrella_test": "true"}}
+	"title": "Current: проверка подключения", "ci": "umbrella-flow", "labels": map[string]string{"umbrella_test": "true"}}
 
-// CheckUmbrella posts a resolved test event to the Umbrella ingest URL.
+// CheckUmbrella posts a resolved test event to the Beacon ingest URL.
 func CheckUmbrella(ctx context.Context, ingestURL, token string) CheckResult {
 	ingestURL = strings.TrimSpace(ingestURL)
 	u, err := url.Parse(ingestURL)
@@ -211,7 +211,7 @@ func CheckUmbrella(ctx context.Context, ingestURL, token string) CheckResult {
 		return failed(errors.New("the ingest address must look like https://umbrella.example/api/ingest/network-flow"))
 	}
 	if token == "" {
-		return failed(errors.New("the Umbrella token is required"))
+		return failed(errors.New("the Beacon token is required"))
 	}
 	b, _ := json.Marshal(UmbrellaTestEvent)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ingestURL, bytes.NewReader(b))
@@ -222,12 +222,12 @@ func CheckUmbrella(ctx context.Context, ingestURL, token string) CheckResult {
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return failed(fmt.Errorf("Umbrella is unreachable: %w", err))
+		return failed(fmt.Errorf("Beacon is unreachable: %w", err))
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode/100 != 2 {
-		msg := fmt.Sprintf("Umbrella answered %d", resp.StatusCode)
+		msg := fmt.Sprintf("Beacon answered %d", resp.StatusCode)
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 			msg += ": check the token and that the connector is published"
 		}
@@ -236,20 +236,20 @@ func CheckUmbrella(ctx context.Context, ingestURL, token string) CheckResult {
 	return CheckResult{OK: true, Details: map[string]any{"status": resp.StatusCode}}
 }
 
-// CheckSPA parses an SPA connection key and asks SPA whether it accepts it
+// CheckSPA parses a Keystone connection key and asks Keystone whether it accepts it
 // (discovery, the federation token, the client secret).
 func CheckSPA(ctx context.Context, key, publicURL string) CheckResult {
-	k, err := spa.ParseKey(key)
+	k, err := keystone.ParseKey(key)
 	if err != nil {
 		return failed(err)
 	}
 	redirect := ""
 	if publicURL != "" {
-		redirect = strings.TrimRight(publicURL, "/") + spa.CallbackPath
+		redirect = strings.TrimRight(publicURL, "/") + keystone.CallbackPath
 	}
 	cfg, err := k.Check(ctx, redirect)
 	if err != nil {
-		return failed(fmt.Errorf("SPA %s: %w", k.Issuer, err))
+		return failed(fmt.Errorf("Keystone %s: %w", k.Issuer, err))
 	}
 	return CheckResult{OK: true, Details: map[string]any{"issuer": k.Issuer, "application": cfg.Application.Name,
 		"type": cfg.Application.Type, "redirect_uri": redirect}}

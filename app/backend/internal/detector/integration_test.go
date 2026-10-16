@@ -14,10 +14,10 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/sbrw-evc/network/app/backend/internal/filter"
-	"github.com/sbrw-evc/network/app/backend/internal/flow"
-	chstore "github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse"
-	"github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse/chtest"
+	"github.com/sbrw-evc/current/app/backend/internal/filter"
+	"github.com/sbrw-evc/current/app/backend/internal/flow"
+	chstore "github.com/sbrw-evc/current/app/backend/internal/storage/clickhouse"
+	"github.com/sbrw-evc/current/app/backend/internal/storage/clickhouse/chtest"
 )
 
 const publicURL = "https://flow.example.com"
@@ -514,7 +514,7 @@ func TestCustomRuleAndOutbox(t *testing.T) {
 		Filter: "SrcAS = 64500", Thresholds: Thresholds{BPS: 50e6}, Window: Duration(5 * time.Minute), Severity: "info",
 		Title: "AS${SrcAS}: ${value_text}"}
 	d := e.detector([]Rule{rule}, nil)
-	e.in.fail.Store(1000) // Umbrella down
+	e.in.fail.Store(1000) // Beacon down
 	if err := func() error { e.clock.Set(H.Add(6*time.Minute + 30*time.Second)); return d.Tick(context.Background()) }(); err == nil {
 		t.Fatal("want delivery error")
 	}
@@ -525,7 +525,7 @@ func TestCustomRuleAndOutbox(t *testing.T) {
 	if snap == nil || len(snap.Outbox) != 1 {
 		t.Fatal("outbox not persisted")
 	}
-	// Restart while Umbrella is still down, then it comes back.
+	// Restart while Beacon is still down, then it comes back.
 	d2 := e.detector([]Rule{rule}, nil)
 	e.in.fail.Store(0)
 	evs := e.tick(d2, H.Add(7*time.Minute+30*time.Second))

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/flow"
+	"github.com/sbrw-evc/current/app/backend/internal/flow"
 )
 
 func TestThreatRuleDefaults(t *testing.T) {

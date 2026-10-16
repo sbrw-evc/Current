@@ -1,5 +1,5 @@
 // Package access is the permission catalog: permissions are "<page>:<function>",
-// as in Umbrella Monitoring, and roles are sets of them.
+// as in Beacon, and roles are sets of them.
 package access
 
 import (
@@ -72,14 +72,14 @@ const (
 	OpenBaoMigrate = "settings.openbao:migrate"
 	TokensView     = "tokens:view"
 	TokensEdit     = "tokens:edit"
-	// IntegrationsInventoryRead: the Inventory DB integration calls
+	// IntegrationsInventoryRead: the Ledger integration calls
 	// /api/integrations/inventory-db/* with a token of this role.
 	IntegrationsInventoryRead = "integrations.inventory:read"
 	// ScopeUmbrella restricts every traffic query of the user to the
-	// visibility scope Umbrella gives for their login (a restriction, not a
+	// visibility scope Beacon gives for their login (a restriction, not a
 	// right: the Administrator role does not get it).
 	ScopeUmbrella = "scope:umbrella"
-	// Dependency discovery for Umbrella's CMDB (docs/integrations.md §3.3).
+	// Dependency discovery for Beacon's CMDB (docs/integrations.md §3.3).
 	DependenciesView = "dependencies:view"
 	DependenciesRun  = "dependencies:run"
 )
@@ -144,7 +144,7 @@ var pages = []Page{
 		{"edit", Text{"Change sampling rate overrides", "Изменение переопределений частоты сэмплирования"}},
 	}},
 	{"detector", GroupTraffic, Text{"Detector", "Детектор"}, []Feature{
-		{View, Text{"See detection rules, active alerts and the Umbrella outbox", "Правила обнаружения, активные оповещения и очередь в Umbrella"}},
+		{View, Text{"See detection rules, active alerts and the Beacon outbox", "Правила обнаружения, активные оповещения и очередь в Beacon"}},
 		{"edit", Text{"Change detection rules", "Изменение правил обнаружения"}},
 	}},
 	{"devices", GroupNetwork, Text{"Network devices", "Сетевые устройства"}, []Feature{
@@ -155,10 +155,10 @@ var pages = []Page{
 	}},
 	{"users", GroupOrg, Text{"Users", "Пользователи"}, []Feature{
 		view,
-		{"edit", Text{"Synchronize users with SPA now and manage the saved views of others (people and their roles are managed in SPA)", "Синхронизация пользователей с SPA и управление чужими сохранёнными видами (люди и их роли управляются в SPA)"}},
+		{"edit", Text{"Synchronize users with Keystone now and manage the saved views of others (people and their roles are managed in Keystone)", "Синхронизация пользователей с Keystone и управление чужими сохранёнными видами (люди и их роли управляются в Keystone)"}},
 	}},
 	{"roles", GroupOrg, Text{"Roles", "Роли"}, []Feature{view, edit}},
-	{"settings.inventory", GroupSettings, Text{"Inventory DB", "Inventory DB"}, []Feature{
+	{"settings.inventory", GroupSettings, Text{"Ledger", "Ledger"}, []Feature{
 		view,
 		{"edit", Text{"Change and check the connection", "Изменение и проверка подключения"}},
 		{"sync", Text{"Run synchronization", "Запуск синхронизации"}},
@@ -169,11 +169,11 @@ var pages = []Page{
 	}},
 	{"settings.general", GroupSettings, Text{"General", "Общие"}, []Feature{
 		view,
-		{"edit", Text{"Change language, theme, time zone, Flow address, password policy and GeoIP databases", "Изменение языка, темы, часового пояса, адреса Flow, парольной политики и баз GeoIP"}},
+		{"edit", Text{"Change language, theme, time zone, Current address, password policy and GeoIP databases", "Изменение языка, темы, часового пояса, адреса Current, парольной политики и баз GeoIP"}},
 	}},
-	{"settings.umbrella", GroupSettings, Text{"Umbrella", "Umbrella"}, []Feature{
+	{"settings.umbrella", GroupSettings, Text{"Beacon", "Beacon"}, []Feature{
 		view,
-		{"edit", Text{"Change and check the connection to Umbrella", "Изменение и проверка подключения к Umbrella"}},
+		{"edit", Text{"Change and check the connection to Beacon", "Изменение и проверка подключения к Beacon"}},
 	}},
 	{"settings.openbao", GroupSettings, Text{"OpenBao", "OpenBao"}, []Feature{
 		view,
@@ -184,15 +184,15 @@ var pages = []Page{
 		view,
 		{"edit", Text{"Create service accounts, issue and revoke tokens", "Создание сервисных учётных записей, выпуск и отзыв токенов"}},
 	}},
-	{"integrations.inventory", GroupSettings, Text{"Inventory DB integration", "Интеграция с Inventory DB"}, []Feature{
-		{"read", Text{"Traffic of DCIM objects and prefixes for Inventory DB", "Трафик объектов DCIM и префиксов для Inventory DB"}},
+	{"integrations.inventory", GroupSettings, Text{"Ledger integration", "Интеграция с Ledger"}, []Feature{
+		{"read", Text{"Traffic of DCIM objects and prefixes for Ledger", "Трафик объектов DCIM и префиксов для Ledger"}},
 	}},
 	{"dependencies", GroupTraffic, Text{"Dependencies", "Зависимости"}, []Feature{
 		{View, Text{"See the CI dependencies discovered from traffic and the runs", "Зависимости КЕ, найденные по трафику, и запуски"}},
-		{"run", Text{"Run discovery and send the proposals to Umbrella", "Запуск поиска и отправка предложений в Umbrella"}},
+		{"run", Text{"Run discovery and send the proposals to Beacon", "Запуск поиска и отправка предложений в Beacon"}},
 	}},
 	{"scope", GroupTraffic, Text{"Visibility scope", "Область видимости"}, []Feature{
-		{"umbrella", Text{"Restrict traffic to the CIs and services visible in Umbrella", "Ограничить трафик КЕ и сервисами, видимыми в Umbrella"}},
+		{"umbrella", Text{"Restrict traffic to the CIs and services visible in Beacon", "Ограничить трафик КЕ и сервисами, видимыми в Beacon"}},
 	}},
 	{"settings.snmp", GroupSettings, Text{"SNMP", "SNMP"}, []Feature{
 		view,

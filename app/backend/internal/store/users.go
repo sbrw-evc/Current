@@ -9,18 +9,18 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/sbrw-evc/network/app/backend/internal/access"
+	"github.com/sbrw-evc/current/app/backend/internal/access"
 )
 
-// User sources: every person signs in through SPA. A legacy account was made
-// before Flow moved to SPA; it is bound to its SPA person by the user name on
-// the first SPA sign-in or synchronization, or disabled by it.
+// User sources: every person signs in through Keystone. A legacy account was made
+// before Current moved to Keystone; it is bound to its Keystone person by the user name on
+// the first Keystone sign-in or synchronization, or disabled by it.
 const (
 	SourceSPA    = "spa"
 	SourceLegacy = "legacy"
 )
 
-// Role idents of the built-in roles in the catalogue published to SPA.
+// Role idents of the built-in roles in the catalogue published to Keystone.
 const (
 	IdentAdmin  = "admin"
 	IdentViewer = "viewer"
@@ -28,7 +28,7 @@ const (
 
 type Role struct {
 	ID int64 `json:"id"`
-	// Ident is the stable identifier of the role in SPA (the role catalogue,
+	// Ident is the stable identifier of the role in Keystone (the role catalogue,
 	// the "roles" claim); it does not change when the role is renamed.
 	Ident       string    `json:"ident"`
 	Name        string    `json:"name"`
@@ -40,7 +40,7 @@ type Role struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
-// User is a person, synchronized from SPA (read-only in Flow).
+// User is a person, synchronized from Keystone (read-only in Current).
 type User struct {
 	ID          int64      `json:"id"`
 	Username    string     `json:"username"`
@@ -54,7 +54,7 @@ type User struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	LastLoginAt *time.Time `json:"last_login_at"`
-	// ExternalID is the SPA user ID (the sub of the ID token) of the account.
+	// ExternalID is the Keystone user ID (the sub of the ID token) of the account.
 	ExternalID string `json:"spa_id,omitempty"`
 }
 
@@ -96,7 +96,7 @@ func (s *Store) RoleByName(ctx context.Context, name string) (Role, error) {
 	return scanRole(s.pool.QueryRow(ctx, `SELECT `+roleCols+` FROM roles r WHERE lower(r.name) = lower($1)`, name))
 }
 
-// RoleByIdent finds a role by its SPA identifier.
+// RoleByIdent finds a role by its Keystone identifier.
 func (s *Store) RoleByIdent(ctx context.Context, ident string) (Role, error) {
 	return scanRole(s.pool.QueryRow(ctx, `SELECT `+roleCols+` FROM roles r WHERE r.ident = $1`, ident))
 }
@@ -104,7 +104,7 @@ func (s *Store) RoleByIdent(ctx context.Context, ident string) (Role, error) {
 var notIdent = regexp.MustCompile(`[^a-z0-9_.:]+`)
 
 // identFor makes the identifier of a new role from its name: lower-case
-// letters, digits and . _ : - (as SPA requires), or "role" for names in other
+// letters, digits and . _ : - (as Keystone requires), or "role" for names in other
 // alphabets.
 func identFor(name string) string {
 	id := strings.Trim(notIdent.ReplaceAllString(strings.ToLower(name), "-"), "-")
@@ -194,7 +194,7 @@ func (s *Store) DeleteRole(ctx context.Context, id int64) error {
 	}))
 }
 
-// EnsureBuiltinRoles creates Administrator ("admin" in SPA) and Viewer
+// EnsureBuiltinRoles creates Administrator ("admin" in Keystone) and Viewer
 // ("viewer") and resets their permissions to the catalog (new permissions
 // reach Administrator on upgrade).
 func (s *Store) EnsureBuiltinRoles(ctx context.Context) error {
@@ -288,8 +288,8 @@ type NewUser struct {
 	Disabled bool
 }
 
-// CreateUser adds a legacy account (one made before SPA: imports and tests).
-// People come from SPA through UpsertSPAUser.
+// CreateUser adds a legacy account (one made before Keystone: imports and tests).
+// People come from Keystone through UpsertSPAUser.
 func (s *Store) CreateUser(ctx context.Context, in NewUser) (User, error) {
 	var id int64
 	err := s.pool.QueryRow(ctx, `INSERT INTO users (username, name, email, source, role_id, disabled)

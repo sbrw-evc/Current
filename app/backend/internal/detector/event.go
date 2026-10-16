@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/schema"
+	"github.com/sbrw-evc/current/app/backend/internal/schema"
 )
 
-// Event is one event in the format of the Umbrella network-flow preset
-// (Umbrella app/docs/flow.md). The ingest endpoint accepts one object or an
+// Event is one event in the format of the Beacon network-flow preset
+// (Beacon app/docs/flow.md). The ingest endpoint accepts one object or an
 // array.
 type Event struct {
 	ID        string            `json:"id"`

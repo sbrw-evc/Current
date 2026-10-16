@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/flowlogs"
-	"github.com/sbrw-evc/network/app/backend/internal/rdns"
-	"github.com/sbrw-evc/network/app/backend/internal/threat"
+	"github.com/sbrw-evc/current/app/backend/internal/flowlogs"
+	"github.com/sbrw-evc/current/app/backend/internal/rdns"
+	"github.com/sbrw-evc/current/app/backend/internal/threat"
 )
 
 type memSettings struct {

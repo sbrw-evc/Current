@@ -9,7 +9,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/sbrw-evc/network/app/backend/internal/threat"
+	"github.com/sbrw-evc/current/app/backend/internal/threat"
 )
 
 // LoadThreatSettings returns the stored threat intelligence settings, or

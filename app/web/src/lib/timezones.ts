@@ -1,4 +1,4 @@
-// Time zones for selects, sorted by their current UTC offset (as in Umbrella).
+// Time zones for selects, sorted by their current UTC offset (as in Beacon).
 function offsetMinutes(zone: string, at: Date) {
   const parts = new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' })
     .formatToParts(at)

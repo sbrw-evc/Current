@@ -11,7 +11,7 @@ import { Banner, Button, Card, Chip, Field, formatDate, Input, Loading, Rows, Se
 import { AS_PROVIDERS, body, move, toDraft, toggle, validate, validRD, type BmpDraft, type BmpPolicy, type BmpRoute, type BmpView } from './BmpModel'
 import { validAddress } from './SnmpModel'
 
-// Settings → BMP (docs/api.md, "BMP"): routers stream their BGP Adj-RIB-In to Flow (TCP 10179); the
+// Settings → BMP (docs/api.md, "BMP"): routers stream their BGP Adj-RIB-In to Current (TCP 10179); the
 // enricher fills DstASPath, DstCommunities, DstLargeCommunities and, with the "routing" provider, the AS
 // numbers of every flow from these routes.
 
@@ -20,7 +20,7 @@ const strings: Dict = {
     'bmp.sub': 'BGP routes streamed by the routers over BMP: AS paths, communities and AS numbers of every flow',
     'bmp.settings': 'Receiver',
     'bmp.enabled': 'Receive BMP',
-    'bmp.enabled.hint': 'Flow listens on TCP 10179 (FLOW_BMP_ADDR) while this is on. Configure the routers as BMP clients of Flow.',
+    'bmp.enabled.hint': 'Current listens on TCP 10179 (FLOW_BMP_ADDR) while this is on. Configure the routers as BMP clients of Current.',
     'bmp.policy': 'Routes used',
     'bmp.policy.prefer-post': 'Post-policy, else pre-policy',
     'bmp.policy.post': 'Post-policy only',
@@ -80,7 +80,7 @@ const strings: Dict = {
     'bmp.sub': 'BGP-маршруты, которые маршрутизаторы передают по BMP: AS-пути, community и номера AS каждого потока',
     'bmp.settings': 'Приём',
     'bmp.enabled': 'Принимать BMP',
-    'bmp.enabled.hint': 'Пока включено, Flow слушает TCP 10179 (FLOW_BMP_ADDR). Настройте маршрутизаторы как BMP-клиенты Flow.',
+    'bmp.enabled.hint': 'Пока включено, Current слушает TCP 10179 (FLOW_BMP_ADDR). Настройте маршрутизаторы как BMP-клиенты Current.',
     'bmp.policy': 'Какие маршруты использовать',
     'bmp.policy.prefer-post': 'После политик, иначе до политик',
     'bmp.policy.post': 'Только после политик',

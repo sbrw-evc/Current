@@ -1,7 +1,7 @@
 // Package snmp polls interface names, descriptions and speeds over SNMP
-// (v2c / v3) for exporters that Inventory DB does not describe, or whose
+// (v2c / v3) for exporters that Ledger does not describe, or whose
 // interfaces have no name or speed there. It is the last interface source of
-// the enricher, after the Inventory DB, the collector's option data and gNMI.
+// the enricher, after Ledger, the collector's option data and gNMI.
 //
 // Devices are the exporters seen by the collector / enricher (when
 // PollExporters is set) and the configured Devices; each one is polled with

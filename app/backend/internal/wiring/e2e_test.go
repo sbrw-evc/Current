@@ -10,14 +10,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/bus"
-	"github.com/sbrw-evc/network/app/backend/internal/classifier"
-	"github.com/sbrw-evc/network/app/backend/internal/collector"
-	"github.com/sbrw-evc/network/app/backend/internal/demoexporter"
-	"github.com/sbrw-evc/network/app/backend/internal/query"
-	chstore "github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse"
-	"github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse/chtest"
-	"github.com/sbrw-evc/network/app/backend/internal/wiring"
+	"github.com/sbrw-evc/current/app/backend/internal/bus"
+	"github.com/sbrw-evc/current/app/backend/internal/classifier"
+	"github.com/sbrw-evc/current/app/backend/internal/collector"
+	"github.com/sbrw-evc/current/app/backend/internal/demoexporter"
+	"github.com/sbrw-evc/current/app/backend/internal/query"
+	chstore "github.com/sbrw-evc/current/app/backend/internal/storage/clickhouse"
+	"github.com/sbrw-evc/current/app/backend/internal/storage/clickhouse/chtest"
+	"github.com/sbrw-evc/current/app/backend/internal/wiring"
 )
 
 // TestPipelineEndToEnd runs demo exporter → collector → in-process bus →
@@ -104,7 +104,7 @@ func TestPipelineEndToEnd(t *testing.T) {
 		names = append(names, r[0])
 	}
 	// sFlow carries no interface names, so dc-sw-01 has no "Transit:"
-	// description to classify (Inventory DB names it in production).
+	// description to classify (Ledger names it in production).
 	for _, want := range []string{"edge-01", "edge-02"} {
 		if !slices.Contains(names, want) {
 			t.Errorf("visualize rows %v: %s missing", names, want)

@@ -14,15 +14,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sbrw-evc/network/app/backend/internal/access"
-	"github.com/sbrw-evc/network/app/backend/internal/auth"
-	"github.com/sbrw-evc/network/app/backend/internal/httpx"
-	"github.com/sbrw-evc/network/app/backend/internal/secrets/secretstest"
-	"github.com/sbrw-evc/network/app/backend/internal/setup"
-	"github.com/sbrw-evc/network/app/backend/internal/spa"
-	"github.com/sbrw-evc/network/app/backend/internal/spa/spatest"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
-	"github.com/sbrw-evc/network/app/backend/internal/store/storetest"
+	"github.com/sbrw-evc/current/app/backend/internal/access"
+	"github.com/sbrw-evc/current/app/backend/internal/auth"
+	"github.com/sbrw-evc/current/app/backend/internal/httpx"
+	"github.com/sbrw-evc/current/app/backend/internal/keystone"
+	"github.com/sbrw-evc/current/app/backend/internal/keystone/keystonetest"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets/secretstest"
+	"github.com/sbrw-evc/current/app/backend/internal/setup"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/store/storetest"
 )
 
 type fakeVisualizer struct{}
@@ -85,19 +85,19 @@ type reloads []string
 func (r *reloads) Reload(_ context.Context, what string) error { *r = append(*r, what); return nil }
 
 type env struct {
-	t     *testing.T
-	srv   *httptest.Server
-	st    *store.Store
-	fake  *secretstest.Fake
-	rel   *reloads
-	admin store.User
-	view  store.User
-	spa   *spatest.SPA
-	app   *App
+	t        *testing.T
+	srv      *httptest.Server
+	st       *store.Store
+	fake     *secretstest.Fake
+	rel      *reloads
+	admin    store.User
+	view     store.User
+	keystone *keystonetest.Keystone
+	app      *App
 }
 
-// newEnv: Flow connected to a fake SPA that knows "admin" (role admin) and
-// "viewer" (role viewer); both exist in Flow as legacy accounts and are bound
+// newEnv: Current connected to a fake Keystone that knows "admin" (role admin) and
+// "viewer" (role viewer); both exist in Current as legacy accounts and are bound
 // on their first sign-in.
 func newEnv(t *testing.T) *env {
 	t.Helper()
@@ -111,14 +111,14 @@ func newEnv(t *testing.T) *env {
 	}
 	admin := legacyUser(t, st, "admin", adminRole.ID)
 	viewer := legacyUser(t, st, "viewer", viewerRole.ID)
-	sp := spatest.New(t)
-	sp.Users = []spa.User{spaUser("admin", "admin"), spaUser("viewer", "viewer")}
+	sp := keystonetest.New(t)
+	sp.Users = []keystone.User{spaUser("admin", "admin"), spaUser("viewer", "viewer")}
 	rel := &reloads{}
 	a := New(Options{Version: "test", SPAKey: sp.ConnectionKey()}, Deps{Store: st, Vault: vault, Visualizer: fakeVisualizer{},
 		Classifiers: fakeClassifiers{}, Detector: fakeDetector{}, Reloaders: []Reloader{rel}})
 	srv := httptest.NewServer(a.Handler())
 	t.Cleanup(srv.Close)
-	return &env{t: t, srv: srv, st: st, fake: fake, rel: rel, admin: admin, view: viewer, spa: sp, app: a}
+	return &env{t: t, srv: srv, st: st, fake: fake, rel: rel, admin: admin, view: viewer, keystone: sp, app: a}
 }
 
 type client struct {
@@ -157,7 +157,7 @@ func (c *client) do(method, path string, body any) (int, map[string]any) {
 	return resp.StatusCode, out
 }
 
-// login signs the person in through the fake SPA.
+// login signs the person in through the fake Keystone.
 func (c *client) login(user string) {
 	c.e.t.Helper()
 	if e := c.signIn(user, ""); e != "" {
@@ -196,7 +196,7 @@ func TestSignInAndSignOut(t *testing.T) {
 	}
 	c.login("ADMIN")
 	code, out := c.do("GET", "/api/auth/me", nil)
-	if code != 200 || out["csrf"] != c.csrf || out["account_url"] != e.spa.AccountURL() {
+	if code != 200 || out["csrf"] != c.csrf || out["account_url"] != e.keystone.AccountURL() {
 		t.Fatal(code, out)
 	}
 	user := out["user"].(map[string]any)
@@ -209,7 +209,7 @@ func TestSignInAndSignOut(t *testing.T) {
 	}
 	code, out = c.do("POST", "/api/auth/logout", nil)
 	back := url.QueryEscape(e.srv.URL + "/")
-	if code != 200 || !strings.HasPrefix(out["redirect"].(string), e.spa.SignOutURL()+"?") || !strings.Contains(out["redirect"].(string), "post_logout_redirect_uri="+back) ||
+	if code != 200 || !strings.HasPrefix(out["redirect"].(string), e.keystone.SignOutURL()+"?") || !strings.Contains(out["redirect"].(string), "post_logout_redirect_uri="+back) ||
 		!strings.Contains(out["redirect"].(string), "client_id=app_flow") {
 		t.Fatal(code, out)
 	}
@@ -293,7 +293,7 @@ func TestSettings(t *testing.T) {
 	admin := e.client()
 	admin.login("admin")
 
-	// Inventory DB: the token goes to OpenBao
+	// Ledger: the token goes to OpenBao
 	code, out := admin.do("PUT", "/api/inventory-db", map[string]any{"enabled": true, "url": "https://inventory.example/", "token": "xc-123", "interval": "10m"})
 	if code != 200 || out["token_set"] != true || out["interval"] != "10m" || out["url"] != "https://inventory.example" {
 		t.Fatal(code, out)
@@ -342,7 +342,7 @@ func TestUsersAndRoles(t *testing.T) {
 	ctx := context.Background()
 	adminRole, _ := e.st.RoleByName(ctx, access.RoleAdministrator)
 
-	// Users are managed in SPA: no creation, change, password or deletion here.
+	// Users are managed in Keystone: no creation, change, password or deletion here.
 	for _, req := range [][2]string{{"POST", "/api/users"}, {"PUT", "/api/users/1"}, {"DELETE", "/api/users/1"}, {"PUT", "/api/users/1/password"},
 		{"POST", "/api/auth/password"}, {"POST", "/api/auth/passkey/begin"}, {"GET", "/api/auth/methods"}} {
 		if code, _ := admin.do(req[0], req[1], map[string]any{}); code != 404 && code != 405 {
@@ -353,20 +353,20 @@ func TestUsersAndRoles(t *testing.T) {
 		t.Fatal("built-in role changed", code)
 	}
 
-	// A custom role: published to SPA by its ident, then given by SPA.
+	// A custom role: published to Keystone by its ident, then given by Keystone.
 	code, role := admin.do("POST", "/api/roles", map[string]any{"name": "NOC", "description": "Network operations", "permissions": []string{"settings.inventory:sync", "flows:view"}})
 	if code != 201 || len(role["permissions"].([]any)) != 3 || role["ident"] != "noc" {
 		t.Fatal(code, role)
 	}
-	if c := e.spa.Catalogue; c == nil || len(c.Roles) != 3 || c.Default != "viewer" || !slices.ContainsFunc(c.Roles, func(r spa.Role) bool {
+	if c := e.keystone.Catalogue; c == nil || len(c.Roles) != 3 || c.Default != "viewer" || !slices.ContainsFunc(c.Roles, func(r keystone.Role) bool {
 		return r.ID == "noc" && r.Name == "NOC" && r.Description == "Network operations"
-	}) || !slices.ContainsFunc(c.Roles, func(r spa.Role) bool { return r.ID == "admin" && r.Name == access.RoleAdministrator }) {
-		t.Fatal("catalogue not published", e.spa.Catalogue)
+	}) || !slices.ContainsFunc(c.Roles, func(r keystone.Role) bool { return r.ID == "admin" && r.Name == access.RoleAdministrator }) {
+		t.Fatal("catalogue not published", e.keystone.Catalogue)
 	}
 	if code, out := admin.do("POST", "/api/roles", map[string]any{"name": "Bad", "permissions": []string{"nope:x"}}); code != 400 {
 		t.Fatal(code, out)
 	}
-	e.spa.Users = append(e.spa.Users, spaUser("noc1", "noc"))
+	e.keystone.Users = append(e.keystone.Users, spaUser("noc1", "noc"))
 	noc := e.client()
 	noc.login("noc1")
 	if code, _ := noc.do("GET", "/api/inventory-db", nil); code != 200 {
@@ -379,23 +379,23 @@ func TestUsersAndRoles(t *testing.T) {
 		t.Fatal("role in use deleted", code)
 	}
 	// A rename keeps the ident and is published again.
-	published := e.spa.Published
+	published := e.keystone.Published
 	if code, out := admin.do("PUT", "/api/roles/"+itoa(int(role["id"].(float64))), map[string]any{"name": "NOC engineers", "permissions": []string{"flows:view"}}); code != 200 || out["ident"] != "noc" {
 		t.Fatal(code, out)
 	}
-	if e.spa.Published != published+1 || !slices.ContainsFunc(e.spa.Catalogue.Roles, func(r spa.Role) bool { return r.ID == "noc" && r.Name == "NOC engineers" }) {
-		t.Fatal("rename not published", e.spa.Catalogue)
+	if e.keystone.Published != published+1 || !slices.ContainsFunc(e.keystone.Catalogue.Roles, func(r keystone.Role) bool { return r.ID == "noc" && r.Name == "NOC engineers" }) {
+		t.Fatal("rename not published", e.keystone.Catalogue)
 	}
-	// Deleting an unused role (Settings → Roles) takes it out of the catalogue in SPA.
+	// Deleting an unused role (Settings → Roles) takes it out of the catalogue in Keystone.
 	code, temp := admin.do("POST", "/api/roles", map[string]any{"name": "Temp", "permissions": []string{"flows:view"}})
-	if code != 201 || e.spa.Published != published+2 {
-		t.Fatal(code, temp, e.spa.Published)
+	if code != 201 || e.keystone.Published != published+2 {
+		t.Fatal(code, temp, e.keystone.Published)
 	}
 	if code, out := admin.do("DELETE", "/api/roles/"+itoa(int(temp["id"].(float64))), nil); code != 200 {
 		t.Fatal(code, out)
 	}
-	if e.spa.Published != published+3 || slices.ContainsFunc(e.spa.Catalogue.Roles, func(r spa.Role) bool { return r.ID == "temp" }) {
-		t.Fatal("deletion not published", e.spa.Catalogue)
+	if e.keystone.Published != published+3 || slices.ContainsFunc(e.keystone.Catalogue.Roles, func(r keystone.Role) bool { return r.ID == "temp" }) {
+		t.Fatal("deletion not published", e.keystone.Catalogue)
 	}
 
 	users := usersByName(t, admin)
@@ -483,7 +483,7 @@ func TestGeneralUmbrellaOpenBao(t *testing.T) {
 	for rows.Next() {
 		var s string
 		_ = rows.Scan(&s)
-		for _, secret := range []string{"umb-secret", e.spa.Key.ClientSecret, e.spa.Key.Token} {
+		for _, secret := range []string{"umb-secret", e.keystone.Key.ClientSecret, e.keystone.Key.Token} {
 			if strings.Contains(s, secret) {
 				t.Fatalf("plaintext secret in PostgreSQL: %s", s)
 			}

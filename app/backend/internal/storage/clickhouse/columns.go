@@ -5,8 +5,8 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/flow"
-	"github.com/sbrw-evc/network/app/backend/internal/schema"
+	"github.com/sbrw-evc/current/app/backend/internal/flow"
+	"github.com/sbrw-evc/current/app/backend/internal/schema"
 )
 
 // builder turns a batch of flows into the typed slice of one column.

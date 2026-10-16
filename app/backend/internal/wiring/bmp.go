@@ -14,11 +14,11 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/sbrw-evc/network/app/backend/internal/app"
-	"github.com/sbrw-evc/network/app/backend/internal/bmp"
-	"github.com/sbrw-evc/network/app/backend/internal/enrich"
-	"github.com/sbrw-evc/network/app/backend/internal/secrets"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/app"
+	"github.com/sbrw-evc/current/app/backend/internal/bmp"
+	"github.com/sbrw-evc/current/app/backend/internal/enrich"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
 )
 
 // BMPListenFromEnv is the BMP listen address: FLOW_BMP_ADDR, default :10179.
@@ -127,7 +127,7 @@ func (b *BMP) LookupRoute(rd string, a netip.Addr) (enrich.RouteInfo, bool) {
 		LargeCommunities: r.LargeText, NextHop: r.NextHop}, true
 }
 
-// parseRD converts the route distinguisher of an Inventory DB VRF; unset or
+// parseRD converts the route distinguisher of a Ledger VRF; unset or
 // invalid ones select the global table. Results are cached: the enricher
 // asks for the same few VRFs for every flow.
 func (b *BMP) parseRD(s string) uint64 {

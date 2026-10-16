@@ -3,7 +3,7 @@ package enrich
 import (
 	"net/netip"
 
-	"github.com/sbrw-evc/network/app/backend/internal/flow"
+	"github.com/sbrw-evc/current/app/backend/internal/flow"
 )
 
 // PTRSource gives reverse DNS names without blocking: "" while the name is
@@ -13,7 +13,7 @@ type PTRSource interface {
 }
 
 // enrichPTR fills SrcHostPTR / DstHostPTR for addresses without an
-// Inventory DB host name.
+// Ledger host name.
 func (e *Enricher) enrichPTR(f *flow.Flow, src, dst netip.Addr) {
 	p := e.cfg.PTR
 	if p == nil {

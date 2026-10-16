@@ -1,6 +1,6 @@
 # Network devices
 
-Flow manages the network equipment it receives flows from. It keeps a registry of devices, polls them on a schedule
+Current manages the network equipment it receives flows from. It keeps a registry of devices, polls them on a schedule
 and shows their interfaces, neighbours and clients. It also applies a few settings on them (name, interfaces, DNS, NTP,
 flow export) and draws a network map. The module is a port of Network Control's device management. Its code is in
 `app/backend/internal/devices` (service, poller, clients, map) and `internal/devices/drivers` (platform drivers). In
@@ -14,18 +14,18 @@ The REST API is documented in [api.md](api.md#network-devices).
 | **Clients** | **Network map** |
 | ![Clients](../app/docs/screens/clients-light.png) | ![Network map](../app/docs/screens/network-map-dark.png) |
 
-## Inventory DB is the source of truth
+## Ledger is the source of truth
 
 There is one record per real device and never a duplicate:
 
-- **With Inventory DB connected** (Integrations → Inventory DB), "Add device" lists only the Inventory DB devices
-  that Flow does not manage yet (`GET /api/devices/inventory-candidates`). The new record binds to that device
-  (`inventory_id`, `source_ref` = `inventory-db:dcim.device:<id>`). Its name, site and role come from Inventory DB on
-  every refresh and cannot be edited in Flow. A device can be bound only once. Unbinding is refused.
-- **Without Inventory DB**, a device is a standalone record with its own name, site and role.
+- **With Ledger connected** (Integrations → Ledger), "Add device" lists only the Ledger devices
+  that Current does not manage yet (`GET /api/devices/inventory-candidates`). The new record binds to that device
+  (`inventory_id`, `source_ref` = `inventory-db:dcim.device:<id>`). Its name, site and role come from Ledger on
+  every refresh and cannot be edited in Current. A device can be bound only once. Unbinding is refused.
+- **Without Ledger**, a device is a standalone record with its own name, site and role.
 - In both cases, one address (plus controller site) is one device. A second record for the same address is refused
   with 409 `duplicate_device`.
-- When an Inventory DB device disappears, the record is kept and marked `inventory_missing`.
+- When a Ledger device disappears, the record is kept and marked `inventory_missing`.
 
 ## Platforms
 
@@ -88,7 +88,7 @@ the stored value, and `clear_credentials` removes a field.
 For SNMP there are two sources:
 
 - **own**: the device's own community or v3 user, stored in OpenBao.
-- **profile**: the Flow SNMP profile that matches the device address (Settings → SNMP), so one profile serves the
+- **profile**: the Current SNMP profile that matches the device address (Settings → SNMP), so one profile serves the
   device manager and the enricher's interface names.
 
 The `gnmi` platform always uses the gNMI profile that matches its address. A device's own SNMP credentials also
@@ -121,7 +121,7 @@ Settings (`GET/PUT /api/devices/settings`): `collector_address`, `netflow_port`,
 | `interface` | `devices:operate` | enables or disables an interface, sets its description |
 | `dns` | `devices:operate` | sets DNS servers |
 | `ntp` | `devices:operate` | sets NTP servers |
-| `flow_export` | `devices:operate` | turns on NetFlow / IPFIX or sFlow towards **Flow's own collector**: by default the address from the settings (else the host of the public URL) and the collector's NetFlow / sFlow port |
+| `flow_export` | `devices:operate` | turns on NetFlow / IPFIX or sFlow towards **Current's own collector**: by default the address from the settings (else the host of the public URL) and the collector's NetFlow / sFlow port |
 | `reboot` | `devices:admin` | reboots the device |
 | `command` | `devices:admin` | runs a command and returns its output |
 | `backup` | `devices:admin` | saves the configuration; `GET /api/devices/{id}/backup` downloads the last one |
@@ -146,27 +146,27 @@ and their interfaces) are left out of the list.
 
 - managed devices;
 - their children (access points and switches behind controllers);
-- LLDP / CDP neighbours that Flow does not manage;
+- LLDP / CDP neighbours that Current does not manage;
 - optionally, the clients (online only, or also the offline ones).
 
 Links carry the utilisation of the interface when it is known. The **Map** page draws the graph with ECharts. With
 `devices:edit` a person can drag devices, and the positions are saved for everyone (`PUT /api/topology/positions`).
 **Reset layout** clears them. A double click opens the device.
 
-## Events in Umbrella Monitoring
+## Events in Beacon
 
-Flow adds no alert table of its own and sends nothing to Telegram. A device going down or coming back is an event
-for Umbrella Monitoring. The event goes through the same sender as the detector (`detector.Sender`, the Umbrella
+Current adds no alert table of its own and sends nothing to Telegram. A device going down or coming back is an event
+for Beacon. The event goes through the same sender as the detector (`detector.Sender`, the Beacon
 `network-flow` connector), with:
 
 - `signal: use.device.down`, `method: USE`, `severity: critical`;
-- `ci` = the device name and `source_ref` = `inventory-db:dcim.device:<id>`, so Umbrella puts the incident on the CI
-  of the Inventory DB device (a standalone device has no `source_ref` and matches by name and IP);
+- `ci` = the device name and `source_ref` = `inventory-db:dcim.device:<id>`, so Beacon puts the incident on the CI
+  of the Ledger device (a standalone device has no `source_ref` and matches by name and IP);
 - labels `device_id`, `platform`, `host`, `site`, `role` and `error`;
-- a `links.flow` link to the device page in Flow when the public URL is set.
+- a `links.flow` link to the device page in Current when the public URL is set.
 
 The event is sent `firing` when the device is `down` and `resolved` when it is up again (or disabled or deleted).
-Each down episode has its own event id, so a new outage opens a new incident. When Umbrella is not configured, no
+Each down episode has its own event id, so a new outage opens a new incident. When Beacon is not configured, no
 event is kept back for later. See [integrations.md](integrations.md#31-events-done).
 
 ## Exporters
@@ -184,5 +184,5 @@ addresses with a link back to Exporters.
 | `devices:operate` | Poll now and the actions `hostname`, `interface`, `dns`, `ntp`, `flow_export`, client blocking |
 | `devices:admin` | the actions `reboot`, `command`, `backup` and the configuration download, plus everything of `devices:operate` |
 
-They are part of the access catalogue that Flow publishes to SPA (Settings → Roles). Every change and action is
+They are part of the access catalogue that Current publishes to Keystone (Settings → Roles). Every change and action is
 written to the audit log (`device.*`, `endpoint.*`), without secrets.

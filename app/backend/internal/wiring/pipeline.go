@@ -5,10 +5,10 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/bus"
-	"github.com/sbrw-evc/network/app/backend/internal/collector"
-	"github.com/sbrw-evc/network/app/backend/internal/flow"
-	chstore "github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse"
+	"github.com/sbrw-evc/current/app/backend/internal/bus"
+	"github.com/sbrw-evc/current/app/backend/internal/collector"
+	"github.com/sbrw-evc/current/app/backend/internal/flow"
+	chstore "github.com/sbrw-evc/current/app/backend/internal/storage/clickhouse"
 )
 
 // Pipeline runs the bus with its producer (collector) and consumer

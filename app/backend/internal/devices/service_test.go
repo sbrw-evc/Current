@@ -10,16 +10,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/detector"
-	"github.com/sbrw-evc/network/app/backend/internal/devices/drivers"
-	"github.com/sbrw-evc/network/app/backend/internal/httpx"
-	"github.com/sbrw-evc/network/app/backend/internal/inventory"
-	"github.com/sbrw-evc/network/app/backend/internal/secrets"
-	"github.com/sbrw-evc/network/app/backend/internal/secrets/secretstest"
-	"github.com/sbrw-evc/network/app/backend/internal/setup"
-	"github.com/sbrw-evc/network/app/backend/internal/snmp"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
-	"github.com/sbrw-evc/network/app/backend/internal/store/storetest"
+	"github.com/sbrw-evc/current/app/backend/internal/detector"
+	"github.com/sbrw-evc/current/app/backend/internal/devices/drivers"
+	"github.com/sbrw-evc/current/app/backend/internal/httpx"
+	"github.com/sbrw-evc/current/app/backend/internal/inventory"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets/secretstest"
+	"github.com/sbrw-evc/current/app/backend/internal/setup"
+	"github.com/sbrw-evc/current/app/backend/internal/snmp"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/store/storetest"
 )
 
 // fakeDevices answers polls and actions per host.
@@ -455,9 +455,9 @@ func TestInventoryBinding(t *testing.T) {
 	if !ok {
 		t.Fatal("testdata device 2")
 	}
-	// Standalone records without Inventory DB.
+	// Standalone records without Ledger.
 	if _, err := e.svc.Create(ctx, "a", Input{Platform: sp("juniper"), Host: sp("10.9.0.1"), InventoryID: ip(2)}); httpStatus(err) != 400 {
-		t.Fatalf("binding without Inventory DB: %v", err)
+		t.Fatalf("binding without Ledger: %v", err)
 	}
 	if err := e.st.SetInventoryDB(ctx, store.InventoryDB{Enabled: true, URL: "https://inventory.example", Interval: time.Hour}); err != nil {
 		t.Fatal(err)
@@ -467,10 +467,10 @@ func TestInventoryBinding(t *testing.T) {
 	}
 	e.snap = snap
 	if _, err := e.svc.Create(ctx, "a", Input{Platform: sp("juniper"), Host: sp("10.9.0.1"), Name: sp("x")}); httpStatus(err) != 400 {
-		t.Fatalf("standalone with Inventory DB: %v", err)
+		t.Fatalf("standalone with Ledger: %v", err)
 	}
 	if _, err := e.svc.Create(ctx, "a", Input{Platform: sp("juniper"), Host: sp("10.9.0.1"), InventoryID: ip(999999)}); httpStatus(err) != 400 {
-		t.Fatalf("unknown Inventory DB device: %v", err)
+		t.Fatalf("unknown Ledger device: %v", err)
 	}
 	c, _ := e.svc.InventoryCandidates(ctx, "")
 	if !c.Connected || !c.Loaded || !hasCandidate(c, 2) {
@@ -486,7 +486,7 @@ func TestInventoryBinding(t *testing.T) {
 	if c, _ := e.svc.InventoryCandidates(ctx, ""); hasCandidate(c, 2) {
 		t.Fatal("a managed device is still a candidate")
 	}
-	// One managed record per Inventory DB device.
+	// One managed record per Ledger device.
 	if _, err := e.svc.Create(ctx, "a", Input{Platform: sp("juniper"), Host: sp("10.9.0.2"), InventoryID: ip(2)}); httpStatus(err) != 409 {
 		t.Fatalf("duplicate binding: %v", err)
 	}
@@ -508,11 +508,11 @@ func TestInventoryBinding(t *testing.T) {
 	if d.Name != inv.Name || d.Inventory == nil || d.Inventory.ID != 2 {
 		t.Fatalf("bound detail %+v", d.View)
 	}
-	// The device disappears from Inventory DB: still listed, marked.
+	// The device disappears from Ledger: still listed, marked.
 	e.snap = inventory.Empty()
 	d, _ = e.svc.Get(ctx, v.ID)
 	if !d.InventoryGone {
-		t.Fatal("missing Inventory DB device not marked")
+		t.Fatal("missing Ledger device not marked")
 	}
 }
 
@@ -577,7 +577,7 @@ func TestApplyActions(t *testing.T) {
 func TestSNMPProfileSourceAndExporterLink(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
-	// A Flow SNMP profile covering 10.0.3.0/24 with the community in OpenBao.
+	// A Current SNMP profile covering 10.0.3.0/24 with the community in OpenBao.
 	if err := e.vault.Put(ctx, "snmp/lan", map[string]string{"community": "lan-ro"}); err != nil {
 		t.Fatal(err)
 	}

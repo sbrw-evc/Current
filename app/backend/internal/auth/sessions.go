@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
 )
 
 const (

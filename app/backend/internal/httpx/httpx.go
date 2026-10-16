@@ -1,6 +1,6 @@
 // Package httpx holds HTTP helpers shared by the handlers: JSON replies, the
 // error shape {"error": "<code>", "message": "<text>"}, security headers,
-// client address behind trusted proxies and the static SPA handler.
+// client address behind trusted proxies and the static handler of the single-page web console.
 package httpx
 
 import (

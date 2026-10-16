@@ -5,8 +5,8 @@ import (
 	"net/netip"
 	"strings"
 
-	"github.com/sbrw-evc/network/app/backend/internal/schema"
-	chstore "github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse"
+	"github.com/sbrw-evc/current/app/backend/internal/schema"
+	chstore "github.com/sbrw-evc/current/app/backend/internal/storage/clickhouse"
 )
 
 // ipExpr renders an IPv6 column as text, IPv4-mapped addresses unmapped.

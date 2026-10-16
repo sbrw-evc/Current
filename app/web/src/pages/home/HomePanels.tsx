@@ -4,14 +4,14 @@ import { BellRing, CheckCircle2, ChevronRight, Circle, Database, Router, ServerC
 import { Link } from 'react-router-dom'
 import { get, type ApiError } from '../../api/client'
 import { useExporters } from '../../api/queries'
-import type { UmbrellaAPI, UmbrellaIngest } from '../../api/umbrella'
+import type { UmbrellaAPI, UmbrellaIngest } from '../../api/beacon'
 import { useLocale, useT, type Dict } from '../../i18n'
 import { num } from '../../lib/format'
 import { useSession } from '../../shell/session'
 import { useDetectorStatus, useRules } from '../detector/api'
 import { useDevices } from '../devices/api'
 import type { BmpView } from '../settings/BmpModel'
-import { useInventoryIntegration } from '../settings/InventoryDbIntegration'
+import { useInventoryIntegration } from '../settings/LedgerIntegration'
 import { attention, steps, stepsDone, type Attention, type Step } from './model'
 
 const strings: Dict = {
@@ -24,30 +24,30 @@ const strings: Dict = {
     'att.silent': 'Exporters without flows for over 5 minutes: {n}',
     'att.silent.sub': 'Check the device, its flow export or the path to the collector',
     'att.devicesdown': 'Unreachable network devices: {n}',
-    'att.devicesdown.sub': 'Two polls in a row failed; an incident is open in Umbrella when it is connected',
-    'att.noinventory': 'Exporters missing from Inventory DB: {n}',
+    'att.devicesdown.sub': 'Two polls in a row failed; an incident is open in Beacon when it is connected',
+    'att.noinventory': 'Exporters missing from Ledger: {n}',
     'att.noinventory.sub': 'Their flows get no site, role or interface names',
     'att.open': 'Open',
     'ob.title': 'First steps',
-    'ob.lead': 'What is left so Flow shows named, enriched traffic and reports incidents to Umbrella.',
+    'ob.lead': 'What is left so Current shows named, enriched traffic and reports incidents to Beacon.',
     'ob.progress': '{done} of {total}',
     'ob.done': 'Done',
     'ob.optional': 'optional',
     'ob.hide': 'Hide',
     'ob.step.exporters': 'Send flows to the collector',
-    'ob.step.exporters.text': 'Point NetFlow, IPFIX or sFlow of the routers at Flow; each device appears among the exporters with its first flow.',
+    'ob.step.exporters.text': 'Point NetFlow, IPFIX or sFlow of the routers at Current; each device appears among the exporters with its first flow.',
     'ob.step.exporters.go': 'Exporters',
     'ob.step.detector': 'Turn on the detector rules',
     'ob.step.detector.text': 'DDoS, overload and anomaly rules watch the traffic and raise alerts.',
     'ob.step.detector.go': 'Rules',
-    'ob.step.inventory': 'Connect Inventory DB',
+    'ob.step.inventory': 'Connect Ledger',
     'ob.step.inventory.text': 'Device names, sites and interface roles for every flow.',
     'ob.step.inventory.go': 'Connect',
-    'ob.step.umbrella': 'Connect Umbrella Monitoring',
+    'ob.step.umbrella': 'Connect Beacon',
     'ob.step.umbrella.text': 'Detector alerts become incidents, and discovered dependencies go to the CMDB.',
     'ob.step.umbrella.go': 'Connect',
     'ob.step.devices': 'Add network devices',
-    'ob.step.devices.text': 'Flow polls them: interface load, neighbours, clients, and an incident in Umbrella when one goes down.',
+    'ob.step.devices.text': 'Current polls them: interface load, neighbours, clients, and an incident in Beacon when one goes down.',
     'ob.step.devices.go': 'Devices',
     'ob.step.bmp': 'Receive BGP routes over BMP',
     'ob.step.bmp.text': 'AS paths and communities for each flow.',
@@ -62,12 +62,12 @@ const strings: Dict = {
     'att.silent': 'Экспортёры без потоков дольше 5 минут: {n}',
     'att.silent.sub': 'Проверьте устройство, экспорт потоков или путь до коллектора',
     'att.devicesdown': 'Недоступные сетевые устройства: {n}',
-    'att.devicesdown.sub': 'Два опроса подряд не удались; если Umbrella подключена, в ней открыт инцидент',
-    'att.noinventory': 'Экспортёры, которых нет в Inventory DB: {n}',
+    'att.devicesdown.sub': 'Два опроса подряд не удались; если Beacon подключён, в нём открыт инцидент',
+    'att.noinventory': 'Экспортёры, которых нет в Ledger: {n}',
     'att.noinventory.sub': 'Их потоки остаются без площадки, роли и имён интерфейсов',
     'att.open': 'Открыть',
     'ob.title': 'Первые шаги',
-    'ob.lead': 'Что осталось, чтобы Flow показывал трафик с именами и обогащением и передавал инциденты в Umbrella.',
+    'ob.lead': 'Что осталось, чтобы Current показывал трафик с именами и обогащением и передавал инциденты в Beacon.',
     'ob.progress': '{done} из {total}',
     'ob.done': 'Готово',
     'ob.optional': 'по желанию',
@@ -78,14 +78,14 @@ const strings: Dict = {
     'ob.step.detector': 'Включите правила детектора',
     'ob.step.detector.text': 'Правила DDoS, перегрузки и аномалий следят за трафиком и создают оповещения.',
     'ob.step.detector.go': 'Правила',
-    'ob.step.inventory': 'Подключите Inventory DB',
+    'ob.step.inventory': 'Подключите Ledger',
     'ob.step.inventory.text': 'Имена устройств, площадки и роли интерфейсов для каждого потока.',
     'ob.step.inventory.go': 'Подключить',
-    'ob.step.umbrella': 'Подключите Umbrella Monitoring',
+    'ob.step.umbrella': 'Подключите Beacon',
     'ob.step.umbrella.text': 'Оповещения детектора станут инцидентами, а найденные зависимости попадут в CMDB.',
     'ob.step.umbrella.go': 'Подключить',
     'ob.step.devices': 'Добавьте сетевые устройства',
-    'ob.step.devices.text': 'Flow будет их опрашивать: загрузка интерфейсов, соседи, клиенты и инцидент в Umbrella, если устройство упадёт.',
+    'ob.step.devices.text': 'Current будет их опрашивать: загрузка интерфейсов, соседи, клиенты и инцидент в Beacon, если устройство упадёт.',
     'ob.step.devices.go': 'Устройства',
     'ob.step.bmp': 'Принимайте BGP-маршруты по BMP',
     'ob.step.bmp.text': 'AS-пути и community для каждого потока.',
@@ -176,7 +176,7 @@ function readHidden() {
   }
 }
 
-// FirstSteps is Umbrella's «first steps» checklist: shown until every required step is done or the
+// FirstSteps is Beacon's «first steps» checklist: shown until every required step is done or the
 // user hides it.
 export function FirstSteps() {
   const t = useT(strings)

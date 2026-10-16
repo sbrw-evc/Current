@@ -14,8 +14,8 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/sbrw-evc/network/app/backend/internal/filter"
-	chstore "github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse"
+	"github.com/sbrw-evc/current/app/backend/internal/filter"
+	chstore "github.com/sbrw-evc/current/app/backend/internal/storage/clickhouse"
 )
 
 // Config of the detector.
@@ -30,11 +30,11 @@ type Config struct {
 	// Exporters gives the last-seen time per exporter (collector registry);
 	// nil: derived from the flows in ClickHouse.
 	Exporters ExporterSource
-	// Commit gives circuit commit rates (Inventory DB); nil disables link_commit.
+	// Commit gives circuit commit rates (Ledger); nil disables link_commit.
 	Commit CommitSource
 	// State persists alert states and the outbox; nil: in memory only.
 	State StateStore
-	// PublicURL of Flow for links.flow (empty: no links).
+	// PublicURL of Current for links.flow (empty: no links).
 	PublicURL string
 	// Language of the event titles, read on every evaluation ("ru" | "en");
 	// nil: "ru".

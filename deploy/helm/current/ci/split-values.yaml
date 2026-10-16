@@ -1,0 +1,35 @@
+# Example: one Deployment per role with external services and a shared
+# ReadWriteMany data volume (used by `helm lint` / `helm template` checks).
+roles:
+  mode: split
+  collector:
+    replicas: 2
+openbao:
+  addr: http://openbao.vault.svc:8200
+  existingSecret: current-openbao
+postgres:
+  host: postgres.db.svc
+clickhouse:
+  addr: clickhouse.db.svc:9000
+nats:
+  url: nats://nats.messaging.svc:4222
+persistence:
+  accessModes: [ReadWriteMany]
+  storageClass: nfs
+service:
+  flows:
+    loadBalancerSourceRanges: [10.0.0.0/8]
+  bmp:
+    loadBalancerSourceRanges: [10.0.0.0/24]
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: current.example.com
+      paths: ["/"]
+  tls:
+    - secretName: current-tls
+      hosts: [current.example.com]
+config:
+  publicURL: https://current.example.com
+  secureCookies: true

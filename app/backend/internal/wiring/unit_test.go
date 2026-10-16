@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/classifier"
-	"github.com/sbrw-evc/network/app/backend/internal/collector"
-	"github.com/sbrw-evc/network/app/backend/internal/filter"
-	"github.com/sbrw-evc/network/app/backend/internal/query"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
-	"github.com/sbrw-evc/network/app/backend/internal/wiring"
+	"github.com/sbrw-evc/current/app/backend/internal/classifier"
+	"github.com/sbrw-evc/current/app/backend/internal/collector"
+	"github.com/sbrw-evc/current/app/backend/internal/filter"
+	"github.com/sbrw-evc/current/app/backend/internal/query"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/wiring"
 )
 
 func TestMapError(t *testing.T) {

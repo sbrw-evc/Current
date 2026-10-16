@@ -10,7 +10,7 @@ describe('public URL', () => {
   })
 })
 
-describe('SPA connection key', () => {
+describe('Keystone connection key', () => {
   it('takes only spa1. keys', () => {
     expect(spaKeyOk('spa1.eyJpc3N1ZXIiOiJodHRwczovL3NwYS5leGFtcGxlLmNvbSJ9')).toBe(true)
     expect(spaKeyOk('umbid1.eyJpc3N1ZXIiOiJodHRwczovL3NwYS5leGFtcGxlLmNvbSJ9')).toBe(false)

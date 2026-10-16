@@ -5,8 +5,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/sbrw-evc/network/app/backend/internal/secrets"
-	"github.com/sbrw-evc/network/app/backend/internal/secrets/secretstest"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets/secretstest"
 )
 
 func TestCopyToAndReconfigure(t *testing.T) {

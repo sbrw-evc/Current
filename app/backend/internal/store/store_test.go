@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/access"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
-	"github.com/sbrw-evc/network/app/backend/internal/store/storetest"
+	"github.com/sbrw-evc/current/app/backend/internal/access"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/store/storetest"
 )
 
 func TestStore(t *testing.T) {
@@ -93,7 +93,7 @@ func TestStore(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// SPA: a legacy account is bound by the user name once, then by the ID only.
+	// Keystone: a legacy account is bound by the user name once, then by the ID only.
 	a2, how, err := st.UpsertSPAUser(ctx, store.SPAUser{ExternalID: "usr_1", Username: "alice", Name: "Alice B", RoleID: viewer.ID})
 	if err != nil || how != store.SPABound || a2.ID != u.ID || a2.Source != store.SourceSPA || a2.Role != access.RoleViewer || a2.ExternalID != "usr_1" {
 		t.Fatal(a2, how, err)
@@ -106,7 +106,7 @@ func TestStore(t *testing.T) {
 		t.Fatal(bob, how, err)
 	}
 	if _, _, err := st.UpsertSPAUser(ctx, store.SPAUser{ExternalID: "usr_3", Username: "BOB", RoleID: viewer.ID}); !errors.Is(err, store.ErrUsernameTaken) {
-		t.Fatal("an SPA account taken over", err)
+		t.Fatal("a Keystone account taken over", err)
 	}
 	legacy, _ := st.CreateUser(ctx, store.NewUser{Username: "carol", RoleID: viewer.ID})
 	gone, err := st.DisableAbsent(ctx, []string{"usr_1"})
@@ -194,7 +194,7 @@ func TestStore(t *testing.T) {
 		t.Fatal("unknown kind")
 	}
 
-	// inventory db
+	// Ledger
 	inv, err := st.InventoryDB(ctx)
 	if err != nil || inv.Enabled || inv.Interval != 15*time.Minute || inv.LastSync != nil {
 		t.Fatal(inv, err)

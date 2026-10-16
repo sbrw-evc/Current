@@ -1,6 +1,6 @@
 // Package secrets is a small OpenBao (KV v2) client: token or AppRole sign-in,
 // token renewal, a 30 s read cache and openbao:// references. Ported from
-// Umbrella Monitoring.
+// Beacon.
 package secrets
 
 import (
@@ -25,7 +25,7 @@ import (
 // Scheme prefixes secret references: openbao://<mount>/<path>#<key>.
 const Scheme = "openbao://"
 
-// DefaultMount is the KV v2 mount Flow uses unless configured otherwise.
+// DefaultMount is the KV v2 mount Current uses unless configured otherwise.
 const DefaultMount = "flow"
 
 type Resolver interface {

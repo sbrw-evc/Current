@@ -1,24 +1,24 @@
 import { useQuery } from '@tanstack/react-query'
 import { get } from '../api/client'
-import type { ScopeView } from '../api/umbrella'
+import type { ScopeView } from '../api/beacon'
 import { useT, type Dict } from '../i18n'
 import { Banner } from '../ui/ui'
-import '../pages/umbrella/umbrella.css'
+import '../pages/beacon/beacon.css'
 
-// ScopeBanner: for a user whose traffic is restricted to their Umbrella visibility scope
-// (docs/integrations.md §3.2), a banner when the scope cannot be loaded (Umbrella unreachable:
-// traffic pages show nothing) or when Umbrella does not know the user.
+// ScopeBanner: for a user whose traffic is restricted to their Beacon visibility scope
+// (docs/integrations.md §3.2), a banner when the scope cannot be loaded (Beacon unreachable:
+// traffic pages show nothing) or when Beacon does not know the user.
 
 const strings: Dict = {
   en: {
-    'scope.down': 'Umbrella is unreachable: your visibility scope cannot be checked, so no traffic is shown.',
-    'scope.unknown': 'Umbrella does not know your login: no traffic is visible to you. Ask an administrator.',
-    'scope.empty': 'Your Umbrella visibility scope has no CIs: no traffic is visible to you.',
+    'scope.down': 'Beacon is unreachable: your visibility scope cannot be checked, so no traffic is shown.',
+    'scope.unknown': 'Beacon does not know your login: no traffic is visible to you. Ask an administrator.',
+    'scope.empty': 'Your Beacon visibility scope has no CIs: no traffic is visible to you.',
   },
   ru: {
-    'scope.down': 'Umbrella недоступна: вашу область видимости не проверить, поэтому трафик не показывается.',
-    'scope.unknown': 'Umbrella не знает ваш логин: трафик вам не виден. Обратитесь к администратору.',
-    'scope.empty': 'В вашей области видимости Umbrella нет КЕ: трафик вам не виден.',
+    'scope.down': 'Beacon недоступен: вашу область видимости не проверить, поэтому трафик не показывается.',
+    'scope.unknown': 'Beacon не знает ваш логин: трафик вам не виден. Обратитесь к администратору.',
+    'scope.empty': 'В вашей области видимости Beacon нет КЕ: трафик вам не виден.',
   },
 }
 

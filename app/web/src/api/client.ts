@@ -1,4 +1,4 @@
-// The API client: JSON in and out, the CSRF header on changing requests (as in Umbrella), and a
+// The API client: JSON in and out, the CSRF header on changing requests (as in Beacon), and a
 // 401 hook so the app returns to the sign-in page when the session ends.
 
 export class ApiError extends Error {

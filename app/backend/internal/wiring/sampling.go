@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/collector"
-	"github.com/sbrw-evc/network/app/backend/internal/config"
-	"github.com/sbrw-evc/network/app/backend/internal/secrets"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/collector"
+	"github.com/sbrw-evc/current/app/backend/internal/config"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
 )
 
 // EnvSamplingOverrides is the environment variable with sampling overrides

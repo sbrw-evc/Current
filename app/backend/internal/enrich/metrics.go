@@ -35,7 +35,7 @@ func newMetrics(reg Registerer, e *Enricher) (*metrics, error) {
 	m := &metrics{
 		flows:       prometheus.NewCounter(prometheus.CounterOpts{Name: "flow_enrich_flows_total", Help: "Flows enriched."}),
 		batches:     prometheus.NewCounter(prometheus.CounterOpts{Name: "flow_enrich_batches_total", Help: "Batches enriched."}),
-		unknownExp:  prometheus.NewCounter(prometheus.CounterOpts{Name: "flow_enrich_unknown_exporter_flows_total", Help: "Flows from exporters without an Inventory DB device."}),
+		unknownExp:  prometheus.NewCounter(prometheus.CounterOpts{Name: "flow_enrich_unknown_exporter_flows_total", Help: "Flows from exporters without a Ledger device."}),
 		ifaces:      ifaces,
 		ifInventory: ifaces.WithLabelValues("inventory"), ifCollector: ifaces.WithLabelValues("collector"), ifNone: ifaces.WithLabelValues("none"),
 		netPrefix: nets.WithLabelValues("prefix"), netMask: nets.WithLabelValues("mask"), netNone: nets.WithLabelValues("none"),
@@ -56,14 +56,14 @@ func newMetrics(reg Registerer, e *Enricher) (*metrics, error) {
 			return 0
 		}),
 		prometheus.NewGaugeFunc(prometheus.GaugeOpts{
-			Name: "flow_enrich_unknown_exporters", Help: "Exporters seen without an Inventory DB device.",
+			Name: "flow_enrich_unknown_exporters", Help: "Exporters seen without a Ledger device.",
 		}, func() float64 {
 			e.unknown.mu.Lock()
 			defer e.unknown.mu.Unlock()
 			return float64(len(e.unknown.exporters))
 		}),
 		prometheus.NewGaugeFunc(prometheus.GaugeOpts{
-			Name: "flow_enrich_inventory_age_seconds", Help: "Age of the Inventory DB snapshot in use.",
+			Name: "flow_enrich_inventory_age_seconds", Help: "Age of the Ledger snapshot in use.",
 		}, func() float64 {
 			at := e.snapshot().At()
 			if at.IsZero() {

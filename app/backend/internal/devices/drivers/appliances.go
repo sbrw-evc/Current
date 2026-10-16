@@ -435,7 +435,7 @@ func (d *FortigateDriver) Apply(ctx context.Context, action string, p Params) (s
 		}
 		return "Collector set; enable netflow-sampler / sflow-sampler on the interfaces you need", nil
 	case ActionReboot:
-		_, _ = d.http.Send(ctx, http.MethodPost, "/api/v2/monitor/system/os/reboot", Obj{"event_log_message": "Umbrella Flow"}, 10*time.Second)
+		_, _ = d.http.Send(ctx, http.MethodPost, "/api/v2/monitor/system/os/reboot", Obj{"event_log_message": "Current"}, 10*time.Second)
 		return "Reboot started", nil
 	default:
 		return "", Unsupported("FortiGate", action)

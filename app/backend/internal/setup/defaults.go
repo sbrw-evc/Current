@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/sbrw-evc/network/app/backend/internal/config"
-	"github.com/sbrw-evc/network/app/backend/internal/secrets"
+	"github.com/sbrw-evc/current/app/backend/internal/config"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets"
 )
 
 // Defaults prefill the wizard. They come from FLOW_SETUP_DEFAULTS_*
@@ -35,8 +35,8 @@ type Defaults struct {
 	Collector  Collector
 	GeoIP      []string
 	Inventory  string
-	Umbrella   string
-	// SPAFromEnv: the SPA connection key is given by the deployment
+	Beacon     string
+	// SPAFromEnv: the Keystone connection key is given by the deployment
 	// (SPA_CONNECTION_KEY or SPA_CONNECTION_KEY_FILE); the wizard then does
 	// not ask for it.
 	SPAFromEnv bool
@@ -77,7 +77,7 @@ func DefaultsFromEnv(getenv func(string) string) Defaults {
 		Collector: Collector{NetFlowAddr: get("NETFLOW_ADDR", firstNonEmpty(getenv("FLOW_NETFLOW_ADDR"), ":2055")),
 			SFlowAddr: get("SFLOW_ADDR", firstNonEmpty(getenv("FLOW_SFLOW_ADDR"), ":6343")), DefaultSamplingRate: 1},
 		Inventory:  get("INVENTORY_URL", ""),
-		Umbrella:   get("UMBRELLA_INGEST_URL", ""),
+		Beacon:     get("UMBRELLA_INGEST_URL", ""),
 		SPAFromEnv: strings.TrimSpace(getenv("SPA_CONNECTION_KEY")) != "" || strings.TrimSpace(getenv("SPA_CONNECTION_KEY_FILE")) != "",
 	}
 	for _, p := range strings.Split(get("GEOIP_DATABASES", ""), ",") {
@@ -117,7 +117,7 @@ func (d Defaults) view() map[string]any {
 		"nats":      map[string]any{"url": d.NATS.URL, "token_set": d.NATS.Token != ""},
 		"collector": d.Collector,
 		"inventory": map[string]any{"enabled": false, "url": d.Inventory, "interval": "15m"},
-		"umbrella":  map[string]any{"enabled": false, "ingest_url": d.Umbrella},
+		"umbrella":  map[string]any{"enabled": false, "ingest_url": d.Beacon},
 		"geoip":     map[string]any{"databases": nonNil(d.GeoIP)},
 		"spa":       map[string]any{"from_env": d.SPAFromEnv},
 	}

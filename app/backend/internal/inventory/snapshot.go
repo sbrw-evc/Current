@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// Source-ref prefixes, as in Inventory DB's Umbrella CMDB feed
+// Source-ref prefixes, as in Ledger's Beacon CMDB feed
 // (server/src/integrations/umbrella/ci.ts: `inventory-db:<object type>:<id>`).
 const (
 	SourcePrefix = "inventory-db:"
@@ -62,7 +62,7 @@ type Interface struct {
 	Description string `json:"description"`
 	Type        string `json:"type"`
 	Enabled     bool   `json:"enabled"`
-	// Speed in bits per second (Inventory DB stores Kbps).
+	// Speed in bits per second (Ledger stores Kbps).
 	Speed   uint64   `json:"speed"`
 	IfIndex uint32   `json:"if_index,omitempty"` // from the snmp_index custom field, 0 = unknown
 	LAGID   int      `json:"lag_id,omitempty"`
@@ -156,7 +156,7 @@ type ifNameKey struct {
 	name string
 }
 
-// Snapshot is an immutable view of Inventory DB. All methods are safe for
+// Snapshot is an immutable view of Ledger. All methods are safe for
 // concurrent use; returned pointers must be treated as read-only.
 type Snapshot struct {
 	at         time.Time
@@ -226,7 +226,7 @@ func (s *Snapshot) InterfaceByName(deviceID int, name string) (*Interface, bool)
 	return i, ok
 }
 
-// InterfaceByID by Inventory DB id.
+// InterfaceByID by Ledger id.
 func (s *Snapshot) InterfaceByID(id int) (*Interface, bool) { i, ok := s.ifaces[id]; return i, ok }
 
 // Prefix returns the longest IPAM prefix containing addr. When the same

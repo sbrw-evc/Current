@@ -18,7 +18,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/sbrw-evc/network/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
 )
 
 const defaultDSN = "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"

@@ -9,8 +9,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/sbrw-evc/network/app/backend/internal/flow"
-	"github.com/sbrw-evc/network/app/backend/internal/inventory"
+	"github.com/sbrw-evc/current/app/backend/internal/flow"
+	"github.com/sbrw-evc/current/app/backend/internal/inventory"
 )
 
 type fakeRoutes map[netip.Addr]RouteInfo
@@ -80,7 +80,7 @@ func TestRoutingProvider(t *testing.T) {
 }
 
 // Routes are looked up in the VRF of the input interface, which takes the
-// VRF of its address in Inventory DB.
+// VRF of its address in Ledger.
 func TestRoutingVRF(t *testing.T) {
 	dir := t.TempDir()
 	ents, err := os.ReadDir("../inventory/testdata")

@@ -7,12 +7,12 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/sbrw-evc/network/app/backend/internal/access"
+	"github.com/sbrw-evc/current/app/backend/internal/access"
 )
 
 // Tables of migration 00003: service accounts and API tokens. A token
 // belongs to the person who created it (migration 00007) and stops working
-// while SPA keeps that person disabled.
+// while Keystone keeps that person disabled.
 
 // ServiceAccount is a machine identity with a role; its tokens carry the role.
 type ServiceAccount struct {
@@ -186,7 +186,7 @@ func (s *Store) RevokeAPIToken(ctx context.Context, id int64, by string) (APITok
 type TokenPrincipal struct {
 	Token   APIToken
 	Account ServiceAccount
-	// OwnerDisabled: the person who created the token is disabled (by SPA).
+	// OwnerDisabled: the person who created the token is disabled (by Keystone).
 	OwnerDisabled bool
 }
 

@@ -5,12 +5,12 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { get, post } from '../api/client'
 import { useT } from '../i18n'
 import { Banner, Brand, Button, Loading, Preferences } from '../ui/ui'
-import { autoRedirect, safeNext, SPA_PROTOCOL, ssoErrorKey, startURL, takeSignedOut, type SpaInfo } from './spa/model'
-import { spaStrings } from './spa/strings'
+import { autoRedirect, safeNext, SPA_PROTOCOL, ssoErrorKey, startURL, takeSignedOut, type SpaInfo } from './keystone/model'
+import { spaStrings } from './keystone/strings'
 
-// LoginPage: one button, "Sign in with SPA" (docs/identity-federation.md). Without a session the
-// page goes to SPA by itself, except right after a sign-out or when SPA sent an error back
-// (/login?sso_error=…). An application not connected to SPA says so, with the instructions.
+// LoginPage: one button, "Sign in with Keystone" (docs/identity-federation.md). Without a session the
+// page goes to Keystone by itself, except right after a sign-out or when Keystone sent an error back
+// (/login?sso_error=…). An application not connected to Keystone says so, with the instructions.
 export function LoginPage() {
   const t = useT(spaStrings)
   const navigate = useNavigate()

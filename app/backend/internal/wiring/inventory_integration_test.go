@@ -23,20 +23,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/access"
-	"github.com/sbrw-evc/network/app/backend/internal/app"
-	"github.com/sbrw-evc/network/app/backend/internal/auth"
-	"github.com/sbrw-evc/network/app/backend/internal/flow"
-	"github.com/sbrw-evc/network/app/backend/internal/query"
-	"github.com/sbrw-evc/network/app/backend/internal/secrets/secretstest"
-	"github.com/sbrw-evc/network/app/backend/internal/setup"
-	"github.com/sbrw-evc/network/app/backend/internal/spa"
-	"github.com/sbrw-evc/network/app/backend/internal/spa/spatest"
-	chstore "github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse"
-	"github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse/chtest"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
-	"github.com/sbrw-evc/network/app/backend/internal/store/storetest"
-	"github.com/sbrw-evc/network/app/backend/internal/wiring"
+	"github.com/sbrw-evc/current/app/backend/internal/access"
+	"github.com/sbrw-evc/current/app/backend/internal/app"
+	"github.com/sbrw-evc/current/app/backend/internal/auth"
+	"github.com/sbrw-evc/current/app/backend/internal/flow"
+	"github.com/sbrw-evc/current/app/backend/internal/keystone"
+	"github.com/sbrw-evc/current/app/backend/internal/keystone/keystonetest"
+	"github.com/sbrw-evc/current/app/backend/internal/query"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets/secretstest"
+	"github.com/sbrw-evc/current/app/backend/internal/setup"
+	chstore "github.com/sbrw-evc/current/app/backend/internal/storage/clickhouse"
+	"github.com/sbrw-evc/current/app/backend/internal/storage/clickhouse/chtest"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/store/storetest"
+	"github.com/sbrw-evc/current/app/backend/internal/wiring"
 )
 
 // fakeInventoryDB serves internal/inventory/testdata (devices edge-01 / core-01,
@@ -94,14 +94,14 @@ func newFakeInventoryDB(t *testing.T) *fakeInventoryDB {
 }
 
 type integrationEnv struct {
-	t     *testing.T
-	srv   *httptest.Server
-	st    *store.Store
-	inv   *fakeInventoryDB
-	ii    *wiring.InventoryIntegration
-	month time.Time // start of the month of the fixed clock
-	now   time.Time
-	spa   *spatest.SPA
+	t        *testing.T
+	srv      *httptest.Server
+	st       *store.Store
+	inv      *fakeInventoryDB
+	ii       *wiring.InventoryIntegration
+	month    time.Time // start of the month of the fixed clock
+	now      time.Time
+	keystone *keystonetest.Keystone
 }
 
 // newIntegrationEnv: flows of edge-01 (inventory-db:dcim.device:1) every
@@ -168,13 +168,13 @@ func newIntegrationEnv(t *testing.T) *integrationEnv {
 	if err := st.PutSetting(ctx, setup.SettingGeneral, setup.General{PublicURL: "https://flow.example"}); err != nil {
 		t.Fatal(err)
 	}
-	sp := spatest.New(t)
+	sp := keystonetest.New(t)
 	for _, u := range []struct{ name, role string }{{"admin", access.RoleAdministrator}, {"viewer", access.RoleViewer}} {
 		role, err := st.RoleByName(ctx, u.role)
 		if err != nil {
 			t.Fatal(err)
 		}
-		sp.Users = append(sp.Users, spa.User{ID: "usr_" + u.name, Username: u.name, Name: u.name, Roles: []string{role.Ident}})
+		sp.Users = append(sp.Users, keystone.User{ID: "usr_" + u.name, Username: u.name, Name: u.name, Roles: []string{role.Ident}})
 	}
 	q := query.New(conn, query.Config{Storage: cfg, Now: func() time.Time { return now }})
 	// No local Inventory loop (api role): the snapshot is loaded on demand.
@@ -182,7 +182,7 @@ func newIntegrationEnv(t *testing.T) *integrationEnv {
 	a := app.New(app.Options{Version: "test", SPAKey: sp.ConnectionKey()}, app.Deps{Store: st, Vault: vault, InventoryIntegration: ii})
 	srv := httptest.NewServer(a.Handler())
 	t.Cleanup(srv.Close)
-	return &integrationEnv{t: t, srv: srv, st: st, inv: inv, ii: ii, month: month, now: now, spa: sp}
+	return &integrationEnv{t: t, srv: srv, st: st, inv: inv, ii: ii, month: month, now: now, keystone: sp}
 }
 
 type session struct {
@@ -194,8 +194,8 @@ type session struct {
 func (e *integrationEnv) login(user string) *session {
 	jar, _ := cookiejar.New(nil)
 	s := &session{e: e, c: &http.Client{Jar: jar}}
-	// Sign in through the fake SPA: start → authorize → callback.
-	e.spa.SignedIn = "usr_" + user
+	// Sign in through the fake Keystone: start → authorize → callback.
+	e.keystone.SignedIn = "usr_" + user
 	res, err := s.c.Get(e.srv.URL + "/api/auth/spa/start")
 	if err != nil {
 		e.t.Fatal(err)
@@ -427,7 +427,7 @@ func TestInventoryIntegrationHookAndCreate(t *testing.T) {
 		t.Fatalf("viewer: %d", code)
 	}
 
-	// Create in Inventory DB.
+	// Create in Ledger.
 	code, out = admin.do("POST", "/api/inventory-db/unknown/create", map[string]string{"address": "10.1.0.77"})
 	if code != 201 || out["address"] != "10.1.0.77" || out["object"].(map[string]any)["id"] != 77.0 {
 		t.Fatalf("%d %v", code, out)
@@ -439,7 +439,7 @@ func TestInventoryIntegrationHookAndCreate(t *testing.T) {
 	got := e.inv.created
 	e.inv.mu.Unlock()
 	if len(got) != 1 || got[0]["address"] != "10.1.0.77/32" || got[0]["status"] != "active" ||
-		got[0]["description"] != "Discovered by Umbrella Flow" || len(got[0]["tags"].([]any)) != 0 {
+		got[0]["description"] != "Discovered by Current" || len(got[0]["tags"].([]any)) != 0 {
 		t.Fatalf("created %v", got)
 	}
 	if code, out := admin.do("POST", "/api/inventory-db/unknown/create", map[string]string{"address": "2001:db8::5"}); code != 201 ||

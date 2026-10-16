@@ -1,4 +1,4 @@
-// Seeds a local Inventory DB with a small network for the Flow integration test.
+// Seeds a local Ledger with a small network for the Current integration test.
 const base = process.argv[2] || 'http://localhost:8091';
 let auth = {};
 async function call(method, path, body) {
@@ -11,7 +11,7 @@ async function call(method, path, body) {
   if (!r.ok) throw new Error(`${method} ${path}: ${r.status} ${text}`);
   return text ? JSON.parse(text) : null;
 }
-const su = await call('POST', '/auth/signup', { email: 'flow@test.local', password: 'Passw0rd!Passw0rd', name: 'Flow' });
+const su = await call('POST', '/auth/signup', { email: 'flow@test.local', password: 'Passw0rd!Passw0rd', name: 'Current' });
 auth = { authorization: `Bearer ${su.token}` };
 await call('GET', '/netbox/me');
 const tok = await call('POST', '/tokens', { description: 'flow' });

@@ -12,11 +12,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 
-	"github.com/sbrw-evc/network/app/backend/internal/classifier"
-	"github.com/sbrw-evc/network/app/backend/internal/flow"
-	"github.com/sbrw-evc/network/app/backend/internal/geoip"
-	"github.com/sbrw-evc/network/app/backend/internal/geoip/geoiptest"
-	"github.com/sbrw-evc/network/app/backend/internal/inventory"
+	"github.com/sbrw-evc/current/app/backend/internal/classifier"
+	"github.com/sbrw-evc/current/app/backend/internal/flow"
+	"github.com/sbrw-evc/current/app/backend/internal/geoip"
+	"github.com/sbrw-evc/current/app/backend/internal/geoip/geoiptest"
+	"github.com/sbrw-evc/current/app/backend/internal/inventory"
 )
 
 type staticInv struct {
@@ -74,7 +74,7 @@ func newTestEnricher(t testing.TB, cfg Config) (*Enricher, *capture) {
 		cfg.GeoIP = fakeGeo{google: {Country: "US", City: "Mountain View", ASN: 15169, ASName: "GOOGLE"}}
 	}
 	if cfg.IfNames == nil {
-		// 7 is not in Inventory DB (no snmp_index), 8 only matches by name.
+		// 7 is not in Ledger (no snmp_index), 8 only matches by name.
 		cfg.IfNames = ifNames{7: {"et-0/0/7", "collector descr"}, 8: {"XE-0/0/2", "via name"}, 501: {"xe-0/0/0", "from collector"}}
 	}
 	e, err := New(c, cfg)

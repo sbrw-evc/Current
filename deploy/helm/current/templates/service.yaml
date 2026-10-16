@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "current.fullname" . }}
+  labels:
+    {{- include "current.labels" . | nindent 4 }}
+  {{- with .Values.service.http.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.http.type }}
+  selector:
+    {{- include "current.selector" (dict "root" . "role" (include "current.serviceRole" (dict "root" . "role" "api"))) | nindent 4 }}
+  ports:
+    - {name: http, port: {{ .Values.service.http.port }}, targetPort: http, protocol: TCP}
+{{- if .Values.service.flows.enabled }}
+---
+# NetFlow / IPFIX and sFlow (UDP).
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "current.fullname" . }}-flows
+  labels:
+    {{- include "current.labels" . | nindent 4 }}
+  {{- with .Values.service.flows.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.flows.type }}
+  {{- if ne .Values.service.flows.type "ClusterIP" }}
+  externalTrafficPolicy: {{ .Values.service.flows.externalTrafficPolicy }}
+  {{- end }}
+  {{- with .Values.service.flows.loadBalancerIP }}
+  loadBalancerIP: {{ . }}
+  {{- end }}
+  {{- with .Values.service.flows.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  selector:
+    {{- include "current.selector" (dict "root" . "role" (include "current.serviceRole" (dict "root" . "role" "collector"))) | nindent 4 }}
+  ports:
+    - {name: netflow, port: {{ .Values.ports.netflow }}, targetPort: netflow, protocol: UDP}
+    - {name: sflow, port: {{ .Values.ports.sflow }}, targetPort: sflow, protocol: UDP}
+{{- end }}
+{{- if .Values.service.bmp.enabled }}
+---
+# BMP (TCP); the receiver listens only while enabled under Settings -> BMP.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "current.fullname" . }}-bmp
+  labels:
+    {{- include "current.labels" . | nindent 4 }}
+  {{- with .Values.service.bmp.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.bmp.type }}
+  {{- if ne .Values.service.bmp.type "ClusterIP" }}
+  externalTrafficPolicy: {{ .Values.service.bmp.externalTrafficPolicy }}
+  {{- end }}
+  {{- with .Values.service.bmp.loadBalancerIP }}
+  loadBalancerIP: {{ . }}
+  {{- end }}
+  {{- with .Values.service.bmp.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  selector:
+    {{- include "current.selector" (dict "root" . "role" (include "current.serviceRole" (dict "root" . "role" "enricher"))) | nindent 4 }}
+  ports:
+    - {name: bmp, port: {{ .Values.ports.bmp }}, targetPort: bmp, protocol: TCP}
+{{- end }}

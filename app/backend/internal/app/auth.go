@@ -5,13 +5,13 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/sbrw-evc/network/app/backend/internal/access"
-	"github.com/sbrw-evc/network/app/backend/internal/httpx"
-	"github.com/sbrw-evc/network/app/backend/internal/schema"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/access"
+	"github.com/sbrw-evc/current/app/backend/internal/httpx"
+	"github.com/sbrw-evc/current/app/backend/internal/schema"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
 )
 
-// People sign in through SPA (spa.go); this file has the session side:
+// People sign in through Keystone (keystone.go); this file has the session side:
 // who is signed in and signing out.
 
 // userView is the user as /api/auth/me returns it.
@@ -31,7 +31,7 @@ func viewOf(u store.User, perms access.Set) userView {
 		RoleIdent: u.RoleIdent, Permissions: perms.List()}
 }
 
-// accountURL is where the person changes their password and passkeys (SPA).
+// accountURL is where the person changes their password and passkeys (Keystone).
 func (a *App) accountURL(ctx context.Context) string {
 	st, err := a.spaStatus(ctx)
 	if err != nil {
@@ -40,8 +40,8 @@ func (a *App) accountURL(ctx context.Context) string {
 	return st.AccountURL
 }
 
-// logout ends the session; the console then goes to SPA's sign-out
-// (redirect), which ends the SPA session and returns to Flow.
+// logout ends the session; the console then goes to Keystone's sign-out
+// (redirect), which ends the Keystone session and returns to Current.
 func (a *App) logout(w http.ResponseWriter, r *http.Request) {
 	// No CSRF check: signing out is harmless, and the cookie is SameSite=Lax.
 	if ss, err := a.sessions.Get(r.Context(), r); err == nil && ss != nil {

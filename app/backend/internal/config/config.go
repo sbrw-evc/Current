@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/secrets"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets"
 )
 
 const (
@@ -48,7 +48,7 @@ type OpenBao struct {
 	RoleID    string `json:"role_id,omitempty"`
 	SecretID  string `json:"secret_id,omitempty"`
 	// RoleIDFile / SecretIDFile: AppRole credentials read from files (the
-	// openbao-init container of deploy/flow writes them to a shared volume).
+	// openbao-init container of deploy/current writes them to a shared volume).
 	RoleIDFile   string `json:"role_id_file,omitempty"`
 	SecretIDFile string `json:"secret_id_file,omitempty"`
 	AppRolePath  string `json:"approle_path,omitempty"`
@@ -375,9 +375,9 @@ type Env struct {
 	NetFlowAddr    string         // FLOW_NETFLOW_ADDR, UDP for NetFlow v5/v9 and IPFIX (:2055)
 	SFlowAddr      string         // FLOW_SFLOW_ADDR, UDP for sFlow (:6343)
 	NATSURL        string         // FLOW_NATS_URL, empty = in-process bus
-	// SPA, the Single Point of Authorization: the connection key or the file
+	// Keystone, sign-in and access for the Umbrella family: the connection key or the file
 	// holding it (without both, the key is read from OpenBao, spa#connection_key)
-	// and the address of Flow when it differs from the request address.
+	// and the address of Current when it differs from the request address.
 	SPAConnectionKey     string // SPA_CONNECTION_KEY
 	SPAConnectionKeyFile string // SPA_CONNECTION_KEY_FILE
 	SPAPublicURL         string // SPA_PUBLIC_URL
@@ -429,7 +429,7 @@ func LoadEnv(getenv func(string) string) (Env, error) {
 	}
 	if e.SPAPublicURL != "" {
 		if u, err := url.Parse(e.SPAPublicURL); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-			errs = append(errs, errors.New("SPA_PUBLIC_URL must look like https://flow.example.com"))
+			errs = append(errs, errors.New("SPA_PUBLIC_URL must look like https://current.example.com"))
 		}
 	}
 	return e, errors.Join(errs...)

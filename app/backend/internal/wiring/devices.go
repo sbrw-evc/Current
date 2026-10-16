@@ -7,14 +7,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/app"
-	"github.com/sbrw-evc/network/app/backend/internal/detector"
-	"github.com/sbrw-evc/network/app/backend/internal/secrets"
-	"github.com/sbrw-evc/network/app/backend/internal/setup"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/app"
+	"github.com/sbrw-evc/current/app/backend/internal/detector"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets"
+	"github.com/sbrw-evc/current/app/backend/internal/setup"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
 )
 
-// DeviceEvents is the Umbrella sender of the device down / up events when
+// DeviceEvents is the Beacon sender of the device down / up events when
 // the detector (and its sender) does not run in the API process: the same
 // connector settings (key "umbrella"), the same event format.
 type DeviceEvents struct {
@@ -47,7 +47,7 @@ func (e *DeviceEvents) token(context.Context) (string, error) {
 	return secrets.Value(e.vault, ref)
 }
 
-// Refresh re-reads the Umbrella settings.
+// Refresh re-reads the Beacon settings.
 func (e *DeviceEvents) Refresh(ctx context.Context) error {
 	var u setup.UmbrellaSettings
 	if _, err := e.st.Setting(ctx, setup.SettingUmbrella, &u); err != nil {
@@ -82,7 +82,7 @@ func (e *DeviceEvents) Run(ctx context.Context) {
 	defer t.Stop()
 	for {
 		if err := e.Refresh(ctx); err != nil && ctx.Err() == nil {
-			e.log.Warn("Umbrella settings not loaded", "err", err)
+			e.log.Warn("Beacon settings not loaded", "err", err)
 		}
 		if len(e.Sender.Pending()) > 0 && e.Sender.Status().Configured {
 			if err := e.Sender.Flush(ctx); err != nil && ctx.Err() == nil {

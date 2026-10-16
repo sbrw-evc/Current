@@ -13,9 +13,9 @@ import { SecretField } from '../../ui/SecretField'
 import { Banner, Brand, Button, Chip, Field, Input, Password, Preferences, Rows, Select, spring, Stepper, Switch, type Tone } from '../../ui/ui'
 import { publicURLOk, spaKeyOk } from './url'
 import { setupStrings } from './strings'
-import type { ClickHouse, Collector, GeoIP, Inventory, Nats, OpenBao, Postgres, Retention, SetupBody, SetupDefaults, SetupTheme, Spa, TestResult, TestStep, Umbrella } from './types'
+import type { ClickHouse, Collector, GeoIP, Inventory, Nats, OpenBao, Postgres, Retention, SetupBody, SetupDefaults, SetupTheme, Spa, TestResult, TestStep, Beacon } from './types'
 
-// The first-run wizard in Umbrella's look (Umbrella app/web/src/setup/SetupApp.tsx): a step list,
+// The first-run wizard in Beacon's look (Beacon app/web/src/setup/SetupApp.tsx): a step list,
 // animated step transitions, connection forms with a "Check" button and result chips, a summary.
 
 export type StepId = 'code' | 'general' | 'openbao' | 'postgres' | 'clickhouse' | 'nats' | 'collector' | 'inventory' | 'umbrella' | 'geoip' | 'spa' | 'review'
@@ -34,8 +34,8 @@ const INTERVALS = ['5m', '15m', '30m', '1h', '6h', '24h']
 type CheckState = { key: string; result: TestResult } | undefined
 
 const detailStrings = {
-  en: { 'det.version': 'Version', 'det.has_state': 'Flow data found', 'det.saved_at': 'Saved', 'det.devices': 'Devices', 'det.mount': 'Mount', 'det.policies': 'Policies', 'det.token_ttl': 'Token TTL', 'det.server': 'Server', 'det.jetstream': 'JetStream', 'det.files': 'Files', 'det.build': 'Build', 'det.event': 'Test event', 'det.connector': 'Connector', 'det.tables': 'Tables', 'det.prefixes': 'Prefixes', 'det.circuits': 'Circuits' },
-  ru: { 'det.version': 'Версия', 'det.has_state': 'Найдены данные Flow', 'det.saved_at': 'Сохранены', 'det.devices': 'Устройств', 'det.mount': 'Хранилище', 'det.policies': 'Политики', 'det.token_ttl': 'Срок токена', 'det.server': 'Сервер', 'det.jetstream': 'JetStream', 'det.files': 'Файлов', 'det.build': 'Сборка', 'det.event': 'Тестовое событие', 'det.connector': 'Коннектор', 'det.tables': 'Таблицы', 'det.prefixes': 'Префиксов', 'det.circuits': 'Каналов' },
+  en: { 'det.version': 'Version', 'det.has_state': 'Current data found', 'det.saved_at': 'Saved', 'det.devices': 'Devices', 'det.mount': 'Mount', 'det.policies': 'Policies', 'det.token_ttl': 'Token TTL', 'det.server': 'Server', 'det.jetstream': 'JetStream', 'det.files': 'Files', 'det.build': 'Build', 'det.event': 'Test event', 'det.connector': 'Connector', 'det.tables': 'Tables', 'det.prefixes': 'Prefixes', 'det.circuits': 'Circuits' },
+  ru: { 'det.version': 'Версия', 'det.has_state': 'Найдены данные Current', 'det.saved_at': 'Сохранены', 'det.devices': 'Устройств', 'det.mount': 'Хранилище', 'det.policies': 'Политики', 'det.token_ttl': 'Срок токена', 'det.server': 'Сервер', 'det.jetstream': 'JetStream', 'det.files': 'Файлов', 'det.build': 'Сборка', 'det.event': 'Тестовое событие', 'det.connector': 'Коннектор', 'det.tables': 'Таблицы', 'det.prefixes': 'Префиксов', 'det.circuits': 'Каналов' },
 }
 const dict = { en: { ...setupStrings.en, ...detailStrings.en }, ru: { ...setupStrings.ru, ...detailStrings.ru } }
 
@@ -73,9 +73,9 @@ export default function SetupWizard({ defaults }: { defaults: SetupDefaults }) {
   const [nats, setNats] = useState<Nats>({ url: d.nats?.url ?? '' })
   const [col, setCol] = useState<Collector>({ netflow_addr: ':2055', sflow_addr: ':6343', default_sampling_rate: 1, ...(d.collector ?? {}) })
   const [inv, setInv] = useState<Inventory>({ enabled: true, url: '', token: '', interval: '15m' })
-  const [um, setUm] = useState<Umbrella>({ enabled: true, ingest_url: '', token: '' })
+  const [um, setUm] = useState<Beacon>({ enabled: true, ingest_url: '', token: '' })
   const [geo, setGeo] = useState<GeoIP & { enabled: boolean }>({ enabled: true, databases: ['/geoip/GeoLite2-City.mmdb', '/geoip/GeoLite2-ASN.mmdb'] })
-  // SPA: people sign in there; the key may also come from the deployment (SPA_CONNECTION_KEY).
+  // Keystone: people sign in there; the key may also come from the deployment (SPA_CONNECTION_KEY).
   const spaFromEnv = !!d.spa?.from_env
   const [spa, setSpa] = useState<Spa & { enabled: boolean }>({ enabled: !spaFromEnv, connection_key: '' })
   const [checks, setChecks] = useState<Partial<Record<TestStep, CheckState>>>({})
@@ -207,7 +207,7 @@ export default function SetupWizard({ defaults }: { defaults: SetupDefaults }) {
       nats: { url: nats.url.trim() },
       collector: { ...col, netflow_addr: col.netflow_addr.trim(), sflow_addr: col.sflow_addr.trim() },
       inventory: inv.enabled ? { enabled: true, ...(bodies.inventory as Partial<Inventory>) } : { enabled: false },
-      umbrella: um.enabled ? { enabled: true, ...(bodies.umbrella as Partial<Umbrella>) } : { enabled: false },
+      umbrella: um.enabled ? { enabled: true, ...(bodies.umbrella as Partial<Beacon>) } : { enabled: false },
       geoip: { databases: geo.enabled ? (bodies.geoip.databases as string[]) : [] },
       ...(spa.enabled && !spaFromEnv ? { spa: { connection_key: spa.connection_key.trim() } } : {}),
     }
@@ -413,7 +413,7 @@ export default function SetupWizard({ defaults }: { defaults: SetupDefaults }) {
                       {(id) => <TimezoneSelect id={id} value={general.timezone} onChange={(timezone) => setGeneral({ ...general, timezone })} />}
                     </Field>
                     <Field label={t('general.public')} hint={publicValid ? t('general.public.hint') : t('general.public.bad')}>
-                      {(id) => <Input id={id} value={general.public_url} spellCheck={false} placeholder="https://flow.example.com" aria-invalid={!publicValid || undefined} onChange={(e) => setGeneral({ ...general, public_url: e.target.value })} />}
+                      {(id) => <Input id={id} value={general.public_url} spellCheck={false} placeholder="https://current.example.com" aria-invalid={!publicValid || undefined} onChange={(e) => setGeneral({ ...general, public_url: e.target.value })} />}
                     </Field>
                     {footer({})}
                   </div>
@@ -660,11 +660,11 @@ export default function SetupWizard({ defaults }: { defaults: SetupDefaults }) {
                       <Summary title="ClickHouse" chip={chipFor('clickhouse')} edit={() => setStep('clickhouse')} t={t} rows={[[t('rv.database'), <code key="c">{`${ch.username}@${ch.addr}/${ch.database}${ch.secure ? ' (TLS)' : ''}`}</code>], [t('rv.retention'), `${ret.raw_days} / ${ret.d1m} / ${ret.d5m} / ${ret.d1h}`]]} />
                       <Summary title={t('step.nats')} chip={chipFor('nats')} edit={() => setStep('nats')} t={t} rows={[[t('rv.queue'), nats.url.trim() ? <code key="n">{nats.url.trim()}</code> : t('chip.builtin')]]} />
                       <Summary title={t('step.collector')} edit={() => setStep('collector')} t={t} rows={[[t('rv.ports'), <code key="p">{`NetFlow/IPFIX ${col.netflow_addr || '—'} · sFlow ${col.sflow_addr || '—'}`}</code>], [t('col.sampling'), `1:${col.default_sampling_rate}`]]} />
-                      <Summary title="Inventory DB" chip={chipFor('inventory')} edit={() => setStep('inventory')} t={t} rows={inv.enabled ? [[t('rv.address'), <code key="i">{inv.url}</code>], [t('inv.interval'), inv.interval]] : [[t('step.inventory'), t('rv.off')]]} />
-                      <Summary title="Umbrella" chip={chipFor('umbrella')} edit={() => setStep('umbrella')} t={t} rows={um.enabled ? [[t('rv.address'), <code key="u">{um.ingest_url}</code>]] : [[t('step.umbrella'), t('rv.off')]]} />
+                      <Summary title="Ledger" chip={chipFor('inventory')} edit={() => setStep('inventory')} t={t} rows={inv.enabled ? [[t('rv.address'), <code key="i">{inv.url}</code>], [t('inv.interval'), inv.interval]] : [[t('step.inventory'), t('rv.off')]]} />
+                      <Summary title="Beacon" chip={chipFor('umbrella')} edit={() => setStep('umbrella')} t={t} rows={um.enabled ? [[t('rv.address'), <code key="u">{um.ingest_url}</code>]] : [[t('step.umbrella'), t('rv.off')]]} />
                       <Summary title="GeoIP" chip={chipFor('geoip')} edit={() => setStep('geoip')} t={t} rows={geo.enabled && geo.databases.some((x) => x.trim()) ? [[t('rv.files'), geo.databases.filter((x) => x.trim()).join(', ')]] : [[t('step.geoip'), t('rv.off')]]} />
                       <Summary
-                        title="SPA"
+                        title="Keystone"
                         chip={chipFor('spa')}
                         edit={() => setStep('spa')}
                         t={t}

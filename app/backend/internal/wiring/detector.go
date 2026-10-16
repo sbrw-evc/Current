@@ -15,15 +15,15 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/sbrw-evc/network/app/backend/internal/app"
-	"github.com/sbrw-evc/network/app/backend/internal/collector"
-	"github.com/sbrw-evc/network/app/backend/internal/detector"
-	"github.com/sbrw-evc/network/app/backend/internal/httpx"
-	"github.com/sbrw-evc/network/app/backend/internal/inventory"
-	"github.com/sbrw-evc/network/app/backend/internal/secrets"
-	"github.com/sbrw-evc/network/app/backend/internal/setup"
-	chstore "github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/app"
+	"github.com/sbrw-evc/current/app/backend/internal/collector"
+	"github.com/sbrw-evc/current/app/backend/internal/detector"
+	"github.com/sbrw-evc/current/app/backend/internal/httpx"
+	"github.com/sbrw-evc/current/app/backend/internal/inventory"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets"
+	"github.com/sbrw-evc/current/app/backend/internal/setup"
+	chstore "github.com/sbrw-evc/current/app/backend/internal/storage/clickhouse"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
 )
 
 // PGState is a detector.StateStore in PostgreSQL (table detector_state).
@@ -66,7 +66,7 @@ func StoredRules(ctx context.Context, st *store.Store) ([]detector.Rule, time.Ti
 }
 
 // CommitFromInventory returns the circuit commit rate (bits per second) of an
-// interface from the Inventory DB snapshot: the device by its source_ref (or
+// interface from the Ledger snapshot: the device by its source_ref (or
 // by the exporter address), then the interface by name.
 func CommitFromInventory(src func() *inventory.Snapshot) detector.CommitFunc {
 	return func(k detector.IfaceKey) (uint64, bool) {
@@ -111,14 +111,14 @@ type DetectorConfig struct {
 	Conn      driver.Conn
 	Storage   chstore.Config
 	Store     *store.Store
-	Vault     secrets.Resolver           // Umbrella token
+	Vault     secrets.Resolver           // Beacon token
 	Collector *collector.Collector       // same process only
 	Inventory func() *inventory.Snapshot // nil disables link_commit
 	Metrics   prometheus.Registerer
 	Log       *slog.Logger
 }
 
-// Detector runs internal/detector with rules from PostgreSQL and the Umbrella
+// Detector runs internal/detector with rules from PostgreSQL and the Beacon
 // connection from the settings key umbrella (token from OpenBao on each send).
 type Detector struct {
 	D      *detector.Detector
@@ -144,7 +144,7 @@ func NewDetector(ctx context.Context, cfg DetectorConfig) (*Detector, error) {
 	d := &Detector{st: cfg.Store, vault: cfg.Vault, log: log.With("component", "detector")}
 	d.Sender = detector.NewSender(detector.SenderConfig{Logger: d.log})
 	if err := d.reloadUmbrella(ctx); err != nil {
-		d.log.Warn("Umbrella settings not loaded", "err", err)
+		d.log.Warn("Beacon settings not loaded", "err", err)
 	}
 	rules, at, err := StoredRules(ctx, cfg.Store)
 	if err != nil {
@@ -194,7 +194,7 @@ func (d *Detector) reloadUmbrella(ctx context.Context) error {
 		url = u.IngestURL
 	}
 	d.Sender.SetTarget(url, d.token)
-	d.log.Info("Umbrella target set", "configured", url != "")
+	d.log.Info("Beacon target set", "configured", url != "")
 	return nil
 }
 
@@ -257,7 +257,7 @@ func (d *Detector) Run(ctx context.Context) {
 				return
 			case <-t.C:
 				if err := d.reloadUmbrella(ctx); err != nil && ctx.Err() == nil {
-					d.log.Warn("Umbrella settings not reloaded", "err", err)
+					d.log.Warn("Beacon settings not reloaded", "err", err)
 				}
 				if err := d.reloadRules(ctx, false); err != nil && ctx.Err() == nil {
 					d.log.Warn("detector rules not reloaded", "err", err)

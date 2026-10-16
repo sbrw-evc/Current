@@ -1,4 +1,4 @@
-/* Umbrella Flow: styles of the Flow pages on top of Umbrella's tokens (styles.css, controls.css). */
+/* Current: styles of the Current pages on top of Beacon's tokens (styles.css, controls.css). */
 
 :root {
   --orange: #c2410c;
@@ -357,7 +357,7 @@ a.tile-link:focus-visible {
   white-space: nowrap;
 }
 
-/* First steps: Umbrella's onboarding checklist (app/web/src/app/onboarding/onboarding.css). */
+/* First steps: Beacon's onboarding checklist (app/web/src/app/onboarding/onboarding.css). */
 
 .ob-card {
   padding: 20px 22px;
@@ -577,7 +577,7 @@ a.tile-link:focus-visible {
   min-height: 420px;
 }
 
-/* Tables (Umbrella's .cn-table) */
+/* Tables (Beacon's .cn-table) */
 
 .table-wrap {
   overflow-x: auto;
@@ -1721,7 +1721,7 @@ tr.sub-row > td {
   }
 }
 
-/* Setup wizard (Umbrella's .wizard, .steps, .panel) */
+/* Setup wizard (Beacon's .wizard, .steps, .panel) */
 
 .wizard-sub {
   padding-left: 12px;
@@ -1898,7 +1898,7 @@ tr.sub-row > td {
   }
 }
 
-/* Umbrella Identity: sign-in methods, passkeys, the connection wizard */
+/* Beacon Identity: sign-in methods, passkeys, the connection wizard */
 .row.wrap {
   flex-wrap: wrap;
   align-items: center;
@@ -2011,7 +2011,7 @@ tr.sub-row > td {
   }
 }
 
-/* SPA: the "Account and security" link in the user menu, the connection instructions */
+/* Keystone: the "Account and security" link in the user menu, the connection instructions */
 a.menu-item {
   text-decoration: none;
   color: var(--text);

@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	chstore "github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse"
-	"github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse/chtest"
+	chstore "github.com/sbrw-evc/current/app/backend/internal/storage/clickhouse"
+	"github.com/sbrw-evc/current/app/backend/internal/storage/clickhouse/chtest"
 )
 
 func TestASNamesRoundTrip(t *testing.T) {

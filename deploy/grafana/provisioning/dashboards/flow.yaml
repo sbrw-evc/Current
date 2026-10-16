@@ -1,10 +1,10 @@
-# Umbrella Flow dashboards (flow-ci-traffic.json) in the folder "Umbrella Flow".
+# Current dashboards (flow-ci-traffic.json) in the folder "Current".
 apiVersion: 1
 
 providers:
   - name: umbrella-flow
     orgId: 1
-    folder: Umbrella Flow
+    folder: Current
     type: file
     disableDeletion: true
     allowUiUpdates: true

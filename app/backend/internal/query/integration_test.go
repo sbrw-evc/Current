@@ -10,12 +10,12 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 
-	"github.com/sbrw-evc/network/app/backend/internal/filter"
-	"github.com/sbrw-evc/network/app/backend/internal/flow"
-	"github.com/sbrw-evc/network/app/backend/internal/query"
-	"github.com/sbrw-evc/network/app/backend/internal/schema"
-	chstore "github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse"
-	"github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse/chtest"
+	"github.com/sbrw-evc/current/app/backend/internal/filter"
+	"github.com/sbrw-evc/current/app/backend/internal/flow"
+	"github.com/sbrw-evc/current/app/backend/internal/query"
+	"github.com/sbrw-evc/current/app/backend/internal/schema"
+	chstore "github.com/sbrw-evc/current/app/backend/internal/storage/clickhouse"
+	"github.com/sbrw-evc/current/app/backend/internal/storage/clickhouse/chtest"
 )
 
 // Synthetic data, one flow of each kind per minute during one hour from

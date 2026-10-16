@@ -1,4 +1,4 @@
-// Seeds a fresh local Inventory DB with the network simulated by `flow demo`
+// Seeds a fresh local Ledger with the network simulated by `current demo`
 // (internal/demoexporter.DefaultConfig with a loopback target): the exporters
 // edge-01 (127.0.0.11, NetFlow v9), edge-02 (127.0.0.12, IPFIX) and dc-sw-01
 // (127.0.0.13, sFlow), their interfaces with the snmp_index custom field set
@@ -18,7 +18,7 @@ async function call(method, path, body) {
   if (!r.ok) throw new Error(`${method} ${path}: ${r.status} ${text}`);
   return text ? JSON.parse(text) : null;
 }
-const su = await call('POST', '/auth/signup', { email: 'flow-demo@test.local', password: 'Passw0rd!Passw0rd', name: 'Flow demo' });
+const su = await call('POST', '/auth/signup', { email: 'flow-demo@test.local', password: 'Passw0rd!Passw0rd', name: 'Current demo' });
 auth = { authorization: `Bearer ${su.token}` };
 await call('GET', '/netbox/me');
 const tok = await call('POST', '/tokens', { description: 'flow demo' });
@@ -34,7 +34,7 @@ const swRole = await call('POST', '/dcim/device-roles', { name: 'DC switch' });
 const core = await call('POST', '/dcim/devices', { name: 'core-01', device_type: dt.id, role: edgeRole.id, site: site.id });
 const coreIf = await call('POST', '/dcim/interfaces', { device: core.id, name: 'Te1/1', type: '10gbase-x-sfpp' });
 
-const g = 1_000_000; // Inventory DB speeds are in Kbps
+const g = 1_000_000; // Ledger speeds are in Kbps
 const transit = await call('POST', '/circuits/circuit-types', { name: 'IP Transit', slug: 'ip-transit' });
 const ix = await call('POST', '/circuits/circuit-types', { name: 'IX', slug: 'ix' });
 const pni = await call('POST', '/circuits/circuit-types', { name: 'PNI', slug: 'pni' });

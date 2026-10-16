@@ -5,12 +5,12 @@ import { useLocale, useT } from '../../i18n'
 import { Page } from '../../shell/Page'
 import { useSession } from '../../shell/session'
 import { Banner, Card, Chip, formatDate } from '../../ui/ui'
-import { spaStrings } from '../spa/strings'
+import { spaStrings } from '../keystone/strings'
 
 type User = { id: number; username: string; name: string; email: string; source: string; role: string; role_ident: string; disabled: boolean; last_login_at?: string }
 
-// UsersPage: Settings → Users. Read-only records synchronized from SPA; people, their roles and
-// their state are managed in SPA ("Managed in SPA").
+// UsersPage: Settings → Users. Read-only records synchronized from Keystone; people, their roles and
+// their state are managed in Keystone ("Managed in Keystone").
 export default function UsersPage() {
   const t = useT(spaStrings)
   const { locale } = useLocale()

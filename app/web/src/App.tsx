@@ -25,7 +25,7 @@ const MapPage = lazy(() => import('./pages/devices/MapPage'))
 const DetectorRulesPage = lazy(() => import('./pages/detector/RulesPage'))
 const DetectorRulePage = lazy(() => import('./pages/detector/RuleEditPage'))
 const DetectorStatusPage = lazy(() => import('./pages/detector/StatusPage'))
-const InventoryPage = lazy(() => import('./pages/InventoryDB'))
+const LedgerPage = lazy(() => import('./pages/Ledger'))
 const ClassifiersPage = lazy(() => import('./pages/Classifiers'))
 const OpenBaoPage = lazy(() => import('./pages/OpenBao'))
 const ApiTokensPage = lazy(() => import('./pages/settings/ApiTokens'))
@@ -35,11 +35,11 @@ const FlowLogsPage = lazy(() => import('./pages/settings/FlowLogs'))
 const GnmiPage = lazy(() => import('./pages/settings/Gnmi'))
 const SnmpPage = lazy(() => import('./pages/settings/Snmp'))
 const BmpPage = lazy(() => import('./pages/settings/Bmp'))
-const UmbrellaSettingsPage = lazy(() => import('./pages/umbrella/UmbrellaSettings'))
-const DependenciesPage = lazy(() => import('./pages/umbrella/Dependencies'))
+const BeaconSettingsPage = lazy(() => import('./pages/beacon/BeaconSettings'))
+const DependenciesPage = lazy(() => import('./pages/beacon/Dependencies'))
 const UsersPage = lazy(() => import('./pages/identity/Users'))
 const RolesPage = lazy(() => import('./pages/settings/Roles'))
-const SpaSettingsPage = lazy(() => import('./pages/spa/SpaSettings'))
+const KeystoneSettingsPage = lazy(() => import('./pages/keystone/KeystoneSettings'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -88,7 +88,7 @@ const router = createBrowserRouter([
       { path: 'detector/rules', element: <Guard perm="detector:view">{lazyPage(<DetectorRulesPage />)}</Guard> },
       { path: 'detector/rules/:id', element: <Guard perm="detector:view">{lazyPage(<DetectorRulePage />)}</Guard> },
       { path: 'detector/status', element: <Guard perm="detector:view">{lazyPage(<DetectorStatusPage />)}</Guard> },
-      { path: 'settings/inventory-db', element: <Guard perm="settings.inventory:view">{lazyPage(<InventoryPage />)}</Guard> },
+      { path: 'settings/ledger', element: <Guard perm="settings.inventory:view">{lazyPage(<LedgerPage />)}</Guard> },
       { path: 'settings/classifiers', element: <Guard perm="settings.classifiers:view">{lazyPage(<ClassifiersPage />)}</Guard> },
       { path: 'go/incident', element: <GoIncident /> },
       { path: 'settings/openbao', element: <Guard perm="settings.openbao:view">{lazyPage(<OpenBaoPage />)}</Guard> },
@@ -99,11 +99,15 @@ const router = createBrowserRouter([
       { path: 'settings/gnmi', element: <Guard perm="settings.gnmi:view">{lazyPage(<GnmiPage />)}</Guard> },
       { path: 'settings/snmp', element: <Guard perm="settings.snmp:view">{lazyPage(<SnmpPage />)}</Guard> },
       { path: 'settings/bmp', element: <Guard perm="settings.bmp:view">{lazyPage(<BmpPage />)}</Guard> },
-      { path: 'settings/umbrella', element: <Guard perm="settings.umbrella:view">{lazyPage(<UmbrellaSettingsPage />)}</Guard> },
+      { path: 'settings/beacon', element: <Guard perm="settings.umbrella:view">{lazyPage(<BeaconSettingsPage />)}</Guard> },
       { path: 'settings/users', element: <Guard perm="users:view">{lazyPage(<UsersPage />)}</Guard> },
       { path: 'settings/roles', element: <Guard perm="roles:view">{lazyPage(<RolesPage />)}</Guard> },
-      { path: 'settings/spa', element: <Guard perm="users:view">{lazyPage(<SpaSettingsPage />)}</Guard> },
+      { path: 'settings/keystone', element: <Guard perm="users:view">{lazyPage(<KeystoneSettingsPage />)}</Guard> },
       { path: 'dependencies', element: <Guard perm="dependencies:view">{lazyPage(<DependenciesPage />)}</Guard> },
+      // Addresses before the rename (Inventory DB → Ledger, Umbrella → Beacon, SPA → Keystone).
+      { path: 'settings/inventory-db', element: <Navigate to="/settings/ledger" replace /> },
+      { path: 'settings/umbrella', element: <Navigate to="/settings/beacon" replace /> },
+      { path: 'settings/spa', element: <Navigate to="/settings/keystone" replace /> },
       { path: '*', element: <NotFound /> },
     ],
   },

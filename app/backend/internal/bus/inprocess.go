@@ -8,7 +8,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/sbrw-evc/network/app/backend/internal/flow"
+	"github.com/sbrw-evc/current/app/backend/internal/flow"
 )
 
 // InProcessConfig configures the in-process bus.

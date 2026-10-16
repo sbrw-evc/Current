@@ -39,7 +39,7 @@ export default function VisualizePage() {
       return true
     }
   })
-  // On the phone the options open in a bottom sheet (Umbrella's filters sheet).
+  // On the phone the options open in a bottom sheet (Beacon's filters sheet).
   const mobile = useMobile()
   const [sheet, setSheet] = useState(false)
   useEffect(() => setDraft(committed), [committed])

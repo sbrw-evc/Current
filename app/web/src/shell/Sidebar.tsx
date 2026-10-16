@@ -9,7 +9,7 @@ import { owns, visibleNav, type NavGroup, type PageDef } from './nav'
 import { useSession } from './session'
 import { navStrings } from './strings'
 
-// The sidebar of Umbrella (app/web/src/app/Sidebar.tsx): accordion groups, a sliding pill on the
+// The sidebar of Beacon (app/web/src/app/Sidebar.tsx): accordion groups, a sliding pill on the
 // current page, a resizable width and an icon rail when collapsed.
 
 const COMPACT = '(max-width: 860px)'
@@ -151,7 +151,7 @@ function SideLink({ page, active, rail }: { page: PageDef; active: boolean; rail
   )
 }
 
-// readOpen (as Umbrella's): a group the user has not opened or closed yet is open when it is the
+// readOpen (as Beacon's): a group the user has not opened or closed yet is open when it is the
 // first one, so a short menu greets a new user instead of every page at once.
 function readOpen(group: string, first: boolean) {
   const v = read(openKey(group))

@@ -18,7 +18,7 @@ import { devicesStrings } from './strings'
 import './devices.css'
 
 // Network → Devices → a device: what it reported (overview, interfaces with load, neighbours,
-// clients, devices behind a controller) and the settings Flow can apply on it.
+// clients, devices behind a controller) and the settings Current can apply on it.
 
 type Tab = 'overview' | 'interfaces' | 'neighbors' | 'clients' | 'children' | 'actions'
 

@@ -12,9 +12,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/sbrw-evc/network/app/backend/internal/collector"
-	"github.com/sbrw-evc/network/app/backend/internal/demoexporter"
-	"github.com/sbrw-evc/network/app/backend/internal/flow"
+	"github.com/sbrw-evc/current/app/backend/internal/collector"
+	"github.com/sbrw-evc/current/app/backend/internal/demoexporter"
+	"github.com/sbrw-evc/current/app/backend/internal/flow"
 )
 
 type captureSink struct {

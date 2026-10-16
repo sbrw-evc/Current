@@ -1,4 +1,4 @@
-module github.com/sbrw-evc/network/app/backend
+module github.com/sbrw-evc/current/app/backend
 
 go 1.26.0
 

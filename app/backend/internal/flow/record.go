@@ -49,16 +49,16 @@ type Flow struct {
 	Bytes            uint64
 	Packets          uint64
 
-	// enriched: exporter (from Inventory DB device, classifiers)
+	// enriched: exporter (from Ledger device, classifiers)
 	ExporterName   string
-	ExporterRef    string // Inventory DB source_ref, e.g. "inventory-db:dcim.device:100"
+	ExporterRef    string // Ledger source_ref, e.g. "inventory-db:dcim.device:100"
 	ExporterSite   string
 	ExporterRegion string
 	ExporterRole   string
 	ExporterGroup  string
 	ExporterTenant string
 
-	// enriched: interfaces (from Inventory DB interfaces, circuits, cables, classifiers)
+	// enriched: interfaces (from Ledger interfaces, circuits, cables, classifiers)
 	InIfName          string
 	InIfDescription   string
 	InIfSpeed         uint64 // bits per second
@@ -74,7 +74,7 @@ type Flow struct {
 	OutIfProvider     string
 	OutIfCircuit      string
 
-	// enriched: networks (from Inventory DB IPAM prefixes / addresses, GeoIP)
+	// enriched: networks (from Ledger IPAM prefixes / addresses, GeoIP)
 	SrcNetPrefix netip.Prefix
 	SrcNetName   string
 	SrcNetRole   string
@@ -82,7 +82,7 @@ type Flow struct {
 	SrcNetTenant string
 	SrcNetVRF    string
 	SrcHost      string // DNS name / device of the IPAM address
-	SrcCI        string // Inventory DB source_ref of the device / VM owning SrcAddr
+	SrcCI        string // Ledger source_ref of the device / VM owning SrcAddr
 	SrcCountry   string // ISO 3166-1 alpha-2
 	SrcCity      string
 	DstNetPrefix netip.Prefix
@@ -99,7 +99,7 @@ type Flow struct {
 	// enriched: classification
 	App string // application name ("https", "dns", vendor App-ID, …)
 
-	// enriched: reverse DNS (PTR) of addresses without an Inventory DB host name
+	// enriched: reverse DNS (PTR) of addresses without a Ledger host name
 	SrcHostPTR string
 	DstHostPTR string
 	// enriched: threat intelligence, name of the blocklist holding the address

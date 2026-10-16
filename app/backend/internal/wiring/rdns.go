@@ -9,7 +9,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/sbrw-evc/network/app/backend/internal/rdns"
+	"github.com/sbrw-evc/current/app/backend/internal/rdns"
 )
 
 // SettingStore reads and writes JSON settings; *store.Store implements it.

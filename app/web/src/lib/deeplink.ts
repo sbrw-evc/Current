@@ -1,7 +1,7 @@
 import { DEFAULT_STATE, type VisState } from '../pages/visualize/state'
 
-// The link Umbrella incidents open: /go/incident?ci=&ip=&ref=&from=&to= becomes a Visualize view
-// of the traffic of the address over the incident's time; without an address, of the Inventory DB
+// The link Beacon incidents open: /go/incident?ci=&ip=&ref=&from=&to= becomes a Visualize view
+// of the traffic of the address over the incident's time; without an address, of the Ledger
 // object ref (source_ref, e.g. inventory-db:dcim.device:100), else of the configuration item ci.
 
 function quote(v: string) {

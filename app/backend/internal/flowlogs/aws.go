@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/flow"
+	"github.com/sbrw-evc/current/app/backend/internal/flow"
 )
 
 // DefaultAWSFields is the default (version 2) VPC Flow Logs format.

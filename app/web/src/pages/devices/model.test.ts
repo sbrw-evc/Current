@@ -37,7 +37,7 @@ const plat = (k: string) => platforms.find((p) => p.key === k) as Platform
 const devices = () => mock<{ results: Device[] }>('GET', '/api/devices').body.results
 
 describe('device form', () => {
-  it('validates the address, port, interval and Inventory DB binding', () => {
+  it('validates the address, port, interval and Ledger binding', () => {
     const d = { ...emptyDraft('mikrotik'), host: '10.0.0.9', transport: 'api' }
     expect(validateDraft(d, { inventory: false, creating: true, platform: plat('mikrotik') })).toEqual([])
     expect(validateDraft({ ...d, host: 'bad host;' }, { inventory: false, creating: true })).toContain('form.err.host')
@@ -64,7 +64,7 @@ describe('device form', () => {
     expect(edit.inventory_id).toBeUndefined()
   })
 
-  it('fills the form from an Inventory DB candidate and from a device', () => {
+  it('fills the form from a Ledger candidate and from a device', () => {
     const c = { id: 210, name: 'core-spb-01', ref: 'r', site: 'SPB', role: 'switch', status: 'active', manufacturer: 'Cisco', model: 'C9500', platform: 'IOS-XE', host: '10.1.0.2', platform_guess: 'cisco_ios' }
     const d = fromCandidate(c, platforms)
     expect(d).toMatchObject({ inventory_id: 210, platform: 'cisco_ios', transport: 'ssh', host: '10.1.0.2', name: 'core-spb-01' })
@@ -118,7 +118,7 @@ describe('devices', () => {
 })
 
 describe('mock API', () => {
-  it('keeps Inventory DB the source of truth and refuses duplicates', () => {
+  it('keeps Ledger the source of truth and refuses duplicates', () => {
     expect(mock('POST', '/api/devices', { platform: 'mikrotik', host: '10.9.9.9' }).status).toBe(400)
     const created = mock<Device>('POST', '/api/devices', { platform: 'cisco_ios', host: '10.1.0.2', inventory_id: 210, credentials: { password: 'x' } })
     expect(created.status).toBe(201)

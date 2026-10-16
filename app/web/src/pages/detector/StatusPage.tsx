@@ -15,7 +15,7 @@ import type { AlertState, Rule, SenderStatus } from './model'
 import { detStrings } from './strings'
 
 // Detector → Status: per-rule last run and error, active alerts (pending / firing / resolving)
-// with links to Visualize, and the delivery of events to Umbrella with a test event.
+// with links to Visualize, and the delivery of events to Beacon with a test event.
 export default function StatusPage() {
   const t = useT(detStrings)
   const { locale } = useLocale()

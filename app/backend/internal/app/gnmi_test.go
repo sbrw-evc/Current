@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/gnmi"
+	"github.com/sbrw-evc/current/app/backend/internal/gnmi"
 )
 
 func TestMergeGNMIProfile(t *testing.T) {

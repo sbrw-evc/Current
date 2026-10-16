@@ -14,7 +14,7 @@ import { Sheet } from './Sheet'
 import { mobileStrings } from './strings'
 import './mobile.css'
 
-// MobileFrame is the shell of the phone layout, as Umbrella's (app/web/src/app/mobile/MobileFrame.tsx):
+// MobileFrame is the shell of the phone layout, as Beacon's (app/web/src/app/mobile/MobileFrame.tsx):
 // the title of the page with the user menu on top, the page in between and the tab bar at the
 // bottom: the overview, the alerts, the exporters, the charts and "More".
 export function MobileFrame({ children }: { children: ReactNode }) {
@@ -53,10 +53,10 @@ function TopBar() {
   const page = pageOf(pathname)
   return (
     <header className="m-top">
-      <Link to="/" className="m-top-brand" aria-label="Umbrella Flow">
+      <Link to="/" className="m-top-brand" aria-label="Current">
         <img src="/logo.svg" alt="" width={28} height={28} />
       </Link>
-      <h1 className="m-top-title">{page ? t(`page.${page.id}`) : 'Umbrella Flow'}</h1>
+      <h1 className="m-top-title">{page ? t(`page.${page.id}`) : 'Current'}</h1>
       <div className="m-top-end">
         {import.meta.env.VITE_MOCK === '1' && <span className="pill pill-warn mock-badge">{t('mock.badge')}</span>}
         <UserMenu />

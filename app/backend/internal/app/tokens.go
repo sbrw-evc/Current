@@ -9,15 +9,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/access"
-	"github.com/sbrw-evc/network/app/backend/internal/auth"
-	"github.com/sbrw-evc/network/app/backend/internal/httpx"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/access"
+	"github.com/sbrw-evc/current/app/backend/internal/auth"
+	"github.com/sbrw-evc/current/app/backend/internal/httpx"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
 )
 
 // API tokens (docs/integrations.md §1): service accounts with a role and
 // bearer tokens "flow_…" that carry it. Tokens need no CSRF header. A token
-// belongs to the person who created it and stops working while SPA keeps
+// belongs to the person who created it and stops working while Keystone keeps
 // that person disabled.
 
 // SourceService is the source of the principal of a token request.

@@ -28,8 +28,8 @@ func FormatRD(rd uint64) string {
 	return fmt.Sprintf("%d:%x", binary.BigEndian.Uint16(b[0:2]), b[2:])
 }
 
-// ParseRD parses the text of a route distinguisher as written in Inventory
-// DB VRFs ("65000:100", "192.0.2.1:100", "4200000000:100"). An ASN that
+// ParseRD parses the text of a route distinguisher as written in Ledger
+// VRFs ("65000:100", "192.0.2.1:100", "4200000000:100"). An ASN that
 // fits in 2 bytes gives type 0, a larger one type 2.
 func ParseRD(s string) (uint64, error) {
 	s = strings.TrimSpace(s)

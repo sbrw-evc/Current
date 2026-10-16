@@ -297,7 +297,7 @@ export function draftOf(d: Device): DeviceDraft {
   }
 }
 
-// fromCandidate fills the form from an Inventory DB device.
+// fromCandidate fills the form from a Ledger device.
 export function fromCandidate(c: Candidate, platforms: Platform[]): DeviceDraft {
   const p = platforms.find((x) => x.key === c.platform_guess)
   return { ...emptyDraft(p?.key ?? ''), inventory_id: c.id, host: c.host, name: c.name, site: c.site, role: c.role, transport: p?.transports[0]?.name ?? '' }
@@ -353,7 +353,7 @@ export function inputOf(d: DeviceDraft, opts: { bound: boolean; creating: boolea
 }
 
 // credentialFields: the fields of the form for a platform and transport (SNMP fields only for the
-// snmp transport or platforms polled over SNMP, and none when a Flow SNMP profile is used).
+// snmp transport or platforms polled over SNMP, and none when a Current SNMP profile is used).
 export function credentialFields(p: Platform | undefined, transport: string, snmpSource: 'own' | 'profile') {
   if (!p) return []
   const snmp = transport === 'snmp'

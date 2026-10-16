@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/secrets/secretstest"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
-	"github.com/sbrw-evc/network/app/backend/internal/store/storetest"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets/secretstest"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/store/storetest"
 )
 
 func signInventory(secret, ts string, body []byte) string {

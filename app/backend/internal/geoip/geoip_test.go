@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/geoip/geoiptest"
+	"github.com/sbrw-evc/current/app/backend/internal/geoip/geoiptest"
 )
 
 func pfx(s string) netip.Prefix { return netip.MustParsePrefix(s) }

@@ -77,7 +77,7 @@ func newListServer(t *testing.T) *listServer {
 			w.WriteHeader(http.StatusNotModified)
 			return
 		}
-		if !strings.HasPrefix(r.Header.Get("User-Agent"), "umbrella-flow") {
+		if !strings.HasPrefix(r.Header.Get("User-Agent"), "current") {
 			t.Errorf("User-Agent %q", r.Header.Get("User-Agent"))
 		}
 		w.Header().Set("ETag", etag)

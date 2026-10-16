@@ -11,13 +11,13 @@ import { Banner, Button, Card, Loading, Rows, Segmented } from '../ui/ui'
 
 const strings: Dict = {
   en: {
-    'cls.sub': 'CEL rules that set what Inventory DB does not know: roles, sites, boundaries, providers',
+    'cls.sub': 'CEL rules that set what Ledger does not know: roles, sites, boundaries, providers',
     'kind.exporter': 'Exporters',
     'kind.interface': 'Interfaces',
     'cls.rules': 'Rules',
-    'cls.rules.text': 'Rules run top to bottom for every new exporter or interface; a rule that classifies stops nothing, later rules may refine. Values from Inventory DB take precedence.',
+    'cls.rules.text': 'Rules run top to bottom for every new exporter or interface; a rule that classifies stops nothing, later rules may refine. Values from Ledger take precedence.',
     'cls.add': 'Add a rule',
-    'cls.empty': 'No rules: values come only from Inventory DB.',
+    'cls.empty': 'No rules: values come only from Ledger.',
     'cls.up': 'Move up',
     'cls.down': 'Move down',
     'cls.remove': 'Remove',
@@ -37,13 +37,13 @@ const strings: Dict = {
     'cls.help': 'Functions: ClassifyRole, ClassifySite, ClassifyGroup, ClassifyRegion, ClassifyTenant (exporters); ClassifyExternal, ClassifyInternal, ClassifyConnectivity, ClassifyProvider, ClassifyName, ClassifyDescription (interfaces).',
   },
   ru: {
-    'cls.sub': 'Правила CEL задают то, чего не знает Inventory DB: роли, площадки, границы, провайдеров',
+    'cls.sub': 'Правила CEL задают то, чего не знает Ledger: роли, площадки, границы, провайдеров',
     'kind.exporter': 'Экспортёры',
     'kind.interface': 'Интерфейсы',
     'cls.rules': 'Правила',
-    'cls.rules.text': 'Правила выполняются сверху вниз для каждого нового экспортёра или интерфейса; сработавшее правило не останавливает следующие, они могут уточнить значения. Данные Inventory DB важнее правил.',
+    'cls.rules.text': 'Правила выполняются сверху вниз для каждого нового экспортёра или интерфейса; сработавшее правило не останавливает следующие, они могут уточнить значения. Данные Ledger важнее правил.',
     'cls.add': 'Добавить правило',
-    'cls.empty': 'Правил нет: значения берутся только из Inventory DB.',
+    'cls.empty': 'Правил нет: значения берутся только из Ledger.',
     'cls.up': 'Выше',
     'cls.down': 'Ниже',
     'cls.remove': 'Удалить',

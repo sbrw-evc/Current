@@ -144,7 +144,7 @@ type Credentials struct {
 	SNMPPrivPassword string `json:"snmp_priv_password,omitempty"`
 	SNMPContext      string `json:"snmp_context,omitempty"`
 
-	// GNMI reads the OpenConfig interfaces with the gNMI profile of Flow
+	// GNMI reads the OpenConfig interfaces with the gNMI profile of Current
 	// that covers the device (set by the caller for the gnmi transport).
 	GNMI func(ctx context.Context) ([]Interface, error) `json:"-"`
 }

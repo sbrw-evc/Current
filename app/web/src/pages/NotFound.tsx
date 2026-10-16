@@ -9,7 +9,7 @@ export function NotFound() {
       <div className="card empty-state">
         <Compass size={28} />
         <h2>{t('notfound.title')}</h2>
-        <Link to="/">Umbrella Flow</Link>
+        <Link to="/">Current</Link>
       </div>
     </main>
   )

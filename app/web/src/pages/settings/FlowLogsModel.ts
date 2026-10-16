@@ -45,11 +45,11 @@ export function snippet(p: Provider, url: string): string {
   switch (p) {
     case 'aws':
       return [
-        '# VPC Flow Logs → Kinesis Data Firehose → HTTP endpoint (Flow)',
+        '# VPC Flow Logs → Kinesis Data Firehose → HTTP endpoint (Current)',
         'aws firehose create-delivery-stream --delivery-stream-name umbrella-flow \\',
         '  --delivery-stream-type DirectPut \\',
         `  --http-endpoint-destination-configuration '{`,
-        `    "EndpointConfiguration": {"Url": "${url}", "Name": "Umbrella Flow", "AccessKey": "${TOKEN}"},`,
+        `    "EndpointConfiguration": {"Url": "${url}", "Name": "Current", "AccessKey": "${TOKEN}"},`,
         '    "RequestConfiguration": {"ContentEncoding": "GZIP"},',
         '    "BufferingHints": {"IntervalInSeconds": 60, "SizeInMBs": 1},',
         '    "S3BackupMode": "FailedDataOnly",',
@@ -66,7 +66,7 @@ export function snippet(p: Provider, url: string): string {
     case 'azure':
       return [
         '# NSG / VNet flow logs are written to a storage account. Forward each new blob',
-        '# (Event Grid "BlobCreated" → Azure Function) to Flow as is:',
+        '# (Event Grid "BlobCreated" → Azure Function) to Current as is:',
         '',
         '// function.js (Node.js, blob trigger on insights-logs-flowlogflowevent / insights-logs-networksecuritygroupflowevent)',
         'module.exports = async function (context, blob) {',
@@ -75,13 +75,13 @@ export function snippet(p: Provider, url: string): string {
         `    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ${TOKEN}' },`,
         '    body: blob, // {"records": [...]} as written by Azure',
         '  })',
-        "  if (!res.ok) throw new Error('Umbrella Flow answered ' + res.status) // retried by the runtime",
+        "  if (!res.ok) throw new Error('Current answered ' + res.status) // retried by the runtime",
         '}',
       ].join('\n')
     case 'gcp': {
       const sep = url.includes('?') ? '&' : '?'
       return [
-        '# VPC Flow Logs → Log Router sink → Pub/Sub topic → push subscription (Flow)',
+        '# VPC Flow Logs → Log Router sink → Pub/Sub topic → push subscription (Current)',
         'gcloud pubsub topics create umbrella-flow',
         'gcloud logging sinks create umbrella-flow pubsub.googleapis.com/projects/<project>/topics/umbrella-flow \\',
         '  --log-filter=\'logName:"logs/compute.googleapis.com%2Fvpc_flows"\'',

@@ -1,7 +1,7 @@
 // Package gnmi polls interface names, descriptions and speeds over gNMI
-// (OpenConfig models) for exporters that Inventory DB does not describe, or
+// (OpenConfig models) for exporters that Ledger does not describe, or
 // whose interfaces have no name or speed there. It is an interface source of
-// the enricher after the Inventory DB and the collector's option data, and
+// the enricher after Ledger and the collector's option data, and
 // before SNMP (when both answer for a device, gNMI wins).
 //
 // Each device is read with gNMI Get requests of the OpenConfig

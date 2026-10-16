@@ -3,7 +3,7 @@ package enrich
 import (
 	"net/netip"
 
-	"github.com/sbrw-evc/network/app/backend/internal/flow"
+	"github.com/sbrw-evc/current/app/backend/internal/flow"
 )
 
 // ThreatSource names the threat list holding an address ("" when none).

@@ -9,9 +9,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/sbrw-evc/network/app/backend/internal/flow"
-	"github.com/sbrw-evc/network/app/backend/internal/flowlogs"
-	"github.com/sbrw-evc/network/app/backend/internal/secrets"
+	"github.com/sbrw-evc/current/app/backend/internal/flow"
+	"github.com/sbrw-evc/current/app/backend/internal/flowlogs"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets"
 )
 
 // LoadFlowLogsSettings returns the stored cloud flow log settings (all

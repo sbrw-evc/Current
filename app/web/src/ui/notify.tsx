@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react'
 import { AlertTriangle, CheckCircle2, Info, X, XCircle } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 
-// Toasts in the bottom right corner, in Umbrella's look.
+// Toasts in the bottom right corner, in Beacon's look.
 export type NoteKind = 'ok' | 'error' | 'warn' | 'info'
 type Note = { id: number; kind: NoteKind; title: string; body?: string }
 

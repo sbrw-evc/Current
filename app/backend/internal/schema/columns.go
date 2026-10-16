@@ -112,7 +112,7 @@ var Columns = []Column{
 	{Name: "Bytes", Type: "UInt64", Kind: KindUint, Metric: true},
 	{Name: "Packets", Type: "UInt64", Kind: KindUint, Metric: true},
 
-	// Reverse DNS (PTR) names of addresses without an Inventory DB host name.
+	// Reverse DNS (PTR) names of addresses without a Ledger host name.
 	{Name: "SrcHostPTR", Type: "LowCardinality(String)", Kind: KindString, Dimension: true, Reverse: "DstHostPTR"},
 	{Name: "DstHostPTR", Type: "LowCardinality(String)", Kind: KindString, Dimension: true, Reverse: "SrcHostPTR"},
 	// Threat intelligence: name of the blocklist containing the address ("" when none).

@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/access"
-	"github.com/sbrw-evc/network/app/backend/internal/bmp"
-	"github.com/sbrw-evc/network/app/backend/internal/httpx"
-	"github.com/sbrw-evc/network/app/backend/internal/setup"
-	"github.com/sbrw-evc/network/app/backend/internal/snmp"
+	"github.com/sbrw-evc/current/app/backend/internal/access"
+	"github.com/sbrw-evc/current/app/backend/internal/bmp"
+	"github.com/sbrw-evc/current/app/backend/internal/httpx"
+	"github.com/sbrw-evc/current/app/backend/internal/setup"
+	"github.com/sbrw-evc/current/app/backend/internal/snmp"
 )
 
 // Settings keys and reload topics of the gNMI and SNMP pollers and the BMP

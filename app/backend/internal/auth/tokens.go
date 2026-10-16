@@ -12,7 +12,7 @@ import (
 // lives in OpenBao at keys#tokens and is created on first use.
 
 const (
-	// TokenPrefix starts every Flow API token.
+	// TokenPrefix starts every Current API token.
 	TokenPrefix = "flow_"
 	tokenBytes  = 32
 	keyTokens   = "tokens"
@@ -23,7 +23,7 @@ const (
 // NewAPIToken returns a fresh token.
 func NewAPIToken() string { return RandomToken(TokenPrefix, tokenBytes) }
 
-// WellFormedToken reports whether s looks like a Flow API token.
+// WellFormedToken reports whether s looks like a Current API token.
 func WellFormedToken(s string) bool {
 	if len(s) != tokenLen || !strings.HasPrefix(s, TokenPrefix) {
 		return false

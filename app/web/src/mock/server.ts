@@ -117,13 +117,13 @@ function setupTest(step: string, b: Record<string, unknown>) {
       return { ok: true, details: { server: 'nats-server 2.11.4', jetstream: true } }
     case 'inventory':
       if (!b.token) return bad('401 Unauthorized: token is missing')
-      return { ok: true, details: { version: 'Inventory DB 1.8.0', devices: 214, prefixes: 1342, circuits: 38 } }
+      return { ok: true, details: { version: 'Ledger 1.8.0', devices: 214, prefixes: 1342, circuits: 38 } }
     case 'umbrella':
       if (!b.token) return bad('401 Unauthorized')
       return { ok: true, details: { connector: 'umbrella-flow', event: 'accepted (flow.setup.test)' } }
     case 'spa':
-      if (!str('connection_key').startsWith('spa1.')) return bad('this is not an SPA connection key (spa1.…): copy it again from SPA → Applications')
-      return { ok: true, details: { issuer: 'https://spa.example.net', application: 'Umbrella Flow', type: 'umbrella-flow', redirect_uri: `${str('public_url') || 'https://flow.example.net'}/api/auth/spa/callback` } }
+      if (!str('connection_key').startsWith('spa1.')) return bad('this is not a Keystone connection key (spa1.…): copy it again from Keystone → Applications')
+      return { ok: true, details: { issuer: 'https://spa.example.net', application: 'Current', type: 'umbrella-flow', redirect_uri: `${str('public_url') || 'https://flow.example.net'}/api/auth/spa/callback` } }
     case 'geoip': {
       const files = (b.databases as string[]) ?? []
       const wrong = files.find((f) => !f.endsWith('.mmdb'))
@@ -395,8 +395,8 @@ export async function handle(method: string, path: string, body: unknown): Promi
       return ok({ ok: true })
     }
   }
-  // Sign-in is SPA's: the mock says it is connected and signs in without leaving the page.
-  if (p === '/api/auth/spa') return ok({ connected: true, issuer: 'https://spa.example.net', application: 'Umbrella Flow', mock: true })
+  // Sign-in is Keystone's: the mock says it is connected and signs in without leaving the page.
+  if (p === '/api/auth/spa') return ok({ connected: true, issuer: 'https://spa.example.net', application: 'Current', mock: true })
   if (p === '/api/auth/spa/mock' && method === 'POST') {
     state.signedIn = true
     return ok({ ok: true })

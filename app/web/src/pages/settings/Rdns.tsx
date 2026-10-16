@@ -11,11 +11,11 @@ import { Banner, Button, Card, Field, Loading, Segmented, Stepper, Switch, Texta
 import { hitRatio, parseServers, validServer, type RdnsScope, type RdnsSettings, type RdnsView } from './RdnsModel'
 
 // Settings → Reverse DNS (docs/api.md, "Reverse DNS"): asynchronous PTR lookups by the enricher for
-// addresses that Inventory DB does not name; never blocks the pipeline.
+// addresses that Ledger does not name; never blocks the pipeline.
 
 const strings: Dict = {
   en: {
-    'rdns.sub': 'PTR names for addresses without an Inventory DB host name, resolved in the background into SrcHostPTR / DstHostPTR',
+    'rdns.sub': 'PTR names for addresses without a Ledger host name, resolved in the background into SrcHostPTR / DstHostPTR',
     'rdns.settings': 'Resolution',
     'rdns.enabled': 'Resolve addresses to names',
     'rdns.enabled.hint': 'Lookups never delay flows: the first flows of an address get an empty name, later ones the cached name.',
@@ -46,10 +46,10 @@ const strings: Dict = {
     'rdns.queued': 'Queued',
     'rdns.found': 'Found / not found / errors',
     'rdns.dropped': 'Dropped (queue full)',
-    'rdns.how': 'Inventory DB names win: only addresses Inventory DB does not know are resolved. Filter with SrcHostPTR LIKE \'%.example.net\'.',
+    'rdns.how': 'Ledger names win: only addresses Ledger does not know are resolved. Filter with SrcHostPTR LIKE \'%.example.net\'.',
   },
   ru: {
-    'rdns.sub': 'PTR-имена для адресов без имени в Inventory DB, в фоне записываются в SrcHostPTR / DstHostPTR',
+    'rdns.sub': 'PTR-имена для адресов без имени в Ledger, в фоне записываются в SrcHostPTR / DstHostPTR',
     'rdns.settings': 'Разрешение имён',
     'rdns.enabled': 'Разрешать адреса в имена',
     'rdns.enabled.hint': 'Запросы не задерживают потоки: первые потоки адреса получают пустое имя, следующие — имя из кэша.',
@@ -80,7 +80,7 @@ const strings: Dict = {
     'rdns.queued': 'В очереди',
     'rdns.found': 'Найдено / не найдено / ошибок',
     'rdns.dropped': 'Отброшено (очередь полна)',
-    'rdns.how': 'Имена из Inventory DB важнее: разрешаются только адреса, которых нет в Inventory DB. Фильтр: SrcHostPTR LIKE \'%.example.net\'.',
+    'rdns.how': 'Имена из Ledger важнее: разрешаются только адреса, которых нет в Ledger. Фильтр: SrcHostPTR LIKE \'%.example.net\'.',
   },
 }
 

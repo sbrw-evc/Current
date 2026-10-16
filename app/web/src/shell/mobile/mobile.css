@@ -1,4 +1,4 @@
-/* The phone layout, copied from Umbrella Monitoring (app/web/src/app/mobile/mobile.css): a top bar
+/* The phone layout, copied from Beacon (app/web/src/app/mobile/mobile.css): a top bar
    with the page title, the page, and a tab bar at the bottom. Colours come from the theme tokens,
    so light and dark need nothing of their own. Keep in sync. */
 
@@ -506,7 +506,7 @@
 
 /* Setup guides belong to the computer: setting up is not done from a phone. The title of a page
 
-/* Flow: the title of a page is already in the top bar; its actions stay. */
+/* Current: the title of a page is already in the top bar; its actions stay. */
 .m-shell .page-head > div:first-child {
   display: none;
 }
@@ -534,7 +534,7 @@
   font-size: 20px;
 }
 
-/* Tables become cards (as Umbrella's .cn-table): one row is one card, its cells flow and wrap,
+/* Tables become cards (as Beacon's .cn-table): one row is one card, its cells flow and wrap,
    each with the column name from data-label; the cell with the name of the row (.m-name) takes
    the whole first line. Only tables marked .m-cards; others keep scrolling sideways. */
 .m-shell .flush-card:has(.m-cards),
@@ -625,7 +625,7 @@
   background: none;
 }
 
-/* Flow: the sections of "More" better opened on a computer, under the groups of the menu. */
+/* Current: the sections of "More" better opened on a computer, under the groups of the menu. */
 .m-more-group {
   margin: 8px 12px 2px;
   font-size: 12px;

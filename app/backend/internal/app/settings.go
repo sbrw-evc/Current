@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/access"
-	"github.com/sbrw-evc/network/app/backend/internal/httpx"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/access"
+	"github.com/sbrw-evc/current/app/backend/internal/httpx"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
 )
 
 // ---- saved views
@@ -195,9 +195,9 @@ func (a *App) previewClassifiers(w http.ResponseWriter, r *http.Request, p *Prin
 	reply(w, out, err)
 }
 
-// ---- Inventory DB
+// ---- Ledger
 
-// Where the Inventory DB token lives in OpenBao.
+// Where the Ledger token lives in OpenBao.
 const (
 	inventorySecretPath = "inventory-db"
 	inventorySecretKey  = "token"
@@ -313,7 +313,7 @@ func (a *App) putInventory(w http.ResponseWriter, r *http.Request, p *Principal)
 		}
 	}
 	if c.Enabled && c.TokenRef == "" {
-		httpx.Error(w, http.StatusBadRequest, "token_required", "the Inventory DB token is required")
+		httpx.Error(w, http.StatusBadRequest, "token_required", "the Ledger token is required")
 		return
 	}
 	if err := a.st.SetInventoryDB(ctx, c); err != nil {
@@ -326,7 +326,7 @@ func (a *App) putInventory(w http.ResponseWriter, r *http.Request, p *Principal)
 	a.getInventory(w, r, p)
 }
 
-// InventoryConfig returns the stored Inventory DB connection with the token resolved.
+// InventoryConfig returns the stored Ledger connection with the token resolved.
 func (a *App) InventoryConfig(ctx context.Context) (InventoryConfig, bool, error) {
 	c, err := a.st.InventoryDB(ctx)
 	if err != nil {
@@ -335,7 +335,7 @@ func (a *App) InventoryConfig(ctx context.Context) (InventoryConfig, bool, error
 	out := InventoryConfig{URL: c.URL, Interval: c.Interval}
 	if c.TokenRef != "" {
 		if out.Token, err = a.secret(c.TokenRef); err != nil {
-			return out, c.Enabled, fmt.Errorf("Inventory DB token: %w", err)
+			return out, c.Enabled, fmt.Errorf("Ledger token: %w", err)
 		}
 	}
 	return out, c.Enabled, nil
@@ -343,7 +343,7 @@ func (a *App) InventoryConfig(ctx context.Context) (InventoryConfig, bool, error
 
 func (a *App) testInventory(w http.ResponseWriter, r *http.Request, p *Principal) {
 	if a.deps.Inventory == nil {
-		notImplemented(w, "Inventory DB")
+		notImplemented(w, "Ledger")
 		return
 	}
 	var in struct {
@@ -369,7 +369,7 @@ func (a *App) testInventory(w http.ResponseWriter, r *http.Request, p *Principal
 		cfg.Token = in.Token
 	}
 	if cfg.URL == "" {
-		httpx.Error(w, http.StatusBadRequest, "invalid_url", "the Inventory DB address is not set")
+		httpx.Error(w, http.StatusBadRequest, "invalid_url", "the Ledger address is not set")
 		return
 	}
 	tctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -385,14 +385,14 @@ func (a *App) testInventory(w http.ResponseWriter, r *http.Request, p *Principal
 // records the result. Only one runs at a time.
 func (a *App) SyncInventory(ctx context.Context) (store.SyncResult, error) {
 	if a.deps.Inventory == nil {
-		return store.SyncResult{}, errors.New("Inventory DB synchronization is not available")
+		return store.SyncResult{}, errors.New("Ledger synchronization is not available")
 	}
 	a.syncMu.Lock()
 	defer a.syncMu.Unlock()
 	cfg, _, err := a.InventoryConfig(ctx)
 	res := store.SyncResult{At: time.Now().UTC()}
 	if err == nil && cfg.URL == "" {
-		err = errors.New("the Inventory DB address is not set")
+		err = errors.New("the Ledger address is not set")
 	}
 	if err == nil {
 		res.SyncStats, err = a.deps.Inventory.Sync(ctx, cfg)
@@ -409,7 +409,7 @@ func (a *App) SyncInventory(ctx context.Context) (store.SyncResult, error) {
 
 func (a *App) syncInventory(w http.ResponseWriter, r *http.Request, p *Principal) {
 	if a.deps.Inventory == nil {
-		notImplemented(w, "Inventory DB")
+		notImplemented(w, "Ledger")
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
@@ -445,7 +445,7 @@ func (a *App) runInventorySchedule(ctx context.Context) {
 
 func (a *App) unknownInventory(w http.ResponseWriter, r *http.Request, p *Principal) {
 	if a.deps.Inventory == nil {
-		notImplemented(w, "Inventory DB")
+		notImplemented(w, "Ledger")
 		return
 	}
 	out, err := a.deps.Inventory.Unknown(r.Context())

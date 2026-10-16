@@ -4,7 +4,7 @@ import { animate } from 'motion/react'
 import type { Theme } from './api/types'
 import { reducedMotion, viewTransition, type Origin } from './lib/fx'
 
-// The theme, as in Umbrella: data-theme on <html>, kept in localStorage, switched with a circular
+// The theme, as in Beacon: data-theme on <html>, kept in localStorage, switched with a circular
 // reveal from the control that changed it.
 const KEY = 'flow.theme'
 

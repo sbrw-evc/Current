@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/sbrw-evc/network/app/backend/internal/snmp"
+	"github.com/sbrw-evc/current/app/backend/internal/snmp"
 )
 
 func TestMergeSNMPProfile(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 
 	"github.com/netsampler/goflow2/v2/decoders/sflow"
 
-	"github.com/sbrw-evc/network/app/backend/internal/flow"
+	"github.com/sbrw-evc/current/app/backend/internal/flow"
 )
 
 // sFlow sampled_header protocols we can parse.

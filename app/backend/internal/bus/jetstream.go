@@ -12,7 +12,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/sbrw-evc/network/app/backend/internal/flow"
+	"github.com/sbrw-evc/current/app/backend/internal/flow"
 )
 
 // JetStreamConfig configures the NATS JetStream bus.
@@ -105,7 +105,7 @@ func NewJetStream(ctx context.Context, cfg JetStreamConfig, reg prometheus.Regis
 	}
 	log = log.With("component", "bus", "bus", "jetstream")
 	opts := append([]nats.Option{
-		nats.Name("umbrella-flow"),
+		nats.Name("current"),
 		nats.MaxReconnects(-1),
 		nats.DisconnectErrHandler(func(_ *nats.Conn, err error) {
 			if err != nil {
@@ -134,7 +134,7 @@ func NewJetStream(ctx context.Context, cfg JetStreamConfig, reg prometheus.Regis
 func (b *JetStream) ensureStream(ctx context.Context) error {
 	sc := jetstream.StreamConfig{
 		Name:        b.cfg.Stream,
-		Description: "Umbrella Flow: decoded flow batches from collectors",
+		Description: "Current: decoded flow batches from collectors",
 		Subjects:    []string{b.cfg.Subject},
 		Retention:   jetstream.LimitsPolicy,
 		Discard:     jetstream.DiscardOld,
@@ -191,7 +191,7 @@ func (b *JetStream) Put(ctx context.Context, flows []*flow.Flow) error {
 func (b *JetStream) Consume(ctx context.Context, sink flow.Sink) error {
 	cons, err := b.js.CreateOrUpdateConsumer(ctx, b.cfg.Stream, jetstream.ConsumerConfig{
 		Durable:       b.cfg.Durable,
-		Description:   "Umbrella Flow enricher",
+		Description:   "Current enricher",
 		FilterSubject: b.cfg.Subject,
 		AckPolicy:     jetstream.AckExplicitPolicy,
 		AckWait:       b.cfg.AckWait,

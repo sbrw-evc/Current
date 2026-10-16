@@ -10,9 +10,9 @@ export type Retention = { raw_days: number; d1m: number; d5m: number; d1h: numbe
 export type Nats = { url: string }
 export type Collector = { netflow_addr: string; sflow_addr: string; default_sampling_rate: number }
 export type Inventory = { enabled: boolean; url: string; token: string; interval: string }
-export type Umbrella = { enabled: boolean; ingest_url: string; token: string }
+export type Beacon = { enabled: boolean; ingest_url: string; token: string }
 export type GeoIP = { databases: string[] }
-// Spa: the connection key SPA shows (spa1.…); optional when the deployment gives SPA_CONNECTION_KEY.
+// Spa: the connection key Keystone shows (spa1.…); optional when the deployment gives SPA_CONNECTION_KEY.
 export type Spa = { connection_key: string }
 
 export type SetupDefaults = {
@@ -43,7 +43,7 @@ export type SetupBody = {
   nats: Nats
   collector: Collector
   inventory: Partial<Inventory>
-  umbrella: Partial<Umbrella>
+  umbrella: Partial<Beacon>
   geoip: GeoIP
   spa?: Spa
 }

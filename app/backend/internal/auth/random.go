@@ -1,6 +1,6 @@
 // Package auth holds sign-in sessions persisted in PostgreSQL, CSRF tokens,
 // API tokens and the keys (in OpenBao) they are derived with. People sign in
-// through SPA (internal/spa); Flow keeps no passwords.
+// through Keystone (internal/keystone); Current keeps no passwords.
 package auth
 
 import (

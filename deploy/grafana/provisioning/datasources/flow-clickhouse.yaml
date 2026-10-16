@@ -1,10 +1,10 @@
-# Umbrella Flow: the ClickHouse datasource of the "CI traffic" dashboard
+# Current: the ClickHouse datasource of the "CI traffic" dashboard
 # (grafana-clickhouse-datasource, uid flow-clickhouse). The read-only ClickHouse
-# user "grafana" is created by deploy/flow/clickhouse/users.d/grafana.xml.
+# user "grafana" is created by deploy/current/clickhouse/users.d/grafana.xml.
 apiVersion: 1
 
 datasources:
-  - name: Flow ClickHouse
+  - name: Current ClickHouse
     uid: flow-clickhouse
     type: grafana-clickhouse-datasource
     editable: false

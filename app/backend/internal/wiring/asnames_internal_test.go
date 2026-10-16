@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/sbrw-evc/network/app/backend/internal/query"
-	chstore "github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse"
-	"github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse/chtest"
+	"github.com/sbrw-evc/current/app/backend/internal/query"
+	chstore "github.com/sbrw-evc/current/app/backend/internal/storage/clickhouse"
+	"github.com/sbrw-evc/current/app/backend/internal/storage/clickhouse/chtest"
 )
 
 // TestASNamesAcrossProcesses: names learned by the enricher's GeoIP are

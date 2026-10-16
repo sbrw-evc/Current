@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	chstore "github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse"
+	chstore "github.com/sbrw-evc/current/app/backend/internal/storage/clickhouse"
 )
 
 func TestNormalize(t *testing.T) {

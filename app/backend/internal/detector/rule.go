@@ -1,7 +1,7 @@
 // Package detector evaluates traffic rules on the flows stored in ClickHouse
 // (link utilization and commit, DDoS, anomalies and drops against weekly
 // baselines, silent exporters) and sends firing / resolved events to the
-// Umbrella connector built from the network-flow preset (docs/plan.md §4.3).
+// Beacon connector built from the network-flow preset (docs/plan.md §4.3).
 package detector
 
 import (
@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/filter"
-	"github.com/sbrw-evc/network/app/backend/internal/schema"
+	"github.com/sbrw-evc/current/app/backend/internal/filter"
+	"github.com/sbrw-evc/current/app/backend/internal/schema"
 )
 
 // Kind is what a rule measures.
@@ -48,7 +48,7 @@ var kindSignals = map[Kind]struct{ signal, method string }{
 	KindExporterSilent:  {"use.exporter.silent", "USE"},
 }
 
-// Severities accepted by Umbrella (P1 … P5).
+// Severities accepted by Beacon (P1 … P5).
 var Severities = []string{"critical", "error", "warning", "low", "info"}
 
 // Duration is a time.Duration that reads and writes JSON as "5m" (a number

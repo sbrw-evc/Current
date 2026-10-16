@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/schema"
-	chstore "github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse"
+	"github.com/sbrw-evc/current/app/backend/internal/schema"
+	chstore "github.com/sbrw-evc/current/app/backend/internal/storage/clickhouse"
 )
 
 // l2Overhead is the Ethernet overhead added per packet for L2 units:

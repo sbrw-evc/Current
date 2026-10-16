@@ -10,8 +10,8 @@ import { useCandidates, usePlatforms } from './api'
 import { credentialFields, draftOf, emptyDraft, fromCandidate, inputOf, validateDraft, type Device, type DeviceDraft, type TestResult } from './model'
 import { devicesStrings } from './strings'
 
-// DeviceForm adds or edits a device. With Inventory DB connected a new device is picked from the
-// Inventory DB devices not managed yet, and a bound device's name, site and role are read-only.
+// DeviceForm adds or edits a device. With Ledger connected a new device is picked from the
+// Ledger devices not managed yet, and a bound device's name, site and role are read-only.
 export function DeviceForm({ open, onClose, device, inventory, prefill, onSaved }: { open: boolean; onClose: () => void; device?: Device; inventory: boolean; prefill?: Partial<DeviceDraft>; onSaved?: (d: Device) => void }) {
   const t = useT(devicesStrings)
   const qc = useQueryClient()

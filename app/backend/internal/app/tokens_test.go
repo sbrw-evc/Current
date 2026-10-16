@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/access"
+	"github.com/sbrw-evc/current/app/backend/internal/access"
 )
 
 // bearer calls the API with an API token (no cookies, no CSRF).
@@ -46,12 +46,12 @@ func TestAPITokens(t *testing.T) {
 	if code, _ := viewer.do("GET", "/api/tokens", nil); code != 403 {
 		t.Fatal("viewer lists tokens", code)
 	}
-	code, sa := admin.do("POST", "/api/service-accounts", map[string]any{"name": "inventory-db", "description": "Inventory DB integration", "role_id": viewerRole.ID})
+	code, sa := admin.do("POST", "/api/service-accounts", map[string]any{"name": "ledger", "description": "Ledger integration", "role_id": viewerRole.ID})
 	if code != 201 || sa["role"] != access.RoleViewer || sa["created_by"] != "admin" {
 		t.Fatal(code, sa)
 	}
 	saID := sa["id"]
-	if code, out := admin.do("POST", "/api/service-accounts", map[string]any{"name": "Inventory-DB", "role_id": viewerRole.ID}); code != 409 {
+	if code, out := admin.do("POST", "/api/service-accounts", map[string]any{"name": "Ledger", "role_id": viewerRole.ID}); code != 409 {
 		t.Fatal("duplicate name", code, out)
 	}
 	if code, out := admin.do("POST", "/api/service-accounts", map[string]any{"name": "bad name", "role_id": viewerRole.ID}); code != 400 {
@@ -88,7 +88,7 @@ func TestAPITokens(t *testing.T) {
 	if code, out := e.bearer(plain, "POST", "/api/visualize", map[string]any{"limit": 1}); code != 200 {
 		t.Fatal(code, out)
 	}
-	if code, out := e.bearer(plain, "GET", "/api/auth/me", nil); code != 200 || out["user"].(map[string]any)["username"] != "service:inventory-db" {
+	if code, out := e.bearer(plain, "GET", "/api/auth/me", nil); code != 200 || out["user"].(map[string]any)["username"] != "service:ledger" {
 		t.Fatal(code, out)
 	}
 	if code, _ := e.bearer(plain, "GET", "/api/users", nil); code != 403 {

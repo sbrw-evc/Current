@@ -15,18 +15,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/access"
-	"github.com/sbrw-evc/network/app/backend/internal/httpx"
-	"github.com/sbrw-evc/network/app/backend/internal/setup"
+	"github.com/sbrw-evc/current/app/backend/internal/access"
+	"github.com/sbrw-evc/current/app/backend/internal/httpx"
+	"github.com/sbrw-evc/current/app/backend/internal/setup"
 )
 
-// Flow's side of the Flow ↔ Inventory DB contract (docs/integrations.md §2):
+// Current's side of the Current ↔ Ledger contract (docs/integrations.md §2):
 //
 //   - GET  /api/integrations/inventory-db/status            traffic of DCIM objects (token with integrations.inventory:read)
 //   - GET  /api/integrations/inventory-db/prefix-addresses  addresses seen inside a prefix
 //   - POST /api/integrations/inventory-db/hook              change notifications, HMAC-signed, no session
 //   - GET|PUT /api/inventory-db/integration                 hook secret and editor token (write-only, OpenBao)
-//   - POST /api/inventory-db/unknown/create                 "Create in Inventory DB" from the Unknown lists
+//   - POST /api/inventory-db/unknown/create                 "Create in Ledger" from the Unknown lists
 
 // InventoryIntegration implements the traffic side of the integration
 // (internal/wiring). A nil dependency makes the endpoints answer 501.
@@ -36,11 +36,11 @@ type InventoryIntegration interface {
 	Status(ctx context.Context, objectType string, ids []int, window time.Duration, windowText string) (any, error)
 	// PrefixAddresses → {"prefix", "results": [{address, bytes, flows, last_seen, in_ipam}]}.
 	PrefixAddresses(ctx context.Context, prefix netip.Prefix, vrf string, window time.Duration) (any, error)
-	// RequestSync schedules an early Inventory DB synchronization (debounced)
+	// RequestSync schedules an early Ledger synchronization (debounced)
 	// in this process and in the enricher / detector processes.
 	RequestSync()
-	// CreateAddress creates addr as an IPAM address in Inventory DB with an
-	// editor token; the result is Inventory DB's object (at least id, address).
+	// CreateAddress creates addr as an IPAM address in Ledger with an
+	// editor token; the result is Ledger's object (at least id, address).
 	CreateAddress(ctx context.Context, url, token string, addr netip.Addr) (any, error)
 }
 
@@ -57,7 +57,7 @@ const (
 	inventoryStatusMaxWindow = 31 * 24 * time.Hour
 )
 
-// Headers of the change-notification hook (as Inventory DB's Umbrella webhook).
+// Headers of the change-notification hook (as Ledger's Beacon webhook).
 const (
 	InventoryTimestampHeader = "X-Inventory-Timestamp"
 	InventorySignatureHeader = "X-Inventory-Signature"
@@ -105,7 +105,7 @@ func windowParam(r *http.Request) (time.Duration, string, error) {
 
 func (a *App) inventoryStatus(w http.ResponseWriter, r *http.Request, p *Principal) {
 	if a.deps.InventoryIntegration == nil {
-		notImplemented(w, "Inventory DB integration")
+		notImplemented(w, "Ledger integration")
 		return
 	}
 	q := r.URL.Query()
@@ -143,7 +143,7 @@ func (a *App) inventoryStatus(w http.ResponseWriter, r *http.Request, p *Princip
 
 func (a *App) inventoryPrefixAddresses(w http.ResponseWriter, r *http.Request, p *Principal) {
 	if a.deps.InventoryIntegration == nil {
-		notImplemented(w, "Inventory DB integration")
+		notImplemented(w, "Ledger integration")
 		return
 	}
 	q := r.URL.Query()
@@ -202,12 +202,12 @@ func VerifyInventorySignature(secret, timestamp, signature string, body []byte, 
 	return errors.New("signature mismatch")
 }
 
-// inventoryHook receives Inventory DB change notifications (§2.2): 401 on
+// inventoryHook receives Ledger change notifications (§2.2): 401 on
 // any verification failure, else 202 and an early (debounced) sync.
 func (a *App) inventoryHook(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	unauthorized := func(reason string) {
-		slog.Warn("Inventory DB hook rejected", "reason", reason, "remote", httpx.ClientIP(r, a.opt.TrustedProxies))
+		slog.Warn("Ledger hook rejected", "reason", reason, "remote", httpx.ClientIP(r, a.opt.TrustedProxies))
 		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "invalid or missing hook signature")
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, inventoryHookMaxBody+1))
@@ -226,7 +226,7 @@ func (a *App) inventoryHook(w http.ResponseWriter, r *http.Request) {
 	}
 	secret, err := a.secret(c.HookSecretRef)
 	if err != nil {
-		slog.Error("Inventory DB hook secret not readable", "err", err)
+		slog.Error("Ledger hook secret not readable", "err", err)
 		unauthorized("hook secret not readable")
 		return
 	}
@@ -247,15 +247,15 @@ func (a *App) inventoryHook(w http.ResponseWriter, r *http.Request) {
 	} else {
 		a.reload(ctx, ReloadInventory)
 	}
-	slog.Debug("Inventory DB hook accepted", "integration", in.IntegrationID, "events", len(in.Events))
+	slog.Debug("Ledger hook accepted", "integration", in.IntegrationID, "events", len(in.Events))
 	httpx.JSON(w, http.StatusAccepted, map[string]any{"accepted": len(in.Events)})
 }
 
 type inventoryIntegrationView struct {
 	HookSecretSet bool   `json:"hook_secret_set"`
 	WriteTokenSet bool   `json:"write_token_set"`
-	HookURL       string `json:"hook_url"`      // to enter in Inventory DB's flow integration
-	InventoryURL  string `json:"inventory_url"` // Inventory DB address (links to its UI)
+	HookURL       string `json:"hook_url"`      // to enter in Ledger's flow integration
+	InventoryURL  string `json:"inventory_url"` // Ledger address (links to its UI)
 }
 
 func (a *App) getInventoryIntegration(w http.ResponseWriter, r *http.Request, p *Principal) {
@@ -320,7 +320,7 @@ func (a *App) putInventoryIntegration(w http.ResponseWriter, r *http.Request, p 
 
 func (a *App) createUnknownAddress(w http.ResponseWriter, r *http.Request, p *Principal) {
 	if a.deps.InventoryIntegration == nil {
-		notImplemented(w, "Inventory DB integration")
+		notImplemented(w, "Ledger integration")
 		return
 	}
 	var in struct {
@@ -342,7 +342,7 @@ func (a *App) createUnknownAddress(w http.ResponseWriter, r *http.Request, p *Pr
 		return
 	}
 	if c.WriteTokenRef == "" {
-		httpx.Error(w, http.StatusConflict, "write_token_required", "no Inventory DB editor token is configured")
+		httpx.Error(w, http.StatusConflict, "write_token_required", "no Ledger editor token is configured")
 		return
 	}
 	conn, err := a.st.InventoryDB(ctx)
@@ -351,7 +351,7 @@ func (a *App) createUnknownAddress(w http.ResponseWriter, r *http.Request, p *Pr
 		return
 	}
 	if conn.URL == "" {
-		httpx.Error(w, http.StatusConflict, "inventory_not_configured", "the Inventory DB address is not set")
+		httpx.Error(w, http.StatusConflict, "inventory_not_configured", "the Ledger address is not set")
 		return
 	}
 	token, err := a.secret(c.WriteTokenRef)

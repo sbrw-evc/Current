@@ -5,7 +5,7 @@ import { useT } from '../i18n'
 import { navStrings } from './strings'
 import { useSession } from './session'
 
-// Page: Umbrella's page column with a PageHead (22px title, muted subtitle, actions on the right).
+// Page: Beacon's page column with a PageHead (22px title, muted subtitle, actions on the right).
 export function Page({ id, title, subtitle, actions, wide, children }: { id: string; title?: string; subtitle?: ReactNode; actions?: ReactNode; wide?: boolean; children: ReactNode }) {
   const t = useT(navStrings)
   return (

@@ -216,7 +216,7 @@ var Platforms = []*Platform{
 	snmpPlatform("snmp", "", "Any device (SNMP v1 / v2c / v3)", "any", "other", "Standard MIBs: interfaces, LLDP, ARP, MAC table"),
 	{Key: "gnmi", Vendor: "", Title: "Any device (gNMI, OpenConfig)", Segment: "enterprise", Kind: "other",
 		Transports: []Transport{{"gnmi", 0}}, Credentials: []string{}, native: "gnmi",
-		Hint:    "Interfaces over gNMI with the gNMI profile of Flow that covers the address (Settings → Interface names)",
+		Hint:    "Interfaces over gNMI with the gNMI profile of Current that covers the address (Settings → Interface names)",
 		factory: func(t Target, c Credentials, v string) Driver { return NewGNMI(t, c, v) }, caps: fixed(nil)},
 }
 
@@ -238,7 +238,7 @@ func Lookup(key string) (*Platform, error) {
 
 // ---------------- gNMI ----------------
 
-// GNMIDriver reads OpenConfig interfaces through Flow's gNMI profiles.
+// GNMIDriver reads OpenConfig interfaces through Current's gNMI profiles.
 type GNMIDriver struct{ base }
 
 // NewGNMI returns the driver.
@@ -249,7 +249,7 @@ func NewGNMI(t Target, c Credentials, vendor string) *GNMIDriver {
 // Collect implements Driver.
 func (d *GNMIDriver) Collect(ctx context.Context) (*Snapshot, error) {
 	if d.c.GNMI == nil {
-		return nil, Errorf("%s: no gNMI profile of Flow covers this address (Settings → Interface names → gNMI)", d.t.Host)
+		return nil, Errorf("%s: no gNMI profile of Current covers this address (Settings → Interface names → gNMI)", d.t.Host)
 	}
 	ifs, err := d.c.GNMI(ctx)
 	if err != nil {

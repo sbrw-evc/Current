@@ -17,7 +17,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/sbrw-evc/network/app/backend/internal/bmp"
+	"github.com/sbrw-evc/current/app/backend/internal/bmp"
 )
 
 // startNATS runs a throwaway JetStream nats-server (NATS_SERVER_BIN, default

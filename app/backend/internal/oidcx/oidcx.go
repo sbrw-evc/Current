@@ -1,7 +1,7 @@
-// Package oidcx is the OpenID Connect relying party used by the SPA client
-// (internal/spa): discovery, the authorization code flow with PKCE S256, ID
+// Package oidcx is the OpenID Connect relying party used by the Keystone client
+// (internal/keystone): discovery, the authorization code flow with PKCE S256, ID
 // token verification (RS256, keys from the issuer's JWKS) and JWT signing for
-// the fake SPA of the tests.
+// the fake Keystone of the tests.
 package oidcx
 
 import (
@@ -410,7 +410,7 @@ func VerifySignature(alg string, key crypto.PublicKey, signed, sig string) error
 }
 
 // Sign makes a JWT signed with an RSA (RS256) or P-256 (ES256) key (the fake
-// SPA of the tests).
+// Keystone of the tests).
 func Sign(key crypto.Signer, kid string, claims any) (string, error) {
 	alg := "RS256"
 	if _, ok := key.(*ecdsa.PrivateKey); ok {

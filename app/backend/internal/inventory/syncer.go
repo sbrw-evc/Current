@@ -92,7 +92,7 @@ func (s *Syncer) Sync(ctx context.Context) (Stats, error) {
 	return st, nil
 }
 
-// Invalidate asks the running loop for an early sync (e.g. on an Inventory DB
+// Invalidate asks the running loop for an early sync (e.g. on a Ledger
 // webhook). It never blocks.
 func (s *Syncer) Invalidate() {
 	select {

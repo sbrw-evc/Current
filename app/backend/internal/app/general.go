@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/config"
-	"github.com/sbrw-evc/network/app/backend/internal/httpx"
-	"github.com/sbrw-evc/network/app/backend/internal/secrets"
-	"github.com/sbrw-evc/network/app/backend/internal/setup"
+	"github.com/sbrw-evc/current/app/backend/internal/config"
+	"github.com/sbrw-evc/current/app/backend/internal/httpx"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets"
+	"github.com/sbrw-evc/current/app/backend/internal/setup"
 )
 
 // ---- general settings (language, theme, time zone, address, GeoIP)
@@ -100,7 +100,7 @@ func (a *App) testGeoIP(w http.ResponseWriter, r *http.Request, p *Principal) {
 	httpx.JSON(w, http.StatusOK, setup.CheckGeoIP(in.Databases))
 }
 
-// ---- Umbrella connection (events of the detector go there)
+// ---- Beacon connection (events of the detector go there)
 
 func (a *App) loadUmbrella(ctx context.Context) (setup.UmbrellaSettings, error) {
 	var u setup.UmbrellaSettings

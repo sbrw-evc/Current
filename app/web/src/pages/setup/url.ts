@@ -1,4 +1,4 @@
-// publicURLOk: the public address of Flow (optional) is an http(s) address without a query.
+// publicURLOk: the public address of Current (optional) is an http(s) address without a query.
 export function publicURLOk(v: string) {
   const s = v.trim()
   if (s === '') return true
@@ -10,7 +10,7 @@ export function publicURLOk(v: string) {
   }
 }
 
-// spaKeyOk: an SPA connection key looks like spa1.<base64url JSON>.
+// spaKeyOk: a Keystone connection key looks like spa1.<base64url JSON>.
 export function spaKeyOk(v: string) {
   return /^spa1\.[A-Za-z0-9_-]{20,}={0,2}$/.test(v.trim())
 }

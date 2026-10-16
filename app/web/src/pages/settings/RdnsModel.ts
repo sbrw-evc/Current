@@ -1,5 +1,5 @@
 // Reverse DNS settings (docs/api.md, "Reverse DNS"): asynchronous PTR lookups in the enricher for
-// addresses without an Inventory DB host name; results go to SrcHostPTR / DstHostPTR.
+// addresses without a Ledger host name; results go to SrcHostPTR / DstHostPTR.
 
 export type RdnsScope = 'all' | 'private' | 'public'
 

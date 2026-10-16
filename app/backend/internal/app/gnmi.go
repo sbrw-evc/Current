@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/gnmi"
-	"github.com/sbrw-evc/network/app/backend/internal/httpx"
-	"github.com/sbrw-evc/network/app/backend/internal/setup"
+	"github.com/sbrw-evc/current/app/backend/internal/gnmi"
+	"github.com/sbrw-evc/current/app/backend/internal/httpx"
+	"github.com/sbrw-evc/current/app/backend/internal/setup"
 )
 
 // ---- gNMI (routes in routing.go)

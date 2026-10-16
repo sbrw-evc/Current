@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/sbrw-evc/network/app/backend/internal/app"
-	"github.com/sbrw-evc/network/app/backend/internal/collector"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/app"
+	"github.com/sbrw-evc/current/app/backend/internal/collector"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
 )
 
 // Collector adapts the collector for the API: sampling override reloads and

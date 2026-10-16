@@ -1,4 +1,4 @@
-// Controls in Umbrella's look (adapted from Umbrella Monitoring app/web/src/ui.tsx).
+// Controls in Beacon's look (adapted from Beacon app/web/src/ui.tsx).
 import { useEffect, useId, useRef, useState, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from 'react'
 import { AlertTriangle, CheckCircle2, Eye, EyeOff, Info, Loader2, Minus, Moon, Plus, Sun, X, XCircle } from 'lucide-react'
 import { AnimatePresence, motion, type HTMLMotionProps, type Transition } from 'motion/react'

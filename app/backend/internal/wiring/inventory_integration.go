@@ -17,16 +17,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/app"
-	"github.com/sbrw-evc/network/app/backend/internal/httpx"
-	"github.com/sbrw-evc/network/app/backend/internal/inventory"
-	"github.com/sbrw-evc/network/app/backend/internal/query"
-	"github.com/sbrw-evc/network/app/backend/internal/secrets"
-	"github.com/sbrw-evc/network/app/backend/internal/setup"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/app"
+	"github.com/sbrw-evc/current/app/backend/internal/httpx"
+	"github.com/sbrw-evc/current/app/backend/internal/inventory"
+	"github.com/sbrw-evc/current/app/backend/internal/query"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets"
+	"github.com/sbrw-evc/current/app/backend/internal/setup"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
 )
 
-// Debounce of early synchronizations requested by Inventory DB hooks
+// Debounce of early synchronizations requested by Ledger hooks
 // (variables for tests).
 var (
 	HookSyncDelay = 5 * time.Second  // coalesces a burst of notifications
@@ -34,13 +34,13 @@ var (
 )
 
 // InventoryIntegration implements app.InventoryIntegration (docs/integrations.md
-// §2): traffic of Inventory DB objects and of prefixes from ClickHouse,
-// resolved against the Inventory DB snapshot, early syncs on hooks and
-// "Create in Inventory DB".
+// §2): traffic of Ledger objects and of prefixes from ClickHouse,
+// resolved against the Ledger snapshot, early syncs on hooks and
+// "Create in Ledger".
 type InventoryIntegration struct {
 	// Q runs the ClickHouse queries; nil answers 503 for the traffic endpoints.
 	Q *query.Querier
-	// Snapshot returns the current Inventory DB snapshot (never nil).
+	// Snapshot returns the current Ledger snapshot (never nil).
 	Snapshot func(ctx context.Context) *inventory.Snapshot
 	// Store holds the general settings (public URL) and the sync request
 	// that the Inventory loops of other processes follow.
@@ -48,7 +48,7 @@ type InventoryIntegration struct {
 	// Wake asks the Inventory loops of this process for a sync now (they
 	// sync when the request in Store is newer than their last sync).
 	Wake []func()
-	// HTTP is the client for Inventory DB writes (default: 30 s timeout).
+	// HTTP is the client for Ledger writes (default: 30 s timeout).
 	HTTP *http.Client
 	Log  *slog.Logger
 
@@ -76,7 +76,7 @@ func NewInventoryIntegration(q *query.Querier, st *store.Store, vault secrets.Re
 	return ii
 }
 
-// lazySnapshot loads the Inventory DB snapshot on first use and refreshes it
+// lazySnapshot loads the Ledger snapshot on first use and refreshes it
 // in the background (on its interval, a settings change or a sync request)
 // at most once a minute, for processes without an Inventory loop.
 type lazySnapshot struct {
@@ -101,7 +101,7 @@ func (l *lazySnapshot) get(ctx context.Context) *inventory.Snapshot {
 		tctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
 		defer cancel()
 		if err := l.inv.tick(tctx); err != nil {
-			l.inv.log.Warn("Inventory DB snapshot not loaded", "err", err)
+			l.inv.log.Warn("Ledger snapshot not loaded", "err", err)
 		}
 		l.mu.Lock()
 		l.running = false
@@ -148,7 +148,7 @@ func (ii *InventoryIntegration) fireSync() {
 		err := ii.Store.PutSetting(ctx, SettingInventorySyncRequest, syncRequest{At: time.Now().UTC()})
 		cancel()
 		if err != nil {
-			ii.log().Warn("Inventory DB sync request not recorded", "err", err)
+			ii.log().Warn("Ledger sync request not recorded", "err", err)
 		}
 	}
 	for _, w := range ii.Wake {
@@ -372,13 +372,13 @@ func (ii *InventoryIntegration) PrefixAddresses(ctx context.Context, prefix neti
 }
 
 // CreateAddress implements app.InventoryIntegration: POST
-// /api/v1/ipam/ip-addresses/ on Inventory DB with the editor token.
+// /api/v1/ipam/ip-addresses/ on Ledger with the editor token.
 func (ii *InventoryIntegration) CreateAddress(ctx context.Context, baseURL, token string, addr netip.Addr) (any, error) {
 	addr = addr.Unmap()
 	body, _ := json.Marshal(map[string]any{
 		"address":     netip.PrefixFrom(addr, addr.BitLen()).String(),
 		"status":      "active",
-		"description": "Discovered by Umbrella Flow",
+		"description": "Discovered by Current",
 		"tags":        []string{},
 	})
 	url := strings.TrimRight(baseURL, "/")
@@ -396,7 +396,7 @@ func (ii *InventoryIntegration) CreateAddress(ctx context.Context, baseURL, toke
 	}
 	resp, err := c.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("Inventory DB: %w", err)
+		return nil, fmt.Errorf("Ledger: %w", err)
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
@@ -423,7 +423,7 @@ func (ii *InventoryIntegration) CreateAddress(ctx context.Context, baseURL, toke
 			code = "inventory_forbidden"
 		}
 		return nil, &httpx.HTTPError{Status: status, Code: code,
-			Msg: fmt.Sprintf("Inventory DB answered %d: %s", resp.StatusCode, msg), Err: errors.New(msg)}
+			Msg: fmt.Sprintf("Ledger answered %d: %s", resp.StatusCode, msg), Err: errors.New(msg)}
 	}
 	var obj map[string]any
 	if err := json.Unmarshal(raw, &obj); err != nil {

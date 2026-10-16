@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/devices/drivers"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/devices/drivers"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
 )
 
 // The network map, built from what the devices report: LLDP / CDP / MNDP
@@ -36,7 +36,7 @@ type Node struct {
 	Error         string     `json:"error,omitempty"`
 	Controller    string     `json:"controller,omitempty"` // child: the controller node
 	Version       string     `json:"version,omitempty"`
-	PlatformGuess string     `json:"platform_guess,omitempty"` // neighbour: a Flow platform key
+	PlatformGuess string     `json:"platform_guess,omitempty"` // neighbour: a Current platform key
 	Hostname      string     `json:"hostname,omitempty"`
 	Alias         string     `json:"alias,omitempty"`
 	SSID          string     `json:"ssid,omitempty"`

@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/flow"
-	"github.com/sbrw-evc/network/app/backend/internal/query"
-	chstore "github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse"
-	"github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse/chtest"
+	"github.com/sbrw-evc/current/app/backend/internal/flow"
+	"github.com/sbrw-evc/current/app/backend/internal/query"
+	chstore "github.com/sbrw-evc/current/app/backend/internal/storage/clickhouse"
+	"github.com/sbrw-evc/current/app/backend/internal/storage/clickhouse/chtest"
 )
 
 // TestScopeClickHouse runs every read path of the API through ScopedConn
@@ -167,7 +167,7 @@ func TestScopeClickHouse(t *testing.T) {
 	if ex, err := q.Exporters(sctx, 0); err != nil || len(ex.Results) != 1 {
 		t.Fatalf("exporters: %v %+v", err, ex)
 	}
-	// Inventory DB status and prefix addresses.
+	// Ledger status and prefix addresses.
 	ot, err := q.ObjectTraffic(sctx, query.ObjectTrafficRequest{Type: query.ObjectDevice, Targets: []query.ObjectTarget{{ID: "2", Ref: edge}}})
 	if err != nil {
 		t.Fatal("object traffic:", err)

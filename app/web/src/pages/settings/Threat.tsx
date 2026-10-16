@@ -11,15 +11,15 @@ import { Banner, Button, Card, Chip, Field, formatDate, Input, Loading, Rows, St
 import { listState, parseExclude, statusFor, validateLists, validPrefix, type ThreatList, type ThreatSettings, type ThreatView } from './ThreatModel'
 
 // Settings → Threat intelligence (docs/api.md, "Threat intelligence"): public IP blocklists that the
-// enricher downloads at run time (never shipped with Flow); flows to or from a listed address get
+// enricher downloads at run time (never shipped with Current); flows to or from a listed address get
 // SrcThreat / DstThreat, and the detector rule threat_contact raises sec.threat.contact.
 
 const strings: Dict = {
   en: {
-    'thr.sub': 'Public IP blocklists checked against every flow; a contact with a listed address raises sec.threat.contact in Umbrella',
+    'thr.sub': 'Public IP blocklists checked against every flow; a contact with a listed address raises sec.threat.contact in Beacon',
     'thr.lists': 'Threat lists',
     'thr.enabled': 'Check flows against threat lists',
-    'thr.enabled.hint': 'Lists are downloaded by the enricher under their own terms of use; nothing is stored in Flow itself.',
+    'thr.enabled.hint': 'Lists are downloaded by the enricher under their own terms of use; nothing is stored in Current itself.',
     'thr.col.list': 'List',
     'thr.col.state': 'State',
     'thr.col.prefixes': 'Prefixes',
@@ -49,17 +49,17 @@ const strings: Dict = {
     'thr.status.none': 'The lists have not been downloaded yet: the enricher fetches them on start and on every interval.',
     'thr.status.requested': 'Refresh requested',
     'thr.how': 'How it is used',
-    'thr.how.text': 'Flow columns SrcThreat and DstThreat hold the name of the list (empty when none). Filter with DstThreat != \'\'. The detector rule "Contact with a threat list address" raises sec.threat.contact (RED, severity error by default) on the internal host.',
+    'thr.how.text': 'Current columns SrcThreat and DstThreat hold the name of the list (empty when none). Filter with DstThreat != \'\'. The detector rule "Contact with a threat list address" raises sec.threat.contact (RED, severity error by default) on the internal host.',
     'thr.err.name': 'List names: letters, digits, ".", "_", "-"',
     'thr.err.dup': 'List names must be unique',
     'thr.err.url': 'A list URL must start with http:// or https://',
     'thr.err.exclude': 'Not an address or prefix: {v}',
   },
   ru: {
-    'thr.sub': 'Публичные списки опасных IP-адресов, с которыми сверяется каждый поток; контакт с адресом из списка поднимает sec.threat.contact в Umbrella',
+    'thr.sub': 'Публичные списки опасных IP-адресов, с которыми сверяется каждый поток; контакт с адресом из списка поднимает sec.threat.contact в Beacon',
     'thr.lists': 'Списки угроз',
     'thr.enabled': 'Сверять потоки со списками угроз',
-    'thr.enabled.hint': 'Списки скачивает обогатитель на условиях их владельцев; во Flow они не входят.',
+    'thr.enabled.hint': 'Списки скачивает обогатитель на условиях их владельцев; в Current они не входят.',
     'thr.col.list': 'Список',
     'thr.col.state': 'Состояние',
     'thr.col.prefixes': 'Префиксов',

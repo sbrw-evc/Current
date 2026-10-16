@@ -9,10 +9,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/app"
-	"github.com/sbrw-evc/network/app/backend/internal/inventory"
-	"github.com/sbrw-evc/network/app/backend/internal/secrets"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/app"
+	"github.com/sbrw-evc/current/app/backend/internal/inventory"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
 )
 
 // SettingInventorySyncRequest is the settings key the API of another process
@@ -32,12 +32,12 @@ type swapFetcher struct {
 func (f *swapFetcher) Fetch(ctx context.Context) (*inventory.Snapshot, error) {
 	c := f.c.Load()
 	if c == nil {
-		return nil, errors.New("the Inventory DB connection is not configured")
+		return nil, errors.New("the Ledger connection is not configured")
 	}
 	return c.Fetch(ctx)
 }
 
-// Inventory keeps the Inventory DB snapshot of this process up to date: it
+// Inventory keeps the Ledger snapshot of this process up to date: it
 // follows the connection stored in PostgreSQL (token resolved from OpenBao on
 // each sync, never stored or logged), syncs on its interval, at once when the
 // settings change (Reload, or seen by polling in other processes) and when a
@@ -103,7 +103,7 @@ func (i *Inventory) Run(ctx context.Context) {
 	defer t.Stop()
 	for {
 		if err := i.tick(ctx); err != nil && ctx.Err() == nil {
-			i.log.Warn("Inventory DB sync failed", "err", err)
+			i.log.Warn("Ledger sync failed", "err", err)
 		}
 		select {
 		case <-ctx.Done():
@@ -141,7 +141,7 @@ func (i *Inventory) tick(ctx context.Context) error {
 	}
 	token, err := secrets.Value(i.vault, c.TokenRef)
 	if err != nil {
-		return fmt.Errorf("Inventory DB token: %w", err)
+		return fmt.Errorf("Ledger token: %w", err)
 	}
 	stats, err := i.SyncWith(ctx, c.URL, token)
 	i.mu.Lock()

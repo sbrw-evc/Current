@@ -14,7 +14,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/sbrw-evc/network/app/backend/internal/bmp"
+	"github.com/sbrw-evc/current/app/backend/internal/bmp"
 )
 
 // BMP replication over NATS JetStream: every enricher process publishes its
@@ -76,7 +76,7 @@ func (r *bmpReplication) setErr(err error) {
 func (r *bmpReplication) ensureStream(ctx context.Context) error {
 	_, err := r.js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
 		Name:        bmpStream,
-		Description: "Umbrella Flow: BMP sessions shared between enricher replicas",
+		Description: "Current: BMP sessions shared between enricher replicas",
 		Subjects:    []string{bmpSubjectPrefix + ">"},
 		Retention:   jetstream.LimitsPolicy,
 		Discard:     jetstream.DiscardOld,

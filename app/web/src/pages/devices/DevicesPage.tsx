@@ -15,7 +15,7 @@ import { deviceCounts, emptyDraft, matchDevice, statusTone, type Device, type De
 import { devicesStrings } from './strings'
 import './devices.css'
 
-// Network → Devices: the managed devices, their state, and adding devices (from Inventory DB when it
+// Network → Devices: the managed devices, their state, and adding devices (from Ledger when it
 // is connected, else as local records; or from a discovery scan).
 
 export function useInventoryConnected() {

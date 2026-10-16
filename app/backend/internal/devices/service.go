@@ -1,14 +1,14 @@
 // Package devices manages network equipment (docs/devices.md): the device
-// registry in PostgreSQL bound to Inventory DB, credentials in OpenBao,
+// registry in PostgreSQL bound to Ledger, credentials in OpenBao,
 // scheduled polling through internal/devices/drivers, clients merged by MAC,
 // the network map, settings applied on devices and device down / up events
-// for Umbrella.
+// for Beacon.
 //
-// Inventory DB is the source of truth: when it is connected every managed
-// device is bound to an Inventory DB device (inventory_id, source_ref) and
-// takes its name, site and role from there; Flow keeps only the management
+// Ledger is the source of truth: when it is connected every managed
+// device is bound to a Ledger device (inventory_id, source_ref) and
+// takes its name, site and role from there; Current keeps only the management
 // data (address, platform, transport, credentials) and the live state.
-// Without Inventory DB a device is a standalone local record.
+// Without Ledger a device is a standalone local record.
 package devices
 
 import (
@@ -27,15 +27,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/detector"
-	"github.com/sbrw-evc/network/app/backend/internal/devices/drivers"
-	"github.com/sbrw-evc/network/app/backend/internal/gnmi"
-	"github.com/sbrw-evc/network/app/backend/internal/httpx"
-	"github.com/sbrw-evc/network/app/backend/internal/inventory"
-	"github.com/sbrw-evc/network/app/backend/internal/secrets"
-	"github.com/sbrw-evc/network/app/backend/internal/setup"
-	"github.com/sbrw-evc/network/app/backend/internal/snmp"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/detector"
+	"github.com/sbrw-evc/current/app/backend/internal/devices/drivers"
+	"github.com/sbrw-evc/current/app/backend/internal/gnmi"
+	"github.com/sbrw-evc/current/app/backend/internal/httpx"
+	"github.com/sbrw-evc/current/app/backend/internal/inventory"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets"
+	"github.com/sbrw-evc/current/app/backend/internal/setup"
+	"github.com/sbrw-evc/current/app/backend/internal/snmp"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
 )
 
 // Settings keys read by the service.
@@ -45,13 +45,13 @@ const (
 	settingGNMI    = "gnmi" // app.SettingGNMI
 )
 
-// Roles of a standalone device (a bound one takes its role from Inventory DB).
+// Roles of a standalone device (a bound one takes its role from Ledger).
 var Roles = []string{"router", "switch", "firewall", "ap", "controller", "server", "other"}
 
 // SNMP credential sources.
 const (
 	SNMPOwn     = "own"     // the device's own SNMP credentials (OpenBao devices/<id>)
-	SNMPProfile = "profile" // the SNMP profile of Flow that covers the address
+	SNMPProfile = "profile" // the SNMP profile of Current that covers the address
 )
 
 // SecretPath is the OpenBao path of a device's credentials.
@@ -60,7 +60,7 @@ func SecretPath(id int64) string { return fmt.Sprintf("devices/%d", id) }
 // AdminActions need devices:admin; the others devices:operate.
 var AdminActions = []string{drivers.ActionReboot, drivers.ActionCommand, drivers.ActionBackup}
 
-// EventSink delivers events to Umbrella (detector.Sender).
+// EventSink delivers events to Beacon (detector.Sender).
 type EventSink interface {
 	Deliver(ctx context.Context, events []detector.Event) error
 }
@@ -69,7 +69,7 @@ type EventSink interface {
 type Config struct {
 	Store *store.Store
 	Vault *secrets.Client
-	// Inventory is the Inventory DB snapshot of this process (nil = none).
+	// Inventory is the Ledger snapshot of this process (nil = none).
 	Inventory func() *inventory.Snapshot
 	// Events receives device down / up events (nil = none).
 	Events EventSink
@@ -357,7 +357,7 @@ type View struct {
 	ControllerSite string         `json:"controller_site"`
 	InventoryID    *int           `json:"inventory_id"`
 	SourceRef      string         `json:"source_ref"`
-	Bound          bool           `json:"bound"`             // bound to Inventory DB
+	Bound          bool           `json:"bound"`             // bound to Ledger
 	InventoryGone  bool           `json:"inventory_missing"` // bound, but not in the loaded snapshot
 	Site           string         `json:"site"`
 	Role           string         `json:"role"`
@@ -397,7 +397,7 @@ type Detail struct {
 	SNMP       *SNMPProfileSummary `json:"snmp_profile,omitempty"`
 }
 
-// SNMPProfileSummary names the Flow SNMP profile a device uses.
+// SNMPProfileSummary names the Current SNMP profile a device uses.
 type SNMPProfileSummary struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -588,7 +588,7 @@ type Input struct {
 	Transport      *string  `json:"transport"`
 	VerifyTLS      *bool    `json:"verify_tls"`
 	ControllerSite *string  `json:"controller_site"`
-	InventoryID    *int     `json:"inventory_id"` // 0 = unbind (standalone only without Inventory DB)
+	InventoryID    *int     `json:"inventory_id"` // 0 = unbind (standalone only without Ledger)
 	Name           *string  `json:"name"`
 	Site           *string  `json:"site"`
 	Role           *string  `json:"role"`
@@ -615,7 +615,7 @@ func str(p *string) string {
 	return strings.TrimSpace(*p)
 }
 
-// inventoryConnected reports whether Inventory DB is the source of truth.
+// inventoryConnected reports whether Ledger is the source of truth.
 func (s *Service) inventoryConnected(ctx context.Context) bool {
 	c, err := s.st.InventoryDB(ctx)
 	return err == nil && c.Enabled && c.URL != ""
@@ -768,37 +768,37 @@ func (s *Service) apply(ctx context.Context, d *store.NetworkDevice, in Input, c
 		}
 	}
 
-	// Binding: Inventory DB is the source of truth for the name, site and role.
+	// Binding: Ledger is the source of truth for the name, site and role.
 	connected := s.inventoryConnected(ctx)
 	if in.InventoryID != nil {
 		if *in.InventoryID == 0 {
 			if connected {
-				return invalid("Inventory DB is connected: a managed device must be bound to an Inventory DB device")
+				return invalid("Ledger is connected: a managed device must be bound to a Ledger device")
 			}
 			d.InventoryID, d.SourceRef = nil, ""
 		} else {
 			if !connected {
-				return invalid("Inventory DB is not connected")
+				return invalid("Ledger is not connected")
 			}
 			snap := s.snapshot()
 			if snap == nil {
-				return invalid("Inventory DB is not loaded yet; try again in a minute")
+				return invalid("Ledger is not loaded yet; try again in a minute")
 			}
 			inv, ok := snap.Device(*in.InventoryID)
 			if !ok || inv.Kind != inventory.KindDevice {
-				return invalid("Inventory DB has no device %d", *in.InventoryID)
+				return invalid("Ledger has no device %d", *in.InventoryID)
 			}
 			id := inv.ID
 			d.InventoryID, d.SourceRef = &id, inventory.DeviceRef(id)
 			d.Name, d.Site, d.Role = inv.Name, inv.Site, inv.Role
 		}
 	} else if creating && connected {
-		return invalid("Inventory DB is connected: pick the device in Inventory DB")
+		return invalid("Ledger is connected: pick the device in Ledger")
 	}
 	if d.InventoryID != nil {
 		if (in.Name != nil && str(in.Name) != d.Name) || (in.Site != nil && str(in.Site) != d.Site) ||
 			(in.Role != nil && str(in.Role) != d.Role) {
-			return invalid("The name, site and role of a bound device come from Inventory DB; change them there")
+			return invalid("The name, site and role of a bound device come from Ledger; change them there")
 		}
 		return nil
 	}
@@ -840,7 +840,7 @@ func secretsOf(in Input) map[string]string {
 func conflict(err error) error {
 	if errors.Is(err, store.ErrConflict) {
 		return &httpx.HTTPError{Status: http.StatusConflict, Code: "duplicate_device",
-			Msg: "This device is already managed (the same Inventory DB device or the same address)"}
+			Msg: "This device is already managed (the same Ledger device or the same address)"}
 	}
 	return err
 }
@@ -996,9 +996,9 @@ func (s *Service) SetPositions(ctx context.Context, pos map[string]*[2]float64) 
 	return s.st.SetDevicePositions(ctx, out)
 }
 
-// ---------------- Inventory DB ----------------
+// ---------------- Ledger ----------------
 
-// Candidate is an Inventory DB device that can be managed.
+// Candidate is a Ledger device that can be managed.
 type Candidate struct {
 	ID           int    `json:"id"`
 	Name         string `json:"name"`
@@ -1008,19 +1008,19 @@ type Candidate struct {
 	Status       string `json:"status"`
 	Manufacturer string `json:"manufacturer"`
 	Model        string `json:"model"`
-	Platform     string `json:"platform"`       // Inventory DB platform
+	Platform     string `json:"platform"`       // Ledger platform
 	Host         string `json:"host"`           // primary address
-	Guess        string `json:"platform_guess"` // a Flow platform key
+	Guess        string `json:"platform_guess"` // a Current platform key
 }
 
-// Candidates are the Inventory DB devices not managed yet.
+// Candidates are the Ledger devices not managed yet.
 type Candidates struct {
 	Connected bool        `json:"connected"`
 	Loaded    bool        `json:"loaded"`
 	Devices   []Candidate `json:"devices"`
 }
 
-// guessPlatform maps Inventory DB manufacturer / platform names to a Flow platform.
+// guessPlatform maps Ledger manufacturer / platform names to a Current platform.
 func guessPlatform(text string) string {
 	t := strings.ToLower(text)
 	for _, g := range []struct{ re, key string }{
@@ -1039,7 +1039,7 @@ func guessPlatform(text string) string {
 	return ""
 }
 
-// InventoryCandidates lists the Inventory DB devices not managed yet.
+// InventoryCandidates lists the Ledger devices not managed yet.
 func (s *Service) InventoryCandidates(ctx context.Context, q string) (Candidates, error) {
 	out := Candidates{Connected: s.inventoryConnected(ctx), Devices: []Candidate{}}
 	snap := s.snapshot()
@@ -1115,7 +1115,7 @@ func (s *Service) snmpSettings(ctx context.Context) snmp.Settings {
 	return set
 }
 
-// snmpProfileFor is the Flow SNMP profile covering the device (its host,
+// snmpProfileFor is the Current SNMP profile covering the device (its host,
 // else its flow exporter address).
 func (s *Service) snmpProfileFor(ctx context.Context, d store.NetworkDevice) (snmp.Profile, bool) {
 	set := s.snmpSettings(ctx)
@@ -1133,7 +1133,7 @@ func (s *Service) snmpProfileFor(ctx context.Context, d store.NetworkDevice) (sn
 }
 
 // credentials resolves the credentials of a device: its own secrets from
-// OpenBao (override replaces them, for an unsaved test), the Flow SNMP
+// OpenBao (override replaces them, for an unsaved test), the Current SNMP
 // profile when the device uses one, and the gNMI profile for gnmi.
 func (s *Service) credentials(ctx context.Context, d store.NetworkDevice, override map[string]string) (drivers.Credentials, error) {
 	var c drivers.Credentials
@@ -1165,7 +1165,7 @@ func (s *Service) credentials(ctx context.Context, d store.NetworkDevice, overri
 	if d.Credentials["snmp_source"] == SNMPProfile {
 		pr, ok := s.snmpProfileFor(ctx, d)
 		if !ok {
-			return c, &drivers.Error{Msg: "No SNMP profile of Flow covers " + d.Host + " (Settings → SNMP)"}
+			return c, &drivers.Error{Msg: "No SNMP profile of Current covers " + d.Host + " (Settings → SNMP)"}
 		}
 		sc, err := snmp.ResolveCredentials(pr, s.resolve)
 		if err != nil {
@@ -1197,7 +1197,7 @@ func (s *Service) credentials(ctx context.Context, d store.NetworkDevice, overri
 			}
 			pr, ok := set.ProfileFor(a)
 			if !ok {
-				return nil, errors.New("no gNMI profile of Flow covers " + host + " (Settings → gNMI)")
+				return nil, errors.New("no gNMI profile of Current covers " + host + " (Settings → gNMI)")
 			}
 			gc, err := gnmi.ResolveCredentials(pr, s.resolve)
 			if err != nil {

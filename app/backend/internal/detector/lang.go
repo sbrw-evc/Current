@@ -79,5 +79,5 @@ var (
 	unitsPPS    = text{"пак/с|тыс. пак/с|млн пак/с|млрд пак/с", "pps|kpps|Mpps|Gpps"}
 	unitMinutes = text{"мин", "min"}
 	allTraffic  = text{"весь трафик", "all traffic"}
-	testEvent   = text{"Тестовое событие Umbrella Flow", "Umbrella Flow test event"}
+	testEvent   = text{"Тестовое событие Current", "Current test event"}
 )

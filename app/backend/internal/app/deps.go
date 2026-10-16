@@ -8,14 +8,14 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/sbrw-evc/network/app/backend/internal/config"
-	"github.com/sbrw-evc/network/app/backend/internal/devices"
-	"github.com/sbrw-evc/network/app/backend/internal/secrets"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/config"
+	"github.com/sbrw-evc/current/app/backend/internal/devices"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
 )
 
 // Extension points. Other packages (query, filter, enrich, inventory,
-// classifier, collector) implement these small interfaces and cmd/flow wires
+// classifier, collector) implement these small interfaces and cmd/current wires
 // them into Deps. A nil dependency makes its endpoints answer
 // 501 {"error": "not_implemented"}.
 //
@@ -58,14 +58,14 @@ type Widgets interface {
 	LastFlow(ctx context.Context) (any, error)
 }
 
-// InventoryConfig is the Inventory DB connection with the token resolved.
+// InventoryConfig is the Ledger connection with the token resolved.
 type InventoryConfig struct {
 	URL      string
 	Token    string
 	Interval time.Duration
 }
 
-// InventorySyncer talks to Inventory DB. Sync loads devices, interfaces,
+// InventorySyncer talks to Ledger. Sync loads devices, interfaces,
 // prefixes and circuits into the enrichment dictionaries; the App records
 // the result (store.RecordInventorySync) and runs it on schedule.
 type InventorySyncer interface {
@@ -98,7 +98,7 @@ const (
 
 // DetectorService is the traffic detector (internal/detector) as seen by the
 // API: rule validation, the default rule set, the live status and the
-// Umbrella test event.
+// Beacon test event.
 type DetectorService interface {
 	// DefaultRules returns the built-in rules, used while none were saved.
 	DefaultRules() []json.RawMessage
@@ -106,15 +106,15 @@ type DetectorService interface {
 	// errors should be 400s.
 	ValidateRule(rule json.RawMessage) (id string, err error)
 	// Status → the rules with their last evaluation, active alerts and the
-	// Umbrella outbox (GET /api/detector/status).
+	// Beacon outbox (GET /api/detector/status).
 	Status(ctx context.Context) (any, error)
-	// SendTest posts a test event to an Umbrella ingest URL with the token.
+	// SendTest posts a test event to a Beacon ingest URL with the token.
 	SendTest(ctx context.Context, url, token string) (any, error)
 }
 
 // Reloader is told when configuration it depends on has changed in
 // PostgreSQL (the enricher re-reads classifiers, sampling overrides, the
-// Inventory DB connection). Errors are logged, not returned to the client.
+// Ledger connection). Errors are logged, not returned to the client.
 type Reloader interface {
 	Reload(ctx context.Context, what string) error
 }
@@ -148,9 +148,9 @@ type Deps struct {
 	Reloaders   []Reloader
 	Components  map[string]StatusReporter
 	// InventoryIntegration serves /api/integrations/inventory-db/* and
-	// "Create in Inventory DB" (inventory_integration.go).
+	// "Create in Ledger" (inventory_integration.go).
 	InventoryIntegration InventoryIntegration
-	// Dependencies finds CI ↔ CI pairs for Umbrella proposals (query.Querier).
+	// Dependencies finds CI ↔ CI pairs for Beacon proposals (query.Querier).
 	Dependencies DependencyFinder
 	// Devices manages network devices, their clients and the network map
 	// (devices.go); nil answers 501.

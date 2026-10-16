@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/sbrw-evc/network/app/backend/internal/secrets"
-	"github.com/sbrw-evc/network/app/backend/internal/secrets/secretstest"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets/secretstest"
 )
 
 func TestPutResolveDelete(t *testing.T) {

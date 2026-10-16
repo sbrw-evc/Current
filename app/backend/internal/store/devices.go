@@ -217,13 +217,13 @@ func jsonOr(v json.RawMessage, def string) []byte {
 }
 
 // SetDeviceAlerted records that the firing event of the down episode that
-// started at since went to Umbrella (nil: its resolved event went).
+// started at since went to Beacon (nil: its resolved event went).
 func (s *Store) SetDeviceAlerted(ctx context.Context, id int64, since *time.Time) error {
 	_, err := s.pool.Exec(ctx, `UPDATE network_devices SET alerted_since = $2 WHERE id = $1`, id, since)
 	return err
 }
 
-// CacheDeviceInventory refreshes the name, site and role cached from Inventory DB.
+// CacheDeviceInventory refreshes the name, site and role cached from Ledger.
 func (s *Store) CacheDeviceInventory(ctx context.Context, id int64, name, site, role string) error {
 	_, err := s.pool.Exec(ctx, `UPDATE network_devices SET name = $2, site = $3, role = $4
 		WHERE id = $1 AND (name, site, role) IS DISTINCT FROM ($2, $3, $4)`, id, name, site, role)

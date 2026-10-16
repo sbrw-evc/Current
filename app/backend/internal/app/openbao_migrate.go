@@ -13,14 +13,14 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/sbrw-evc/network/app/backend/internal/access"
-	"github.com/sbrw-evc/network/app/backend/internal/config"
-	"github.com/sbrw-evc/network/app/backend/internal/httpx"
-	"github.com/sbrw-evc/network/app/backend/internal/secrets"
+	"github.com/sbrw-evc/current/app/backend/internal/access"
+	"github.com/sbrw-evc/current/app/backend/internal/config"
+	"github.com/sbrw-evc/current/app/backend/internal/httpx"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets"
 )
 
-// Moving the secrets to another OpenBao (Settings → OpenBao), as in Umbrella
-// Monitoring: check the target, copy every secret of the current mount
+// Moving the secrets to another OpenBao (Settings → OpenBao), as in Beacon:
+//  check the target, copy every secret of the current mount
 // there, point the openbao:// references of PostgreSQL and flow.json to the
 // new mount, write flow.json and switch the running OpenBao client in place,
 // so every component follows without a restart. The source is left intact.
@@ -272,8 +272,8 @@ func moveFileRefs(f config.File, from, to string) (config.File, int64, error) {
 }
 
 // moveDatabaseRefs rewrites openbao://<from>/… to openbao://<to>/… in every
-// text and jsonb column of the Flow schema, so references kept by any package
-// (users, settings, Inventory DB, LDAP, Umbrella, Entra ID…) follow.
+// text and jsonb column of the Current schema, so references kept by any package
+// (users, settings, Ledger, LDAP, Beacon, Entra ID…) follow.
 func moveDatabaseRefs(ctx context.Context, tx pgx.Tx, from, to string) (int64, error) {
 	if from == to {
 		return 0, nil

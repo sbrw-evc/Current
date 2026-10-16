@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/filter"
+	"github.com/sbrw-evc/current/app/backend/internal/filter"
 )
 
 // observation is the evaluation of one group of one rule.

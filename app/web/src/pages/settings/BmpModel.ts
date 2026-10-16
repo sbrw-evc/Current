@@ -40,7 +40,7 @@ export function toDraft(v: BmpView): BmpDraft {
   return { enabled: v.enabled, policy: v.policy, routers: v.routers.join('\n'), as_providers: [...v.as_providers] }
 }
 
-// validRD accepts a route distinguisher as Inventory DB VRFs write it:
+// validRD accepts a route distinguisher as Ledger VRFs write it:
 // 65000:100, 192.0.2.1:100 or 4200000000:100.
 export function validRD(s: string): boolean {
   const m = /^(\d+|\d+\.\d+\.\d+\.\d+):(\d+)$/.exec(s.trim())

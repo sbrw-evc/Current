@@ -40,7 +40,7 @@ const (
 	PolicyPre        = "pre"         // pre-policy only
 )
 
-// DefaultListen is the BMP port of Flow (10179/tcp); routers usually allow
+// DefaultListen is the BMP port of Current (10179/tcp); routers usually allow
 // any port.
 const DefaultListen = ":10179"
 

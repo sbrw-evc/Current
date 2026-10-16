@@ -5,7 +5,7 @@
 // A rule is a CEL expression returning a map of fields to set, or an empty
 // map. Rules run in order and the first non-empty value per key wins; later
 // rules see the values set by earlier ones. Classifier output overrides the
-// values coming from Inventory DB and the collector.
+// values coming from Ledger and the collector.
 //
 //	exporter.name.matches("^edge-") ? {"role": "edge"} : {}
 //	interface.description.startsWith("Transit:") ? {"boundary": "external", "connectivity": "transit",

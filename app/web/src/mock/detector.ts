@@ -2,7 +2,7 @@ import { validate } from '../filter/parse'
 import { KIND_SPECS, parseDuration, type AlertState, type DetectorStatus, type Rule, type RulesView } from '../pages/detector/model'
 import { columns } from './schema'
 
-// Mock handlers of the detector API, the Umbrella settings used by the status page and the
+// Mock handlers of the detector API, the Beacon settings used by the status page and the
 // sampling overrides (VITE_MOCK=1). Rules are checked like detector.ValidateRule.
 
 type Reply = { status: number; body?: unknown }
@@ -134,7 +134,7 @@ function status(): DetectorStatus {
       group: 'edge-spb-01, Te0/1/0/3',
       event: { id: 'flow-an-3', status: 'firing', signal: 'red.traffic.anomaly', severity: 'warning', title: 'Аномалия трафика edge-spb-01, Te0/1/0/3: 6.1 Gbit/s при норме 2.3 Gbit/s', labels: { ExporterName: 'edge-spb-01', InIfName: 'Te0/1/0/3' } },
     })
-  const errors: Record<string, string> = { 'link-commit': 'circuit commits are unknown: Inventory DB has no commit_rate for 3 circuits' }
+  const errors: Record<string, string> = { 'link-commit': 'circuit commits are unknown: Ledger has no commit_rate for 3 circuits' }
   return {
     rules: state.rules.map((r, i) => {
       const iv = parseDuration(r.interval || KIND_SPECS[r.kind].interval) || 60e3

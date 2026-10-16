@@ -1,6 +1,6 @@
 import { ALL_PAGES, owns, type PageDef } from '../nav'
 
-// The pages an engineer on duty needs away from the desk (as Umbrella's mobilePages): how the
+// The pages an engineer on duty needs away from the desk (as Beacon's mobilePages): how the
 // traffic looks now, what the detector reports, whether the exporters send flows, and a chart.
 // Everything else (flow search tables, the dependency graph, rule editors and settings) is made for
 // a computer: the phone shows a note and opens it only on request.

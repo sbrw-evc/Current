@@ -14,17 +14,17 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 
-	chstore "github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse"
+	chstore "github.com/sbrw-evc/current/app/backend/internal/storage/clickhouse"
 )
 
 // Visibility scopes (docs/integrations.md §3.2). A user whose role has the
-// permission scope:umbrella sees only the flows of the CIs Umbrella lets them
+// permission scope:umbrella sees only the flows of the CIs Beacon lets them
 // see: (SrcCI IN refs OR DstCI IN refs OR SrcAddr IN ips OR DstAddr IN ips).
 //
 // The restriction is applied centrally: the HTTP layer puts a ScopeFunc into
 // the request context and ScopedConn, which wraps the ClickHouse connection
 // every read path uses (visualize, flow search, widgets, exporters, filter
-// value completion, Inventory DB status…), replaces each flow table of a
+// value completion, Ledger status…), replaces each flow table of a
 // query with a filtered subquery. Without a ScopeFunc in the context queries
 // run unchanged (administrators, roles without scope:umbrella, background
 // jobs).
@@ -32,7 +32,7 @@ import (
 // Scope is the set of flows a user may see. A nil *Scope means unrestricted.
 // An empty Scope (no refs, no addresses) matches nothing.
 type Scope struct {
-	// Refs are Inventory DB source_refs matched against SrcCI / DstCI.
+	// Refs are Ledger source_refs matched against SrcCI / DstCI.
 	Refs []string
 	// Prefixes are addresses (as /32 or /128) and prefixes matched against
 	// SrcAddr / DstAddr.
@@ -88,7 +88,7 @@ func chString(s string) string {
 }
 
 // v6 renders an address as a ClickHouse IPv6 literal (IPv4 as IPv4-mapped,
-// as Flow stores it).
+// as Current stores it).
 func v6(a netip.Addr) string {
 	if a.Is4() {
 		a = netip.AddrFrom16(a.As16())
@@ -210,12 +210,12 @@ func scopeColumns(ctx context.Context) []string {
 	return []string{"SrcAddr", "DstAddr"}
 }
 
-// ScopeError: the visibility scope could not be determined (Umbrella is
+// ScopeError: the visibility scope could not be determined (Beacon is
 // unreachable, not configured…). Queries fail closed with HTTP 503.
 type ScopeError struct{ Err error }
 
 func (e *ScopeError) Error() string {
-	return "your visibility scope could not be loaded from Umbrella, so no traffic is shown: " + e.Err.Error()
+	return "your visibility scope could not be loaded from Beacon, so no traffic is shown: " + e.Err.Error()
 }
 func (e *ScopeError) Unwrap() error     { return e.Err }
 func (e *ScopeError) HTTPStatus() int   { return http.StatusServiceUnavailable }

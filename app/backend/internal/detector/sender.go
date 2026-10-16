@@ -22,14 +22,14 @@ type Sink interface {
 	Deliver(ctx context.Context, events []Event) error
 }
 
-// TokenFunc returns the Bearer token of the Umbrella ingest endpoint. The
+// TokenFunc returns the Bearer token of the Beacon ingest endpoint. The
 // platform reads it from OpenBao on each call (with its cache); the sender
 // never stores nor logs it.
 type TokenFunc func(ctx context.Context) (string, error)
 
-// SenderConfig configures the Umbrella sender.
+// SenderConfig configures the Beacon sender.
 type SenderConfig struct {
-	URL        string       // Umbrella ingest URL (…/api/ingest/<slug>)
+	URL        string       // Beacon ingest URL (…/api/ingest/<slug>)
 	Token      TokenFunc    // may be nil: no Authorization header
 	Client     *http.Client // default: 15 s timeout
 	BatchSize  int          // events per POST; default 100
@@ -65,7 +65,7 @@ func (c SenderConfig) withDefaults() SenderConfig {
 	return c
 }
 
-// Sender posts events to Umbrella. Events that cannot be delivered stay in
+// Sender posts events to Beacon. Events that cannot be delivered stay in
 // a bounded outbox, in order, and are retried on the next Deliver or Flush.
 type Sender struct {
 	mu      sync.Mutex
@@ -235,7 +235,7 @@ func post(ctx context.Context, cfg SenderConfig, batch []Event) error {
 		return &permanentError{msg: "umbrella: " + err.Error()}
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "umbrella-flow-detector")
+	req.Header.Set("User-Agent", "current-detector")
 	if cfg.Token != nil {
 		tok, err := cfg.Token(ctx)
 		if err != nil {
@@ -286,7 +286,7 @@ func post(ctx context.Context, cfg SenderConfig, batch []Event) error {
 // configError: kept in the outbox, not retried within the same delivery.
 type configError struct{ *retryError }
 
-// TestEvent is the event the "Send test event" button sends: the Umbrella
+// TestEvent is the event the "Send test event" button sends: the Beacon
 // label umbrella_test=true keeps its incident away from PagerDuty and
 // backup notification. lang is the title language ("ru" | "en").
 func TestEvent(ci, lang string) Event {

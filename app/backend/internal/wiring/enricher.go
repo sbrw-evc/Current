@@ -12,15 +12,15 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/sbrw-evc/network/app/backend/internal/app"
-	"github.com/sbrw-evc/network/app/backend/internal/apps"
-	"github.com/sbrw-evc/network/app/backend/internal/classifier"
-	"github.com/sbrw-evc/network/app/backend/internal/enrich"
-	"github.com/sbrw-evc/network/app/backend/internal/flow"
-	"github.com/sbrw-evc/network/app/backend/internal/flowlogs"
-	"github.com/sbrw-evc/network/app/backend/internal/geoip"
-	"github.com/sbrw-evc/network/app/backend/internal/setup"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/app"
+	"github.com/sbrw-evc/current/app/backend/internal/apps"
+	"github.com/sbrw-evc/current/app/backend/internal/classifier"
+	"github.com/sbrw-evc/current/app/backend/internal/enrich"
+	"github.com/sbrw-evc/current/app/backend/internal/flow"
+	"github.com/sbrw-evc/current/app/backend/internal/flowlogs"
+	"github.com/sbrw-evc/current/app/backend/internal/geoip"
+	"github.com/sbrw-evc/current/app/backend/internal/setup"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
 )
 
 // GeoSwap is an enrich.GeoSource whose databases can be replaced at run time.
@@ -91,7 +91,7 @@ func (g *GeoSwap) Set(ctx context.Context, paths []string, log *slog.Logger) err
 // EnricherConfig are the sources of the enricher component.
 type EnricherConfig struct {
 	Store     *store.Store
-	Inventory enrich.InventorySource // nil: no Inventory DB
+	Inventory enrich.InventorySource // nil: no Ledger
 	IfNames   enrich.IfNameSource    // nil when the collector runs in another process
 	PTR       enrich.PTRSource       // reverse DNS (wiring.RDNS); nil: none
 	Threats   enrich.ThreatSource    // threat lists (wiring.Threat); nil: none
@@ -150,7 +150,7 @@ func NewEnricher(next flow.Sink, cfg EnricherConfig) (*Enricher, error) {
 // Sink is what the bus delivers to (counted for the status).
 func (e *Enricher) Sink() flow.Sink { return e.in }
 
-// Unknown lists exporters and addresses missing from Inventory DB.
+// Unknown lists exporters and addresses missing from Ledger.
 func (e *Enricher) Unknown() any { return e.E.Unknown() }
 
 // Refresh re-reads classifiers and GeoIP settings from PostgreSQL.

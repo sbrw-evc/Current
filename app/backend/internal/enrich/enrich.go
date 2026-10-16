@@ -1,5 +1,5 @@
 // Package enrich fills the "enriched" fields of flows (exporter, interfaces,
-// networks, hosts, GeoIP, AS, application) from the Inventory DB snapshot,
+// networks, hosts, GeoIP, AS, application) from the Ledger snapshot,
 // interface names learned by the collector, CEL classifiers, GeoIP and the
 // application table, then passes the batch to the next sink.
 package enrich
@@ -13,11 +13,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/apps"
-	"github.com/sbrw-evc/network/app/backend/internal/classifier"
-	"github.com/sbrw-evc/network/app/backend/internal/flow"
-	"github.com/sbrw-evc/network/app/backend/internal/geoip"
-	"github.com/sbrw-evc/network/app/backend/internal/inventory"
+	"github.com/sbrw-evc/current/app/backend/internal/apps"
+	"github.com/sbrw-evc/current/app/backend/internal/classifier"
+	"github.com/sbrw-evc/current/app/backend/internal/flow"
+	"github.com/sbrw-evc/current/app/backend/internal/geoip"
+	"github.com/sbrw-evc/current/app/backend/internal/inventory"
 )
 
 // IfNameSource gives interface attributes learned by the collector (option
@@ -26,7 +26,7 @@ type IfNameSource interface {
 	Lookup(exporter netip.Addr, ifIndex uint32) (name, descr string, speed uint64, ok bool)
 }
 
-// InventorySource returns the current Inventory DB snapshot (never nil);
+// InventorySource returns the current Ledger snapshot (never nil);
 // *inventory.Syncer implements it.
 type InventorySource interface {
 	Current() *inventory.Snapshot
@@ -76,12 +76,12 @@ type Config struct {
 	TrackUnknown func(netip.Addr) bool
 	// Metrics registers Prometheus metrics when set.
 	Metrics Registerer
-	// PTR resolves reverse DNS names of addresses without an Inventory DB
+	// PTR resolves reverse DNS names of addresses without a Ledger
 	// host name (rdns.go); nil disables.
 	PTR PTRSource
 	// Threats names the threat list of an address (threat.go); nil disables.
 	Threats ThreatSource
-	// ExporterNames names exporters that are not Inventory DB devices but
+	// ExporterNames names exporters that are not Ledger devices but
 	// synthetic addresses of cloud flow logs (internal/flowlogs); such
 	// exporters are not reported as unknown.
 	ExporterNames func(netip.Addr) (string, bool)
@@ -481,7 +481,7 @@ type Unknown struct {
 	Addresses []UnknownAddress  `json:"addresses"`
 }
 
-// UnknownExporter is an exporter without an Inventory DB device.
+// UnknownExporter is an exporter without a Ledger device.
 type UnknownExporter struct {
 	Address  netip.Addr `json:"address"`
 	LastSeen time.Time  `json:"last_seen"`
@@ -506,5 +506,5 @@ func (e *Enricher) Unknown() Unknown {
 }
 
 // ResetUnknown clears the unknown lists (e.g. after objects were created
-// in Inventory DB).
+// in Ledger).
 func (e *Enricher) ResetUnknown() { e.unknown.reset() }

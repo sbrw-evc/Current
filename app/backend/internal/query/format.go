@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/sbrw-evc/network/app/backend/internal/schema"
+	"github.com/sbrw-evc/current/app/backend/internal/schema"
 )
 
 // Labels of the synthetic rows.

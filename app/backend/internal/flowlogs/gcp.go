@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/flow"
+	"github.com/sbrw-evc/current/app/backend/internal/flow"
 )
 
 // GCP VPC Flow Logs arrive as Pub/Sub push messages (a log sink to a topic,

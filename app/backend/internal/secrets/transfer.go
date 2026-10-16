@@ -10,7 +10,7 @@ import (
 )
 
 // Moving secrets to another OpenBao (Settings → OpenBao), ported from
-// Umbrella Monitoring: check that the target mount is KV v2, list every
+// Beacon: check that the target mount is KV v2, list every
 // secret under the current mount and copy them as they are.
 
 // CheckKV2 checks that the mount exists and is a KV version 2 engine.

@@ -1,4 +1,4 @@
-// Package inventory reads DCIM / IPAM / circuits data from Inventory DB
+// Package inventory reads DCIM / IPAM / circuits data from Ledger
 // (NetBox-compatible REST API, xc-token auth) and builds an immutable
 // Snapshot with fast lookups for flow enrichment.
 package inventory
@@ -19,9 +19,9 @@ import (
 	"time"
 )
 
-// Config of the Inventory DB connection.
+// Config of the Ledger connection.
 type Config struct {
-	// URL is the base URL of Inventory DB, e.g. "https://inventory.corp"
+	// URL is the base URL of Ledger, e.g. "https://inventory.corp"
 	// (the "/api/v1" suffix is optional).
 	URL string
 	// Token is the API token sent as the xc-token header.
@@ -40,7 +40,7 @@ type Config struct {
 	SkipVirtualization bool
 }
 
-// Client talks to Inventory DB.
+// Client talks to Ledger.
 type Client struct {
 	base     string // ".../api/v1"
 	token    string
@@ -78,7 +78,7 @@ func NewClient(cfg Config) (*Client, error) {
 	return &Client{base: u, token: cfg.Token, pageSize: cfg.PageSize, http: hc, cfg: cfg}, nil
 }
 
-// HTTPError is a non-2xx answer from Inventory DB.
+// HTTPError is a non-2xx answer from Ledger.
 type HTTPError struct {
 	Status  int
 	Path    string

@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/access"
-	"github.com/sbrw-evc/network/app/backend/internal/auth"
-	"github.com/sbrw-evc/network/app/backend/internal/config"
-	"github.com/sbrw-evc/network/app/backend/internal/secrets/secretstest"
-	"github.com/sbrw-evc/network/app/backend/internal/spa"
-	"github.com/sbrw-evc/network/app/backend/internal/spa/spatest"
-	"github.com/sbrw-evc/network/app/backend/internal/store/storetest"
+	"github.com/sbrw-evc/current/app/backend/internal/access"
+	"github.com/sbrw-evc/current/app/backend/internal/auth"
+	"github.com/sbrw-evc/current/app/backend/internal/config"
+	"github.com/sbrw-evc/current/app/backend/internal/keystone"
+	"github.com/sbrw-evc/current/app/backend/internal/keystone/keystonetest"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets/secretstest"
+	"github.com/sbrw-evc/current/app/backend/internal/store/storetest"
 )
 
 func TestOpenBaoMigrate(t *testing.T) {
@@ -26,10 +26,10 @@ func TestOpenBaoMigrate(t *testing.T) {
 	}
 	adminRole, _ := st.RoleByName(ctx, access.RoleAdministrator)
 	legacyUser(t, st, "admin", adminRole.ID)
-	// The SPA connection key is in OpenBao (written by the setup wizard).
-	sp := spatest.New(t)
-	sp.Users = []spa.User{spaUser("admin", "admin")}
-	if _, err := vault.PutRef(ctx, spa.SecretPath, spa.SecretKey, sp.ConnectionKey()); err != nil {
+	// The Keystone connection key is in OpenBao (written by the setup wizard).
+	sp := keystonetest.New(t)
+	sp.Users = []keystone.User{spaUser("admin", "admin")}
+	if _, err := vault.PutRef(ctx, keystone.SecretPath, keystone.SecretKey, sp.ConnectionKey()); err != nil {
 		t.Fatal(err)
 	}
 	// References in a column and in a JSON setting.
@@ -49,7 +49,7 @@ func TestOpenBaoMigrate(t *testing.T) {
 	a := New(Options{Version: "test", DataDir: dir}, Deps{Config: file, Store: st, Vault: vault})
 	srv := httptest.NewServer(a.Handler())
 	t.Cleanup(srv.Close)
-	e := &env{t: t, srv: srv, st: st, fake: srcFake, spa: sp, app: a}
+	e := &env{t: t, srv: srv, st: st, fake: srcFake, keystone: sp, app: a}
 	c := e.client()
 	c.login("admin")
 
@@ -129,7 +129,7 @@ func TestOpenBaoMigrate(t *testing.T) {
 		t.Fatal("session lost after the switch", code)
 	}
 	c2 := e.client()
-	c2.login("admin") // the SPA connection key from the new OpenBao
+	c2.login("admin") // the Keystone connection key from the new OpenBao
 	if code, out := c.do("GET", "/api/settings/openbao", nil); code != 200 || out["addr"] != dstFake.Server.URL || out["mount"] != "flow-new" {
 		t.Fatal(code, out)
 	}

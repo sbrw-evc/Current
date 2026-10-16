@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/sbrw-evc/network/app/backend/internal/httpx"
+	"github.com/sbrw-evc/current/app/backend/internal/httpx"
 )
 
 // Handlers that pass the request to the traffic packages (Deps).

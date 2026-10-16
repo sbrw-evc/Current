@@ -12,8 +12,8 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 
-	"github.com/sbrw-evc/network/app/backend/internal/query"
-	chstore "github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse"
+	"github.com/sbrw-evc/current/app/backend/internal/query"
+	chstore "github.com/sbrw-evc/current/app/backend/internal/storage/clickhouse"
 )
 
 // recConn records the queries and answers with no rows.

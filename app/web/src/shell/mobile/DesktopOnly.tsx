@@ -6,7 +6,7 @@ import type { PageDef } from '../nav'
 import { navStrings } from '../strings'
 import { mobileStrings } from './strings'
 
-// Umbrella's DesktopOnly (app/web/src/app/mobile/DesktopOnly.tsx).
+// Beacon's DesktopOnly (app/web/src/app/mobile/DesktopOnly.tsx).
 
 const KEY = 'flow.mobile.forced'
 

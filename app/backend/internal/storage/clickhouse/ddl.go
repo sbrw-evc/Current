@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/schema"
+	"github.com/sbrw-evc/current/app/backend/internal/schema"
 )
 
 // SchemaVersion is bumped on structural changes that the column diff does

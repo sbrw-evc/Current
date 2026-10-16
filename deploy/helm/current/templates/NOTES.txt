@@ -1,0 +1,23 @@
+Current {{ .Chart.AppVersion }} ({{ .Values.roles.mode }} mode) is deployed.
+
+1. Open the console and finish the setup wizard (the setup code is in the log):
+     kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "current.fullname" . }} 8080:{{ .Values.service.http.port }}
+     kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "current.fullname" . }}{{ if eq .Values.roles.mode "split" }}-api{{ end }} | grep setup_code
+
+2. Point exporters at the "{{ include "current.fullname" . }}-flows" service: NetFlow / IPFIX UDP {{ .Values.ports.netflow }}, sFlow UDP {{ .Values.ports.sflow }}.
+{{- if .Values.service.bmp.enabled }}
+   BMP: enable it under Settings -> BMP, then point routers at "{{ include "current.fullname" . }}-bmp" TCP {{ .Values.ports.bmp }}.
+{{- end }}
+{{- if and (not .Values.dev.enabled) (not .Values.openbao.existingSecret) }}
+
+WARNING: openbao.existingSecret is empty: Current has no OpenBao credentials mounted.
+{{- end }}
+{{- if .Values.dev.enabled }}
+
+WARNING: dev.enabled runs OpenBao in dev mode (in memory). Current's secrets are lost when that pod restarts;
+use external services in production.
+{{- end }}
+{{- if and (eq .Values.roles.mode "split") (gt (int .Values.roles.enricher.replicas) 1) }}
+
+NOTE: {{ .Values.roles.enricher.replicas }} enricher replicas: each one only knows the BMP routes of the sessions it holds.
+{{- end }}

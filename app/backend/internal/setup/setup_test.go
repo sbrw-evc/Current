@@ -13,12 +13,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sbrw-evc/network/app/backend/internal/access"
-	"github.com/sbrw-evc/network/app/backend/internal/config"
-	"github.com/sbrw-evc/network/app/backend/internal/secrets/secretstest"
-	"github.com/sbrw-evc/network/app/backend/internal/spa/spatest"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
-	"github.com/sbrw-evc/network/app/backend/internal/store/storetest"
+	"github.com/sbrw-evc/current/app/backend/internal/access"
+	"github.com/sbrw-evc/current/app/backend/internal/config"
+	"github.com/sbrw-evc/current/app/backend/internal/keystone/keystonetest"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets/secretstest"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/store/storetest"
 )
 
 // clickhouseForTest returns the test ClickHouse (FLOW_TEST_CLICKHOUSE, default
@@ -234,7 +234,7 @@ func scanForSecrets(t *testing.T, st *store.Store, dir string, values ...string)
 }
 
 func TestSPAStep(t *testing.T) {
-	sp := spatest.New(t)
+	sp := keystonetest.New(t)
 	h := New(Options{DataDir: t.TempDir(), Token: "code", Defaults: DefaultsFromEnv(func(k string) string {
 		return map[string]string{"SPA_CONNECTION_KEY_FILE": "/run/secrets/spa"}[k]
 	})}, nil).Handler()
@@ -252,7 +252,7 @@ func TestSPAStep(t *testing.T) {
 	}
 	if out := step(map[string]any{"connection_key": sp.ConnectionKey(), "public_url": "https://flow.example"}); out["ok"] != true ||
 		out["details"].(map[string]any)["redirect_uri"] != "https://flow.example/api/auth/spa/callback" ||
-		out["details"].(map[string]any)["application"] != "Umbrella Flow" {
+		out["details"].(map[string]any)["application"] != "Current" {
 		t.Fatal(out)
 	}
 	if out := step(map[string]any{"connection_key": "umbid1.old-key"}); out["ok"] == true || !strings.Contains(out["error"].(string), "spa1.") {
@@ -286,7 +286,7 @@ func TestCompleteDockerStyle(t *testing.T) {
 	inv := fakeInventory(t)
 	var event map[string]any
 	umb := fakeUmbrella(t, &event)
-	sp := spatest.New(t)
+	sp := keystonetest.New(t)
 	// openbao-init seeded the PostgreSQL password; the AppRole credentials are files.
 	fake.Set("flow/bootstrap/postgres", map[string]any{"password": db.Password})
 	secretsDir := t.TempDir()
@@ -357,12 +357,12 @@ func TestCompleteDockerStyle(t *testing.T) {
 	if fake.Get("flow/keys")["session"] == nil {
 		t.Fatal("session keys not created")
 	}
-	// No first administrator: people come from SPA, whose key is in OpenBao.
+	// No first administrator: people come from Keystone, whose key is in OpenBao.
 	if n, _ := got.Store.CountUsers(ctx); n != 0 {
 		t.Fatal("users created by the setup", n)
 	}
 	if fake.Get("flow/spa")["connection_key"] != sp.ConnectionKey() {
-		t.Fatal("SPA connection key not in OpenBao")
+		t.Fatal("Keystone connection key not in OpenBao")
 	}
 	if r, err := got.Store.RoleByIdent(ctx, "admin"); err != nil || r.Name != access.RoleAdministrator {
 		t.Fatal(r, err)

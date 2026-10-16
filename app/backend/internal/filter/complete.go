@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/sbrw-evc/network/app/backend/internal/schema"
+	"github.com/sbrw-evc/current/app/backend/internal/schema"
 )
 
 // Completion is one suggestion for /api/filter/complete.

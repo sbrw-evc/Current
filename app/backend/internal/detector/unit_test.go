@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/filter"
+	"github.com/sbrw-evc/current/app/backend/internal/filter"
 )
 
 func TestAdvance(t *testing.T) {
@@ -363,7 +363,7 @@ func TestSender(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if te.Title != "Umbrella Flow test event" {
+	if te.Title != "Current test event" {
 		t.Fatal(te.Title)
 	}
 	got = in.take()

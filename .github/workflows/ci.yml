@@ -50,7 +50,7 @@ jobs:
       - name: go test
         run: go test -race -count=1 ./...
       - name: build
-        run: go build -o /tmp/flow ./cmd/flow && /tmp/flow -version
+        run: go build -o /tmp/current ./cmd/current && /tmp/current -version
 
   web:
     name: Web (typecheck, test, build)
@@ -80,7 +80,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: compose config
-        working-directory: deploy/flow
+        working-directory: deploy/current
         run: |
           cp .env.example .env
           docker compose config -q
@@ -88,6 +88,6 @@ jobs:
           COMPOSE_FILE=docker-compose.yml:docker-compose.umbrella.yml docker compose config -q
       - name: build image
         working-directory: app
-        run: docker build -t umbrella-flow:ci .
+        run: docker build -t current:ci .
       - name: smoke
-        run: docker run --rm umbrella-flow:ci -version
+        run: docker run --rm current:ci -version

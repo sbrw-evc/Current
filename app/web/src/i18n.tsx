@@ -5,7 +5,7 @@ import { ApiError } from './api/client'
 import type { Locale } from './api/types'
 import { reducedMotion } from './lib/fx'
 
-// Translations, as in Umbrella: every module keeps a dictionary { en: {...}, ru: {...} } and reads
+// Translations, as in Beacon: every module keeps a dictionary { en: {...}, ru: {...} } and reads
 // it with useT(dict); `common` holds the strings shared by all pages. Russian is the default.
 export type Dict = Record<Locale, Record<string, string>>
 export type TFunc = (key: string, vars?: Record<string, string | number>) => string
@@ -14,7 +14,7 @@ const KEY = 'flow.locale'
 
 export const common: Dict = {
   en: {
-    'app.name': 'Umbrella Flow',
+    'app.name': 'Current',
     'app.sub': 'Traffic analysis',
     'theme.light': 'Light',
     'theme.dark': 'Dark',
@@ -51,7 +51,7 @@ export const common: Dict = {
     'err.unknown': 'Something went wrong.',
   },
   ru: {
-    'app.name': 'Umbrella Flow',
+    'app.name': 'Current',
     'app.sub': 'Анализ трафика',
     'theme.light': 'Светлая',
     'theme.dark': 'Тёмная',

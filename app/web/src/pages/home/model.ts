@@ -1,10 +1,10 @@
 import type { Exporter } from '../../api/types'
-import type { UmbrellaAPI, UmbrellaIngest } from '../../api/umbrella'
+import type { UmbrellaAPI, UmbrellaIngest } from '../../api/beacon'
 import type { AlertState, RulesView } from '../detector/model'
 import type { BmpView } from '../settings/BmpModel'
-import type { InventoryIntegration } from '../settings/InventoryDbModel'
+import type { InventoryIntegration } from '../settings/LedgerModel'
 
-// The Overview's «needs attention» list and «first steps» checklist (Umbrella's onboarding
+// The Overview's «needs attention» list and «first steps» checklist (Beacon's onboarding
 // checklist), computed from what the other pages already read.
 
 export const SILENT_MS = 5 * 60e3
@@ -40,14 +40,14 @@ export type StepFacts = {
 }
 
 // steps is the path from installation to useful data: flows arrive, the detector watches them, and
-// Inventory DB and Umbrella Monitoring add names and incidents. A step whose facts are unknown is
+// Ledger and Beacon add names and incidents. A step whose facts are unknown is
 // left out, so a role sees only what it can check.
 export function steps(f: StepFacts): Step[] {
   const out: Step[] = []
   if (f.exporters) out.push({ id: 'exporters', path: '/exporters', done: f.exporters.length > 0 })
   if (f.rules) out.push({ id: 'detector', path: '/detector/rules', done: f.rules.rules.some((r) => r.enabled) })
-  if (f.inventory) out.push({ id: 'inventory', path: '/settings/inventory-db', done: f.inventory.hook_secret_set || f.inventory.write_token_set })
-  if (f.umbrella?.ingest && f.umbrella.api) out.push({ id: 'umbrella', path: '/settings/umbrella', done: f.umbrella.ingest.enabled || f.umbrella.api.url.trim() !== '' })
+  if (f.inventory) out.push({ id: 'inventory', path: '/settings/ledger', done: f.inventory.hook_secret_set || f.inventory.write_token_set })
+  if (f.umbrella?.ingest && f.umbrella.api) out.push({ id: 'umbrella', path: '/settings/beacon', done: f.umbrella.ingest.enabled || f.umbrella.api.url.trim() !== '' })
   if (f.devices) out.push({ id: 'devices', path: '/devices', done: f.devices.length > 0, optional: true })
   if (f.bmp) out.push({ id: 'bmp', path: '/settings/bmp', done: f.bmp.enabled, optional: true })
   return out

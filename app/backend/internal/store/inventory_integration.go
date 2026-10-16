@@ -2,7 +2,7 @@ package store
 
 import "context"
 
-// InventoryIntegration is the Flow side of the Inventory DB integration
+// InventoryIntegration is the Current side of the Ledger integration
 // (docs/integrations.md §2): openbao:// references of the hook secret
 // (x-inventory-signature) and of the optional editor token used to create
 // IPAM addresses from the Unknown lists.

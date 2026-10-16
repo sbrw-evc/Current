@@ -1,7 +1,7 @@
-// Package app is the HTTP application of Umbrella Flow in normal mode (after
+// Package app is the HTTP application of Current in normal mode (after
 // the setup wizard): the router with session authentication, CSRF and
 // permission checks, the platform handlers (auth, users, roles, saved views,
-// classifiers, Inventory DB connection, status) and thin handlers that call
+// classifiers, Ledger connection, status) and thin handlers that call
 // the traffic packages through the interfaces in deps.go.
 package app
 
@@ -19,12 +19,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/sbrw-evc/network/app/backend/internal/access"
-	"github.com/sbrw-evc/network/app/backend/internal/auth"
-	"github.com/sbrw-evc/network/app/backend/internal/config"
-	"github.com/sbrw-evc/network/app/backend/internal/httpx"
-	"github.com/sbrw-evc/network/app/backend/internal/secrets"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/access"
+	"github.com/sbrw-evc/current/app/backend/internal/auth"
+	"github.com/sbrw-evc/current/app/backend/internal/config"
+	"github.com/sbrw-evc/current/app/backend/internal/httpx"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
 )
 
 // Options of the HTTP application.
@@ -35,17 +35,17 @@ type Options struct {
 	Role           string // FLOW_ROLE, shown in /api/status
 	SecureCookies  bool
 	TrustedProxies []netip.Prefix
-	Web            http.Handler // the SPA (httpx.Web)
-	// ScheduleInventory runs Inventory DB synchronization on its interval
+	Web            http.Handler // the single-page web console (httpx.Web)
+	// ScheduleInventory runs Ledger synchronization on its interval
 	// in Run (when Deps.Inventory is set).
 	ScheduleInventory bool
 	// DataDir holds flow.json; moving the secrets to another OpenBao rewrites
 	// it (openbao_migrate.go). Empty = that move is not available.
 	DataDir string
-	// The SPA connection (spa.go): the connection key (SPA_CONNECTION_KEY)
+	// The Keystone connection (keystone.go): the connection key (SPA_CONNECTION_KEY)
 	// or the file holding it (SPA_CONNECTION_KEY_FILE); without both the key
 	// is read from OpenBao (spa#connection_key). SPAPublicURL
-	// (SPA_PUBLIC_URL) is the address of Flow for the redirect addresses.
+	// (SPA_PUBLIC_URL) is the address of Current for the redirect addresses.
 	SPAKey       string
 	SPAKeyFile   string
 	SPAPublicURL string
@@ -59,12 +59,12 @@ type App struct {
 	sessions *auth.Sessions
 	syncMu   sync.Mutex
 	cfgMu    sync.RWMutex  // guards deps.Config (replaced by an OpenBao move)
-	umb      umbrellaState // Umbrella scopes and dependency discovery (umbrella_*.go)
-	spa      spaState      // SPA sign-in and synchronization (spa.go)
+	umb      umbrellaState // Beacon scopes and dependency discovery (umbrella_*.go)
+	spa      spaState      // Keystone sign-in and synchronization (keystone.go)
 }
 
 // New builds the application. deps.Store and deps.Vault are required: every
-// secret (session keys, token keys, the SPA connection key) lives in OpenBao.
+// secret (session keys, token keys, the Keystone connection key) lives in OpenBao.
 func New(opt Options, deps Deps) *App {
 	if opt.Web == nil {
 		opt.Web = httpx.Web("")
@@ -94,7 +94,7 @@ func (a *App) setConfig(f config.File) {
 }
 
 // Run does the background work until ctx ends: purging expired sessions,
-// synchronizing with SPA and, when enabled, the Inventory DB schedule.
+// synchronizing with Keystone and, when enabled, the Ledger schedule.
 func (a *App) Run(ctx context.Context) {
 	var wg sync.WaitGroup
 	wg.Go(func() { a.sessions.Run(ctx) })
@@ -165,8 +165,8 @@ func (a *App) Handler() http.Handler {
 	h("GET /api/version", a.version)
 	// /api/setup* answer 404 after the setup (the /api/ fallback).
 
-	// sign-in through SPA (spa.go): /api/auth/spa, /api/auth/spa/start,
-	// /api/auth/spa/callback, the SPA settings and "Synchronize now"
+	// sign-in through Keystone (keystone.go): /api/auth/spa, /api/auth/spa/start,
+	// /api/auth/spa/callback, the Keystone settings and "Synchronize now"
 	a.spaRoutes(h)
 	h("POST /api/auth/logout", a.logout)
 	h("GET /api/auth/me", a.guard(nil, a.me))
@@ -201,30 +201,30 @@ func (a *App) Handler() http.Handler {
 	h("GET /api/sampling-overrides", a.guard(perms(access.ExportersView), a.getSampling))
 	h("PUT /api/sampling-overrides", a.guard(perms(access.ExportersEdit), a.putSampling))
 
-	// Inventory DB
+	// Ledger
 	h("GET /api/inventory-db", a.guard(perms(access.InventoryView), a.getInventory))
 	h("PUT /api/inventory-db", a.guard(perms(access.InventoryEdit), a.putInventory))
 	h("POST /api/inventory-db/test", a.guard(perms(access.InventoryEdit), a.testInventory))
 	h("POST /api/inventory-db/sync", a.guard(perms(access.InventorySync), a.syncInventory))
 	h("GET /api/inventory-db/unknown", a.guard(perms(access.InventoryView), a.unknownInventory))
-	a.inventoryIntegrationRoutes(h) // integrations.inventory, hook, "Create in Inventory DB"
+	a.inventoryIntegrationRoutes(h) // integrations.inventory, hook, "Create in Ledger"
 
 	// classifiers
 	h("GET /api/classifiers", a.guard(perms(access.ClassifiersView), a.getClassifiers))
 	h("PUT /api/classifiers", a.guard(perms(access.ClassifiersEdit), a.putClassifiers))
 	h("POST /api/classifiers/preview", a.guard(perms(access.ClassifiersView), a.previewClassifiers))
 
-	// users (read-only, from SPA) and roles (the catalogue published to SPA)
+	// users (read-only, from Keystone) and roles (the catalogue published to Keystone)
 	h("GET /api/users", a.guard(perms(access.UsersView), a.listUsers))
 	h("GET /api/roles", a.guard(perms(access.RolesView, access.UsersView), a.listRoles))
 	h("POST /api/roles", a.guard(perms(access.RolesEdit), a.createRole))
 	h("PUT /api/roles/{id}", a.guard(perms(access.RolesEdit), a.updateRole))
 	h("DELETE /api/roles/{id}", a.guard(perms(access.RolesEdit), a.deleteRole))
 
-	// Umbrella API: visibility scope, connection, dependency discovery (umbrella_routes.go)
+	// Beacon API: visibility scope, connection, dependency discovery (beacon_routes.go)
 	a.umbrellaRoutes(h)
 
-	// general settings, Umbrella, OpenBao
+	// general settings, Beacon, OpenBao
 	h("GET /api/settings/general", a.guard(perms(access.GeneralView), a.getGeneral))
 	h("PUT /api/settings/general", a.guard(perms(access.GeneralEdit), a.putGeneral))
 	h("POST /api/settings/geoip/test", a.guard(perms(access.GeneralEdit), a.testGeoIP))
@@ -294,7 +294,7 @@ func perms(p ...string) []string { return p }
 // "Authorization: Bearer"), checks CSRF on state-changing methods of
 // sessions and requires one of anyOf (nil = any signed-in user).
 func (a *App) guard(anyOf []string, next handler) http.HandlerFunc {
-	next = a.withScope(next) // Umbrella visibility scope for restricted users (umbrella_scope.go)
+	next = a.withScope(next) // Beacon visibility scope for restricted users (beacon_scope.go)
 	return func(w http.ResponseWriter, r *http.Request) {
 		if token, ok := auth.BearerToken(r); ok { // API token: no session, no CSRF (tokens.go)
 			a.tokenGuard(w, r, token, anyOf, next)

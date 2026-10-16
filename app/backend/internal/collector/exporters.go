@@ -11,7 +11,7 @@ import (
 
 	"github.com/netsampler/goflow2/v2/decoders/netflow"
 
-	"github.com/sbrw-evc/network/app/backend/internal/flow"
+	"github.com/sbrw-evc/current/app/backend/internal/flow"
 )
 
 // IfNameSource resolves interface names learned from the exporters

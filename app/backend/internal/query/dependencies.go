@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/schema"
+	"github.com/sbrw-evc/current/app/backend/internal/schema"
 )
 
 // Dependency discovery (docs/integrations.md §3.3): steady CI ↔ CI traffic
-// over the last days, both ends resolved to Inventory DB source_refs
+// over the last days, both ends resolved to Ledger source_refs
 // (SrcCI / DstCI), with the server side detected by the port.
 //
 // The raw table is read because the aggregates have no ports. The server of a

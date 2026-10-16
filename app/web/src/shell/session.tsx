@@ -1,7 +1,7 @@
 import { createContext, useContext } from 'react'
 import type { User } from '../api/types'
 
-// accountURL is SPA's page where the person changes their password and passkeys ("Account and security").
+// accountURL is Keystone's page where the person changes their password and passkeys ("Account and security").
 export type Session = { user: User; can: (perm: string) => boolean; signOut: () => void; accountURL: string }
 
 const SessionContext = createContext<Session | null>(null)

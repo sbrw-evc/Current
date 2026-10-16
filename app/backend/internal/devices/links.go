@@ -7,13 +7,13 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/sbrw-evc/network/app/backend/internal/devices/drivers"
-	"github.com/sbrw-evc/network/app/backend/internal/secrets"
-	"github.com/sbrw-evc/network/app/backend/internal/snmp"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/devices/drivers"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets"
+	"github.com/sbrw-evc/current/app/backend/internal/snmp"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
 )
 
-// Links of managed devices to the rest of Flow: the flow exporters they
+// Links of managed devices to the rest of Current: the flow exporters they
 // are, and their SNMP credentials as profiles of the SNMP interface-name
 // poller (so one device is configured once).
 
@@ -53,7 +53,7 @@ func (s *Service) ExporterDevices(ctx context.Context) (map[netip.Addr]ExporterD
 // SNMPProfiles turns the own SNMP credentials of the managed devices into
 // profiles of the SNMP interface-name poller (ids "dev-<id>", prefixes the
 // device's exporter addresses, references to OpenBao devices/<id>). SNMPv1
-// and devices that use a Flow SNMP profile are left out.
+// and devices that use a Current SNMP profile are left out.
 func SNMPProfiles(ctx context.Context, st *store.Store, vault *secrets.Client) ([]snmp.Profile, error) {
 	if st == nil || vault == nil {
 		return nil, nil

@@ -5,7 +5,7 @@ import (
 	"net/netip"
 	"testing"
 
-	"github.com/sbrw-evc/network/app/backend/internal/flow"
+	"github.com/sbrw-evc/current/app/backend/internal/flow"
 )
 
 type mapLookup map[netip.Addr]string
@@ -26,7 +26,7 @@ func TestPTRThreatAndCloudExporters(t *testing.T) {
 			return "", false
 		},
 	})
-	// 8.8.8.8 → 10.1.0.50: the destination has an Inventory DB host name,
+	// 8.8.8.8 → 10.1.0.50: the destination has a Ledger host name,
 	// so no PTR is used for it.
 	f := &flow.Flow{ExporterAddress: edge, SrcAddr: google, DstAddr: vmAddr, Bytes: 1}
 	g := &flow.Flow{ExporterAddress: cloud, SrcAddr: vmAddr, DstAddr: netip.AddrFrom16(bad.As16()), Bytes: 1}

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/sbrw-evc/network/app/backend/internal/secrets"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets"
 )
 
 const (

@@ -11,13 +11,13 @@ import (
 )
 
 // Options returns clickhouse-go options for the connection; database "" uses
-// the server default database (for checks before the Flow database exists).
+// the server default database (for checks before the Current database exists).
 func (c ClickHouse) Options(password, database string) *clickhouse.Options {
 	o := &clickhouse.Options{
 		Addr:        c.Addrs(),
 		Auth:        clickhouse.Auth{Database: database, Username: c.Username, Password: password},
 		DialTimeout: 10 * time.Second,
-		ClientInfo:  clickhouse.ClientInfo{Products: []struct{ Name, Version string }{{Name: "umbrella-flow", Version: "1"}}},
+		ClientInfo:  clickhouse.ClientInfo{Products: []struct{ Name, Version string }{{Name: "current", Version: "1"}}},
 	}
 	if c.Secure {
 		o.TLS = &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: c.SkipVerify}

@@ -1,0 +1,10 @@
+apiVersion: v2
+name: current
+description: Current (formerly Umbrella Flow) - network traffic (NetFlow / IPFIX / sFlow, BMP) and network devices for the Umbrella family
+type: application
+version: 0.1.0
+appVersion: "latest"
+keywords: [netflow, ipfix, sflow, bmp, clickhouse, network-devices, umbrella]
+home: https://github.com/sbrw-evc/current
+sources:
+  - https://github.com/sbrw-evc/current

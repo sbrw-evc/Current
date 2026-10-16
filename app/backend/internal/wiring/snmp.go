@@ -11,12 +11,12 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/sbrw-evc/network/app/backend/internal/app"
-	"github.com/sbrw-evc/network/app/backend/internal/collector"
-	"github.com/sbrw-evc/network/app/backend/internal/devices"
-	"github.com/sbrw-evc/network/app/backend/internal/secrets"
-	"github.com/sbrw-evc/network/app/backend/internal/snmp"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/app"
+	"github.com/sbrw-evc/current/app/backend/internal/collector"
+	"github.com/sbrw-evc/current/app/backend/internal/devices"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets"
+	"github.com/sbrw-evc/current/app/backend/internal/snmp"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
 )
 
 // SNMP runs the SNMP poller with the settings from PostgreSQL (key "snmp")
@@ -28,7 +28,7 @@ type SNMP struct {
 	vault *secrets.Client
 	log   *slog.Logger
 
-	// Extra adds credential profiles of other parts of Flow (the SNMP
+	// Extra adds credential profiles of other parts of Current (the SNMP
 	// credentials of managed network devices, devices.SNMPProfiles) ahead of
 	// the configured ones; nil = none.
 	Extra func(ctx context.Context) ([]snmp.Profile, error)

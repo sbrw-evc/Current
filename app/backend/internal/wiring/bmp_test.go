@@ -8,9 +8,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/sbrw-evc/network/app/backend/internal/enrich"
-	"github.com/sbrw-evc/network/app/backend/internal/gnmi"
-	"github.com/sbrw-evc/network/app/backend/internal/snmp"
+	"github.com/sbrw-evc/current/app/backend/internal/enrich"
+	"github.com/sbrw-evc/current/app/backend/internal/gnmi"
+	"github.com/sbrw-evc/current/app/backend/internal/snmp"
 )
 
 func TestRoutingComponents(t *testing.T) {

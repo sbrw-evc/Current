@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/sbrw-evc/network/app/backend/internal/flow"
+	"github.com/sbrw-evc/current/app/backend/internal/flow"
 )
 
 // ASRouting is the AS provider taking the origin AS of the BGP route (BMP).

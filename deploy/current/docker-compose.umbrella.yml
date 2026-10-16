@@ -1,0 +1,18 @@
+# Joins Current to the external Docker network "umbrella" shared with Beacon
+# and Ledger (docker network create umbrella, if it is not there yet). Enable
+# with COMPOSE_FILE=docker-compose.yml:docker-compose.umbrella.yml in .env;
+# Current is then reachable there as http://current:8080, and under the host
+# names it had before the rename, http://flow:8080 and http://umbrella-flow:8080,
+# which the other apps may still be configured with.
+services:
+  current:
+    networks:
+      default:
+        aliases: [flow]
+      umbrella:
+        aliases: [current, flow, umbrella-flow]
+
+networks:
+  umbrella:
+    name: umbrella
+    external: true

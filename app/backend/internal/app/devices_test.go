@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sbrw-evc/network/app/backend/internal/access"
-	"github.com/sbrw-evc/network/app/backend/internal/devices"
-	"github.com/sbrw-evc/network/app/backend/internal/devices/drivers"
-	"github.com/sbrw-evc/network/app/backend/internal/secrets"
+	"github.com/sbrw-evc/current/app/backend/internal/access"
+	"github.com/sbrw-evc/current/app/backend/internal/devices"
+	"github.com/sbrw-evc/current/app/backend/internal/devices/drivers"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets"
 )
 
 type apiFakeDriver struct{}
@@ -46,7 +46,7 @@ func TestDevicesAPIPermissions(t *testing.T) {
 		t.Fatal(err)
 	}
 	legacyUser(t, e.st, "netops", role.ID)
-	e.spa.Users = append(e.spa.Users, spaUser("netops", role.Ident))
+	e.keystone.Users = append(e.keystone.Users, spaUser("netops", role.Ident))
 	ops := e.client()
 	ops.login("netops")
 	viewer := e.client()

@@ -8,14 +8,14 @@ import { Banner, Button } from '../ui/ui'
 import { Sidebar, SidebarResizer, useCollapsed, useSidebarWidth } from './Sidebar'
 import { SessionProvider, type Session } from './session'
 import { TopBar } from './TopBar'
-import { markSignedOut } from '../pages/spa/model'
+import { markSignedOut } from '../pages/keystone/model'
 import { ScopeBanner } from './ScopeBanner'
 import { DesktopOnly, forcedPages } from './mobile/DesktopOnly'
 import { MobileFrame } from './mobile/MobileFrame'
 import { mobileReady, pageOf } from './mobile/pages'
 import { useMobile } from './mobile/useMobile'
 
-// Shell: checks the setup state and the session, then draws Umbrella's frame (top bar, sidebar,
+// Shell: checks the setup state and the session, then draws Beacon's frame (top bar, sidebar,
 // rounded page block) around the current page.
 export function Shell() {
   const t = useT()
@@ -40,8 +40,8 @@ export function Shell() {
     if (me.data) setCsrf(me.data.csrf)
   }, [me.data])
 
-  // Sign out: the session of Flow ends, then SPA's sign-out ends the SPA session and returns to
-  // Flow, whose sign-in page then waits for a click instead of going to SPA again.
+  // Sign out: the session of Current ends, then Keystone's sign-out ends the Keystone session and returns to
+  // Current, whose sign-in page then waits for a click instead of going to Keystone again.
   const signOut = useCallback(async () => {
     let redirect = ''
     try {
@@ -104,7 +104,7 @@ export function Shell() {
   )
 }
 
-// PhonePage keeps the pages made for a computer behind a note on the phone (Umbrella's Pages).
+// PhonePage keeps the pages made for a computer behind a note on the phone (Beacon's Pages).
 function PhonePage() {
   const { pathname } = useLocation()
   const [forced, setForced] = useState(forcedPages)

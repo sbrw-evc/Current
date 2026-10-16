@@ -9,7 +9,7 @@ import (
 type ExporterSeen struct {
 	Address  netip.Addr
 	Name     string // optional; filled from the flows when empty
-	Ref      string // Inventory DB source_ref; optional
+	Ref      string // Ledger source_ref; optional
 	LastSeen time.Time
 }
 
@@ -28,14 +28,14 @@ func (f ExporterFunc) Exporters() []ExporterSeen { return f() }
 type IfaceKey struct {
 	Exporter     netip.Addr
 	ExporterName string
-	ExporterRef  string // Inventory DB source_ref of the device
+	ExporterRef  string // Ledger source_ref of the device
 	Interface    string // interface name
 	Circuit      string // circuit ID (InIfCircuit / OutIfCircuit), may be empty
 }
 
 // CommitSource returns the commit rate (bits per second) of the circuit on
 // an interface; ok false (or 0) when there is none. The coordinator wires
-// the Inventory DB snapshot (circuits.commit_rate).
+// the Ledger snapshot (circuits.commit_rate).
 type CommitSource interface {
 	Commit(k IfaceKey) (bps uint64, ok bool)
 }

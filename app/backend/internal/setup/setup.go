@@ -3,10 +3,10 @@
 // setup code (written to the log and to <data>/setup-token, attempts are
 // rate-limited), tests every step, and on completion writes the secrets to
 // OpenBao, migrates PostgreSQL and ClickHouse, stores the settings, keeps the
-// SPA connection key (when given here rather than in SPA_CONNECTION_KEY),
+// Keystone connection key (when given here rather than in SPA_CONNECTION_KEY),
 // writes flow.json and hands over to the application without a restart.
-// There is no first administrator: people sign in through SPA, and the first
-// administrator is whoever SPA gives Flow's "admin" role.
+// There is no first administrator: people sign in through Keystone, and the first
+// administrator is whoever Keystone gives Current's "admin" role.
 package setup
 
 import (
@@ -29,13 +29,13 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/sbrw-evc/network/app/backend/internal/auth"
-	"github.com/sbrw-evc/network/app/backend/internal/config"
-	"github.com/sbrw-evc/network/app/backend/internal/httpx"
-	"github.com/sbrw-evc/network/app/backend/internal/secrets"
-	"github.com/sbrw-evc/network/app/backend/internal/spa"
-	chstore "github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/auth"
+	"github.com/sbrw-evc/current/app/backend/internal/config"
+	"github.com/sbrw-evc/current/app/backend/internal/httpx"
+	"github.com/sbrw-evc/current/app/backend/internal/keystone"
+	"github.com/sbrw-evc/current/app/backend/internal/secrets"
+	chstore "github.com/sbrw-evc/current/app/backend/internal/storage/clickhouse"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
 )
 
 const (
@@ -252,7 +252,7 @@ type GeoIPInput struct {
 	Databases []string `json:"databases"`
 }
 
-// SPAInput is the SPA connection key (spa1.…). It is optional here: the
+// SPAInput is the Keystone connection key (spa1.…). It is optional here: the
 // deployment can give it in SPA_CONNECTION_KEY or SPA_CONNECTION_KEY_FILE.
 type SPAInput struct {
 	ConnectionKey string `json:"connection_key"`
@@ -271,9 +271,9 @@ type Input struct {
 	NATS       *NATSInput       `json:"nats"`
 	Collector  *Collector       `json:"collector"`
 	Inventory  *InventoryInput  `json:"inventory"`
-	Umbrella   *UmbrellaInput   `json:"umbrella"`
+	Beacon     *UmbrellaInput   `json:"umbrella"`
 	GeoIP      *GeoIPInput      `json:"geoip"`
-	SPA        *SPAInput        `json:"spa"`
+	Keystone   *SPAInput        `json:"spa"`
 	// Retention of flows; the console sends it here, clickhouse.retention is
 	// also accepted (and wins).
 	Retention *config.Retention `json:"retention,omitempty"`
@@ -626,7 +626,7 @@ func checkGeneral(in Input, d Defaults) (General, error) {
 	if g.PublicURL != "" {
 		u, err := url.Parse(g.PublicURL)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			return g, errors.New("the Flow address must look like https://flow.example")
+			return g, errors.New("the Current address must look like https://current.example")
 		}
 	}
 	return g, nil
@@ -678,7 +678,7 @@ func (m *Module) apply(ctx context.Context, in Input, remote string) (Result, er
 	attach := in.Postgres != nil && in.Postgres.AttachExisting
 	if pgd.HasState && !attach {
 		return res, fail(http.StatusConflict, "postgres_has_state",
-			fmt.Errorf("the database already has Flow data (%d users): attach to it or choose an empty database", pgd.Users))
+			fmt.Errorf("the database already has Current data (%d users): attach to it or choose an empty database", pgd.Users))
 	}
 
 	// ClickHouse
@@ -748,8 +748,8 @@ func (m *Module) apply(ctx context.Context, in Input, remote string) (Result, er
 		}
 	}
 	umb := UmbrellaInput{}
-	if in.Umbrella != nil && in.Umbrella.Enabled {
-		umb = *in.Umbrella
+	if in.Beacon != nil && in.Beacon.Enabled {
+		umb = *in.Beacon
 		if c := CheckUmbrella(ctx, umb.IngestURL, umb.Token); !c.OK {
 			return res, bad("umbrella_unavailable", errors.New(c.Error))
 		}
@@ -765,10 +765,10 @@ func (m *Module) apply(ctx context.Context, in Input, remote string) (Result, er
 		}
 	}
 
-	// SPA: optional (the deployment may give the key in SPA_CONNECTION_KEY).
+	// Keystone: optional (the deployment may give the key in SPA_CONNECTION_KEY).
 	spaKey := ""
-	if in.SPA != nil && strings.TrimSpace(in.SPA.ConnectionKey) != "" {
-		spaKey = strings.TrimSpace(in.SPA.ConnectionKey)
+	if in.Keystone != nil && strings.TrimSpace(in.Keystone.ConnectionKey) != "" {
+		spaKey = strings.TrimSpace(in.Keystone.ConnectionKey)
 		if c := CheckSPA(ctx, spaKey, general.PublicURL); !c.OK {
 			return res, bad("spa_unavailable", errors.New(c.Error))
 		}
@@ -848,7 +848,7 @@ func (m *Module) apply(ctx context.Context, in Input, remote string) (Result, er
 		}
 	}
 	if spaKey != "" {
-		if _, err := put(spa.SecretPath, spa.SecretKey, spaKey, ""); err != nil {
+		if _, err := put(keystone.SecretPath, keystone.SecretKey, spaKey, ""); err != nil {
 			return res, err
 		}
 	}

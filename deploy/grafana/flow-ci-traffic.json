@@ -1,7 +1,7 @@
 {
   "uid": "flow-ci-traffic",
   "title": "CI traffic",
-  "description": "Umbrella Flow: traffic of one configuration item from the Flow ClickHouse tables (flows, flows_1m, flows_5m, flows_1h). Umbrella's incident context link fills var-ci, var-ci_id, var-ip and var-ref (Network docs/integrations.md §3.5). The same file is kept in Umbrella Flow and Umbrella Monitoring.",
+  "description": "Current: traffic of one configuration item from the Current ClickHouse tables (flows, flows_1m, flows_5m, flows_1h). Beacon's incident context link fills var-ci, var-ci_id, var-ip and var-ref (Network docs/integrations.md §3.5). The same file is kept in Current and Beacon.",
   "tags": [
     "umbrella",
     "umbrella-flow",
@@ -54,7 +54,7 @@
       {
         "type": "textbox",
         "name": "ref",
-        "label": "Inventory DB ref",
+        "label": "Ledger ref",
         "query": "",
         "current": {
           "text": "",
@@ -122,7 +122,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "**${ci}** — Inventory DB reference `${ref}`, address `${ip}`.\n\nFlows are matched to the item as an end of the traffic by `SrcCI` / `DstCI` = `ref` or `SrcAddr` / `DstAddr` = `ip` (either may be empty; with both empty, by the host name `ci`). *In* is traffic to the item, *Out* — from it. When the item is a router or a switch that exports flows (an interface utilization incident), the last two panels show the traffic it carried (`ExporterRef` = `ref` or `ExporterAddress` = `ip`). Bytes are already multiplied by the sampling rate. Panels over the raw `flows` table cover its retention (15 days by default); the long-range panel reads `${rollup}` and matches by reference only. Open from an Umbrella incident (Settings → Alerting → Grafana) to have the variables filled."
+        "content": "**${ci}** — Ledger reference `${ref}`, address `${ip}`.\n\nFlows are matched to the item as an end of the traffic by `SrcCI` / `DstCI` = `ref` or `SrcAddr` / `DstAddr` = `ip` (either may be empty; with both empty, by the host name `ci`). *In* is traffic to the item, *Out* — from it. When the item is a router or a switch that exports flows (an interface utilization incident), the last two panels show the traffic it carried (`ExporterRef` = `ref` or `ExporterAddress` = `ip`). Bytes are already multiplied by the sampling rate. Panels over the raw `flows` table cover its retention (15 days by default); the long-range panel reads `${rollup}` and matches by reference only. Open from a Beacon incident (Settings → Alerting → Grafana) to have the variables filled."
       }
     },
     {
@@ -419,7 +419,7 @@
       "id": 8,
       "type": "table",
       "title": "Top talkers",
-      "description": "Peers of the item by volume: address, host name and Inventory DB reference of the other side.",
+      "description": "Peers of the item by volume: address, host name and Ledger reference of the other side.",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "flow-clickhouse"
@@ -496,7 +496,7 @@
       "id": 9,
       "type": "table",
       "title": "Top ports and applications",
-      "description": "Protocol, the lower (usually the server) port and the application Flow detected.",
+      "description": "Protocol, the lower (usually the server) port and the application Current detected.",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "flow-clickhouse"

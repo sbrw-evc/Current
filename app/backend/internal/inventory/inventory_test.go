@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-// fixtureServer serves testdata/*.json (real Inventory DB output) with
+// fixtureServer serves testdata/*.json (real Ledger output) with
 // limit/offset paging and xc-token auth.
 func fixtureServer(t *testing.T, token string) (*httptest.Server, *atomic.Int64) {
 	t.Helper()
@@ -329,7 +329,7 @@ func TestInterfaceVRF(t *testing.T) {
 	}
 }
 
-// Integration test against a running Inventory DB seeded like testdata:
+// Integration test against a running Ledger seeded like testdata:
 // FLOW_TEST_INVENTORY_URL=http://localhost:8091 FLOW_TEST_INVENTORY_TOKEN=nc_...
 func TestIntegration(t *testing.T) {
 	u, tok := os.Getenv("FLOW_TEST_INVENTORY_URL"), os.Getenv("FLOW_TEST_INVENTORY_TOKEN")

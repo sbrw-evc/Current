@@ -5,7 +5,7 @@ import (
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 
-	chstore "github.com/sbrw-evc/network/app/backend/internal/storage/clickhouse"
+	chstore "github.com/sbrw-evc/current/app/backend/internal/storage/clickhouse"
 )
 
 // Config of the Querier.

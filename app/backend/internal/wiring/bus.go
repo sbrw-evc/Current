@@ -11,8 +11,8 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/sbrw-evc/network/app/backend/internal/bus"
-	"github.com/sbrw-evc/network/app/backend/internal/flow"
+	"github.com/sbrw-evc/current/app/backend/internal/bus"
+	"github.com/sbrw-evc/current/app/backend/internal/flow"
 )
 
 // BusConfig selects the bus.
@@ -38,7 +38,7 @@ func NewBus(ctx context.Context, cfg BusConfig, inProcessOK bool, reg prometheus
 		b := bus.NewInProcess(bus.InProcessConfig{}, reg, log)
 		return b, &BusStatus{Kind: "in-process"}, nil
 	}
-	opts := []nats.Option{nats.Name("umbrella-flow " + cfg.Name)}
+	opts := []nats.Option{nats.Name("current " + cfg.Name)}
 	if cfg.NATSToken != "" {
 		opts = append(opts, nats.Token(cfg.NATSToken))
 	}

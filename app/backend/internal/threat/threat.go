@@ -298,7 +298,7 @@ func New(s Settings, cfg Config) (*Updater, error) {
 		cfg.Client = &http.Client{Timeout: 60 * time.Second}
 	}
 	if cfg.UserAgent == "" {
-		cfg.UserAgent = "umbrella-flow-threat/1"
+		cfg.UserAgent = "current-threat/1"
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now

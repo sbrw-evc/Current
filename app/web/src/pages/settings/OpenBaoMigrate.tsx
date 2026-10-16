@@ -7,14 +7,14 @@ import { num } from '../../lib/format'
 import { notify } from '../../ui/notify'
 import { Banner, Button, Card, Field, Input, Modal, Password, Segmented, Switch, Textarea } from '../../ui/ui'
 
-// Settings → OpenBao → "Move to another OpenBao", as in Umbrella (app/settings/openbao/Migration):
+// Settings → OpenBao → "Move to another OpenBao", as in Beacon (app/settings/openbao/Migration):
 // check the target, copy every secret of the current mount there, point the references to the new
-// mount and switch Flow to the new connection without a restart. The old OpenBao keeps its copy.
+// mount and switch Current to the new connection without a restart. The old OpenBao keeps its copy.
 
 const strings: Dict = {
   en: {
     'mv.title': 'Move to another OpenBao',
-    'mv.text': 'Copies every secret of the current mount to the target, rewrites the references in PostgreSQL and flow.json, and switches Flow to the new connection at once. The current OpenBao keeps its copy; other Flow processes (separate roles) switch on their next restart.',
+    'mv.text': 'Copies every secret of the current mount to the target, rewrites the references in PostgreSQL and flow.json, and switches Current to the new connection at once. The current OpenBao keeps its copy; other Current processes (separate roles) switch on their next restart.',
     'mv.addr': 'Target address',
     'mv.mount': 'KV v2 mount',
     'mv.namespace': 'Namespace',
@@ -32,13 +32,13 @@ const strings: Dict = {
     'mv.same': 'This is the current mount.',
     'mv.move': 'Move secrets',
     'mv.confirm': 'Move the secrets',
-    'mv.confirm.text': 'Flow will copy its secrets to {target} and switch to it. Keep the current OpenBao until every Flow process has been restarted.',
+    'mv.confirm.text': 'Current will copy its secrets to {target} and switch to it. Keep the current OpenBao until every Current process has been restarted.',
     'mv.overwrite': 'Overwrite the {n} secrets already in the target mount',
     'mv.done': 'Moved: {copied} secrets copied, {refs} references updated',
   },
   ru: {
     'mv.title': 'Перенос в другой OpenBao',
-    'mv.text': 'Копирует все секреты текущего хранилища в целевое, переписывает ссылки в PostgreSQL и flow.json и сразу переключает Flow на новое подключение. В текущем OpenBao копия остаётся; другие процессы Flow (отдельные роли) переключатся при следующем перезапуске.',
+    'mv.text': 'Копирует все секреты текущего хранилища в целевое, переписывает ссылки в PostgreSQL и flow.json и сразу переключает Current на новое подключение. В текущем OpenBao копия остаётся; другие процессы Current (отдельные роли) переключатся при следующем перезапуске.',
     'mv.addr': 'Адрес целевого OpenBao',
     'mv.mount': 'Хранилище KV v2',
     'mv.namespace': 'Namespace',
@@ -56,7 +56,7 @@ const strings: Dict = {
     'mv.same': 'Это текущее хранилище.',
     'mv.move': 'Перенести секреты',
     'mv.confirm': 'Перенос секретов',
-    'mv.confirm.text': 'Flow скопирует секреты в {target} и переключится на него. Не выключайте текущий OpenBao, пока все процессы Flow не будут перезапущены.',
+    'mv.confirm.text': 'Current скопирует секреты в {target} и переключится на него. Не выключайте текущий OpenBao, пока все процессы Current не будут перезапущены.',
     'mv.overwrite': 'Перезаписать {n} секретов, уже лежащих в целевом хранилище',
     'mv.done': 'Перенесено: скопировано секретов {copied}, обновлено ссылок {refs}',
   },

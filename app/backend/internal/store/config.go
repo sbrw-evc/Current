@@ -167,7 +167,7 @@ func (s *Store) SetClassifiers(ctx context.Context, rules map[string][]string) e
 	})
 }
 
-// ---- Inventory DB connection
+// ---- Ledger connection
 
 type SyncStats struct {
 	Devices    int `json:"devices"`

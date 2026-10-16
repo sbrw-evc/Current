@@ -41,7 +41,7 @@ func newMetrics(reg prometheus.Registerer) (*metrics, error) {
 			Namespace: "flow", Subsystem: "detector", Name: "alerts", Help: "Alerts by state.",
 		}, []string{"state"}),
 		outbox: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "flow", Subsystem: "detector", Name: "outbox_events", Help: "Events waiting to be delivered to Umbrella.",
+			Namespace: "flow", Subsystem: "detector", Name: "outbox_events", Help: "Events waiting to be delivered to Beacon.",
 		}),
 	}
 	if reg == nil {

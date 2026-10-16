@@ -21,7 +21,7 @@ type Vault interface {
 // ErrUnavailable: OpenBao cannot be read or written.
 var ErrUnavailable = errors.New("key store (OpenBao) is unavailable")
 
-// Keys are the HMAC keys of sessions, CSRF tokens, API tokens and SPA
+// Keys are the HMAC keys of sessions, CSRF tokens, API tokens and Keystone
 // sign-in states, kept in OpenBao at keys#session, keys#csrf, keys#tokens and
 // keys#state. Session IDs and API
 // tokens are stored in PostgreSQL only as HMACs; the CSRF token is
@@ -95,7 +95,7 @@ func (k *Keys) CSRF(id string) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(mac(key, "csrf:"+id)[:csrfTokenBytes]), nil
 }
 
-// StateMAC signs the state of an SPA sign-in. The key is created when it does
+// StateMAC signs the state of a Keystone sign-in. The key is created when it does
 // not exist yet (an upgrade).
 func (k *Keys) StateMAC(ctx context.Context, data string) ([]byte, error) {
 	key, err := k.key(keyState)

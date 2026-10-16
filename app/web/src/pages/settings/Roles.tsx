@@ -10,10 +10,10 @@ import { Banner, Button, Card, Chip, Field, Input, Loading, Modal, Textarea } fr
 import { allPermissions, draftOf, grouped, lockedView, NAME_MAX, normalize, perm, sameDraft, toggle, validRoleName, type Catalog, type RoleDraft, type RoleRecord } from './RolesModel'
 import { rolesStrings } from './rolesStrings'
 
-// Settings → Roles (docs/api.md "Users and roles"): the roles Flow publishes to SPA. Custom roles
+// Settings → Roles (docs/api.md "Users and roles"): the roles Current publishes to Keystone. Custom roles
 // are created, changed and deleted here through /api/roles, and every change republishes the role
-// catalogue to SPA on the server; built-in roles (Administrator, Viewer) are read-only. People get
-// their roles in SPA.
+// catalogue to Keystone on the server; built-in roles (Administrator, Viewer) are read-only. People get
+// their roles in Keystone.
 
 const useCatalog = () => useQuery({ queryKey: ['access-catalog'], queryFn: ({ signal }) => get<Catalog>('/api/access/catalog', signal), staleTime: Infinity })
 

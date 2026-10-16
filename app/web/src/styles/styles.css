@@ -1,5 +1,5 @@
-/* Copied from Umbrella Monitoring (app/web/src/styles.css, branch dev): the shared design tokens and
-   shell of the product family. Keep in sync; Flow-specific styles live in app.css. */
+/* Copied from Beacon (app/web/src/styles.css, branch dev): the shared design tokens and
+   shell of the product family. Keep in sync; Current-specific styles live in app.css. */
 :root {
   --bg: #f4f6f9;
   --chrome: #e9edf2;

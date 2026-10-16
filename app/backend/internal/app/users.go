@@ -4,12 +4,12 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/sbrw-evc/network/app/backend/internal/access"
-	"github.com/sbrw-evc/network/app/backend/internal/httpx"
+	"github.com/sbrw-evc/current/app/backend/internal/access"
+	"github.com/sbrw-evc/current/app/backend/internal/httpx"
 )
 
-// ---- users: read-only records synchronized from SPA (spa.go). Creating
-// people, passwords, roles and enabling or disabling them is done in SPA.
+// ---- users: read-only records synchronized from Keystone (keystone.go). Creating
+// people, passwords, roles and enabling or disabling them is done in Keystone.
 
 func (a *App) listUsers(w http.ResponseWriter, r *http.Request, p *Principal) {
 	users, err := a.st.ListUsers(r.Context())

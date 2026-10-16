@@ -1,7 +1,7 @@
 // Package store is the PostgreSQL configuration database: relational tables
 // created by goose migrations embedded in the binary, and typed repository
 // functions for users, roles, sessions, settings, saved views, classifiers,
-// the Inventory DB connection, sampling overrides and the audit log.
+// the Ledger connection, sampling overrides and the audit log.
 package store
 
 import (
@@ -48,7 +48,7 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 		cfg.ConnConfig.ConnectTimeout = 10 * time.Second
 	}
 	if cfg.ConnConfig.RuntimeParams["application_name"] == "" {
-		cfg.ConnConfig.RuntimeParams["application_name"] = "umbrella-flow"
+		cfg.ConnConfig.RuntimeParams["application_name"] = "current"
 	}
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
@@ -133,8 +133,8 @@ func (s *Store) Version(ctx context.Context) (int64, error) {
 	return v, err
 }
 
-// IsEmpty reports whether the database has no Flow state yet: no users and
-// no settings (a fresh database, or not migrated). People come from SPA, so a
+// IsEmpty reports whether the database has no Current state yet: no users and
+// no settings (a fresh database, or not migrated). People come from Keystone, so a
 // completed setup with nobody signed in yet is told by its settings.
 func (s *Store) IsEmpty(ctx context.Context) (bool, error) {
 	var exists bool

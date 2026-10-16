@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// Wire types: the subset of Inventory DB's NetBox-compatible JSON that the
+// Wire types: the subset of Ledger's NetBox-compatible JSON that the
 // snapshot needs. Unknown fields are ignored, missing ones stay zero.
 
 // ref is a nested reference {id, url, display, ...brief fields}.
@@ -140,7 +140,7 @@ type rawDevice struct {
 	Status       choice         `json:"status"`
 	PrimaryIP4   *ref           `json:"primary_ip4"`
 	PrimaryIP6   *ref           `json:"primary_ip6"`
-	OOBIP        *ref           `json:"oob_ip"` // NetBox 4; not in Inventory DB yet
+	OOBIP        *ref           `json:"oob_ip"` // NetBox 4; not in Ledger yet
 	Tags         []tag          `json:"tags"`
 	CustomFields map[string]any `json:"custom_fields"`
 }
@@ -182,7 +182,7 @@ type rawInterface struct {
 	Description            string         `json:"description"`
 	Mode                   choice         `json:"mode"`
 	UntaggedVLAN           *ref           `json:"untagged_vlan"`
-	VRF                    *ref           `json:"vrf"` // NetBox 3.3+; Inventory DB derives it from addresses
+	VRF                    *ref           `json:"vrf"` // NetBox 3.3+; Ledger derives it from addresses
 	Cable                  *ref           `json:"cable"`
 	LinkPeers              []peer         `json:"link_peers"`
 	LinkPeersType          string         `json:"link_peers_type"`

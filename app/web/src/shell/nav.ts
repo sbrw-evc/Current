@@ -1,6 +1,6 @@
-import { MonitorSmartphone, Server, Share2, ShieldCheck, UserCog, UsersRound, AtSign, CloudUpload, Cable, Waypoints, Route, Activity, Network, Umbrella, BarChart3, KeyRound, BellRing, Cpu, Database, Home, Layers, Plug, LineChart, ListChecks, ListTree, LockKeyhole, Radar, Router, Settings, ShieldAlert, Tags, type LucideIcon } from 'lucide-react'
+import { MonitorSmartphone, Server, Share2, ShieldCheck, UserCog, UsersRound, AtSign, CloudUpload, Cable, Waypoints, Route, Activity, Network, Siren, BarChart3, KeyRound, BellRing, Cpu, Database, Home, Layers, Plug, LineChart, ListChecks, ListTree, LockKeyhole, Radar, Router, Settings, ShieldAlert, Tags, type LucideIcon } from 'lucide-react'
 
-// The menu: groups of pages in Umbrella's sidebar style. A page the role can't see is hidden
+// The menu: groups of pages in Beacon's sidebar style. A page the role can't see is hidden
 // (the API enforces the permissions anyway).
 export type PageDef = { id: string; path: string; icon: LucideIcon; perm?: string; subtitle?: string }
 export type NavGroup = { id: string; icon: LucideIcon; pages: PageDef[] }
@@ -24,7 +24,7 @@ export const NAV: NavGroup[] = [
       { id: 'detector-rules', path: '/detector/rules', icon: ListChecks, perm: 'detector:view' },
     ],
   },
-  // The managed network: devices Flow polls and configures, their clients and the map.
+  // The managed network: devices Current polls and configures, their clients and the map.
   {
     id: 'network',
     icon: Server,
@@ -46,7 +46,7 @@ export const NAV: NavGroup[] = [
       { id: 'flowlogs', path: '/settings/flowlogs', icon: CloudUpload, perm: 'settings.flowlogs:view' },
     ],
   },
-  // What Flow adds to each flow.
+  // What Current adds to each flow.
   {
     id: 'enrichment',
     icon: Layers,
@@ -56,23 +56,23 @@ export const NAV: NavGroup[] = [
       { id: 'threat', path: '/settings/threat', icon: ShieldAlert, perm: 'settings.threat:view' },
     ],
   },
-  // The other products of the family, as Inventory DB's Integrations group.
+  // The other products of the family, as Ledger's Integrations group.
   {
     id: 'integrations',
     icon: Plug,
     pages: [
-      { id: 'umbrella', path: '/settings/umbrella', icon: Umbrella, perm: 'settings.umbrella:view' },
-      { id: 'inventory', path: '/settings/inventory-db', icon: Database, perm: 'settings.inventory:view' },
+      { id: 'umbrella', path: '/settings/beacon', icon: Siren, perm: 'settings.umbrella:view' },
+      { id: 'inventory', path: '/settings/ledger', icon: Database, perm: 'settings.inventory:view' },
     ],
   },
-  // System settings, as Umbrella's Settings group.
+  // System settings, as Beacon's Settings group.
   {
     id: 'settings',
     icon: Settings,
     pages: [
       { id: 'users', path: '/settings/users', icon: UserCog, perm: 'users:view' },
       { id: 'roles', path: '/settings/roles', icon: UsersRound, perm: 'roles:view' },
-      { id: 'spa', path: '/settings/spa', icon: ShieldCheck, perm: 'users:view' },
+      { id: 'spa', path: '/settings/keystone', icon: ShieldCheck, perm: 'users:view' },
       { id: 'tokens', path: '/settings/api-tokens', icon: KeyRound, perm: 'tokens:view' },
       { id: 'openbao', path: '/settings/openbao', icon: LockKeyhole, perm: 'settings.openbao:view' },
     ],

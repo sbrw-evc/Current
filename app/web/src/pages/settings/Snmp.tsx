@@ -12,14 +12,14 @@ import { Banner, Button, Card, Chip, Field, formatDate, Input, Loading, Segmente
 import { body, newProfile, profileBody, toDraft, validAddress, validate, type ProfileDraft, type SecurityLevel, type SnmpDraft, type SnmpView } from './SnmpModel'
 
 // Settings → SNMP (docs/api.md, "SNMP"): interface names, descriptions and speeds polled over SNMP
-// for exporters Inventory DB does not describe. Credentials go to OpenBao and are never shown again.
+// for exporters Ledger does not describe. Credentials go to OpenBao and are never shown again.
 
 const strings: Dict = {
   en: {
-    'snmp.sub': 'Interface names and speeds over SNMP for devices that Inventory DB does not describe',
+    'snmp.sub': 'Interface names and speeds over SNMP for devices that Ledger does not describe',
     'snmp.polling': 'Polling',
     'snmp.enabled': 'Poll devices over SNMP',
-    'snmp.enabled.hint': 'Used after Inventory DB and the interface data the exporters send (option templates, sFlow counters).',
+    'snmp.enabled.hint': 'Used after Ledger and the interface data the exporters send (option templates, sFlow counters).',
     'snmp.exporters': 'Poll the exporters seen in flows',
     'snmp.exporters.hint': 'Only exporters inside the prefixes of a credential profile are polled.',
     'snmp.devices': 'Additional devices',
@@ -76,10 +76,10 @@ const strings: Dict = {
     'snmp.err.priv': 'An SNMPv3 profile with privacy needs its password',
   },
   ru: {
-    'snmp.sub': 'Имена и скорости интерфейсов по SNMP для устройств, которых нет в Inventory DB',
+    'snmp.sub': 'Имена и скорости интерфейсов по SNMP для устройств, которых нет в Ledger',
     'snmp.polling': 'Опрос',
     'snmp.enabled': 'Опрашивать устройства по SNMP',
-    'snmp.enabled.hint': 'Используется после Inventory DB и данных об интерфейсах от экспортёров (option templates, счётчики sFlow).',
+    'snmp.enabled.hint': 'Используется после Ledger и данных об интерфейсах от экспортёров (option templates, счётчики sFlow).',
     'snmp.exporters': 'Опрашивать экспортёры из потоков',
     'snmp.exporters.hint': 'Опрашиваются только экспортёры внутри префиксов профиля учётных данных.',
     'snmp.devices': 'Дополнительные устройства',

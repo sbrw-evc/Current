@@ -13,16 +13,16 @@ import { gnmiBody, gnmiProfileBody, newGnmiProfile, toGnmiDraft, validateGnmi, t
 import { validAddress } from './SnmpModel'
 
 // Settings → gNMI (docs/api.md, "gNMI"): interface names, descriptions and speeds read over gNMI
-// (OpenConfig) for exporters Inventory DB does not describe, polled with Get or streamed with
+// (OpenConfig) for exporters Ledger does not describe, polled with Get or streamed with
 // Subscribe. Passwords, CA certificates and client certificates / keys (mutual TLS) go to OpenBao
 // and are never shown again.
 
 const strings: Dict = {
   en: {
-    'gnmi.sub': 'Interface names and speeds over gNMI (OpenConfig) for devices that Inventory DB does not describe',
+    'gnmi.sub': 'Interface names and speeds over gNMI (OpenConfig) for devices that Ledger does not describe',
     'gnmi.polling': 'Polling',
     'gnmi.enabled': 'Poll devices over gNMI',
-    'gnmi.enabled.hint': 'Used after Inventory DB and the interface data the exporters send, and before SNMP: when both answer, gNMI wins and SNMP fills what it lacks.',
+    'gnmi.enabled.hint': 'Used after Ledger and the interface data the exporters send, and before SNMP: when both answer, gNMI wins and SNMP fills what it lacks.',
     'gnmi.exporters': 'Poll the exporters seen in flows',
     'gnmi.exporters.hint': 'Only exporters inside the prefixes of a credential profile are polled.',
     'gnmi.devices': 'Additional devices',
@@ -99,10 +99,10 @@ const strings: Dict = {
     'gnmi.err.key': 'The client key must be a PEM private key',
   },
   ru: {
-    'gnmi.sub': 'Имена и скорости интерфейсов по gNMI (OpenConfig) для устройств, которых нет в Inventory DB',
+    'gnmi.sub': 'Имена и скорости интерфейсов по gNMI (OpenConfig) для устройств, которых нет в Ledger',
     'gnmi.polling': 'Опрос',
     'gnmi.enabled': 'Опрашивать устройства по gNMI',
-    'gnmi.enabled.hint': 'Используется после Inventory DB и данных об интерфейсах от экспортёров и перед SNMP: если отвечают оба, приоритет у gNMI, а SNMP дополняет недостающее.',
+    'gnmi.enabled.hint': 'Используется после Ledger и данных об интерфейсах от экспортёров и перед SNMP: если отвечают оба, приоритет у gNMI, а SNMP дополняет недостающее.',
     'gnmi.exporters': 'Опрашивать экспортёры из потоков',
     'gnmi.exporters.hint': 'Опрашиваются только экспортёры внутри префиксов профиля учётных данных.',
     'gnmi.devices': 'Дополнительные устройства',

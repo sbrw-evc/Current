@@ -32,7 +32,7 @@ const platforms: Platform[] = [
   plat('opnsense', 'Deciso', 'OPNsense', 'firewall', [['https', 443], ['http', 80], ['snmp', 161]], ['api_key', 'api_secret', ...SNMP_CREDS], ['hostname', 'dns', 'ntp', 'flow_export', 'reboot', 'backup']),
   plat('linux', 'Linux', 'Linux server', 'server', [['ssh', 22], ['snmp', 161]], ['username', 'password', 'private_key', ...SNMP_CREDS], ['hostname', 'interface', 'dns', 'ntp', 'flow_export', 'reboot', 'command', 'backup']),
   plat('tplink', 'TP-Link', 'TP-Link (Archer, Deco, Easy Smart, etc.)', 'router', [['snmp', 161]], SNMP_CREDS, ['hostname', 'interface'], 'Polled over SNMP', 'home'),
-  plat('gnmi', 'OpenConfig', 'Any gNMI device (OpenConfig)', 'router', [['gnmi', 0]], [], [], 'Uses the gNMI profile of Flow that covers the address', 'enterprise'),
+  plat('gnmi', 'OpenConfig', 'Any gNMI device (OpenConfig)', 'router', [['gnmi', 0]], [], [], 'Uses the gNMI profile of Current that covers the address', 'enterprise'),
 ]
 
 const platformsView: PlatformsView = {
@@ -354,7 +354,7 @@ export function devicesMock(method: string, p: string, body: unknown, q: URLSear
   }
   if (p === '/api/devices' && method === 'POST') {
     const inv = candidates.find((c) => c.id === b.inventory_id)
-    if (!inv) return fail(400, 'invalid_device', 'Inventory DB is connected: pick the device in Inventory DB')
+    if (!inv) return fail(400, 'invalid_device', 'Ledger is connected: pick the device in Ledger')
     if (rows.some((r) => r.d.inventory_id === inv.id || r.d.host === b.host)) return fail(409, 'duplicate_device', 'This device is already managed')
     const pl = platforms.find((x) => x.key === b.platform) ?? platforms[0]
     const transport = String(b.transport || pl.transports[0].name)
@@ -419,7 +419,7 @@ export function devicesMock(method: string, p: string, body: unknown, q: URLSear
         return { status: 204 }
       }
       if (method === 'PATCH') {
-        if (r.d.bound && ((b.name !== undefined && b.name !== r.d.name) || (b.site !== undefined && b.site !== r.d.site))) return fail(400, 'invalid_device', 'The name, site and role of a bound device come from Inventory DB')
+        if (r.d.bound && ((b.name !== undefined && b.name !== r.d.name) || (b.site !== undefined && b.site !== r.d.site))) return fail(400, 'invalid_device', 'The name, site and role of a bound device come from Ledger')
         for (const k of ['host', 'transport', 'note', 'enabled', 'poll_seconds', 'flow_exporter_ip', 'verify_tls', 'controller_site', 'tags'] as const) if (b[k] !== undefined) (r.d as Record<string, unknown>)[k] = b[k]
         if (!r.d.bound) for (const k of ['name', 'site', 'role'] as const) if (typeof b[k] === 'string' && b[k]) (r.d as Record<string, unknown>)[k] = b[k]
         return ok(view(r))

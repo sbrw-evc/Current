@@ -16,11 +16,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sbrw-evc/network/app/backend/internal/detector"
-	"github.com/sbrw-evc/network/app/backend/internal/devices/drivers"
-	"github.com/sbrw-evc/network/app/backend/internal/httpx"
-	"github.com/sbrw-evc/network/app/backend/internal/setup"
-	"github.com/sbrw-evc/network/app/backend/internal/store"
+	"github.com/sbrw-evc/current/app/backend/internal/detector"
+	"github.com/sbrw-evc/current/app/backend/internal/devices/drivers"
+	"github.com/sbrw-evc/current/app/backend/internal/httpx"
+	"github.com/sbrw-evc/current/app/backend/internal/setup"
+	"github.com/sbrw-evc/current/app/backend/internal/store"
 )
 
 // Polling, clients, settings applied on devices, and the down / up events.
@@ -32,7 +32,7 @@ const (
 	repollDelay   = 3 * time.Second
 	freshWindow   = 30 * time.Minute // sightings merged into a client
 	maxOutput     = 200_000
-	// SignalDeviceDown is the Umbrella signal of an unreachable device.
+	// SignalDeviceDown is the Beacon signal of an unreachable device.
 	SignalDeviceDown = "use.device.down"
 )
 
@@ -685,8 +685,8 @@ func (s *Service) Run(ctx context.Context) {
 	}
 }
 
-// Tick runs one round of the scheduler: due polls, the Inventory DB cache,
-// the Umbrella events, the clean-up of old clients and the OUI database.
+// Tick runs one round of the scheduler: due polls, the Ledger cache,
+// the Beacon events, the clean-up of old clients and the OUI database.
 func (s *Service) Tick(ctx context.Context) {
 	release, ok, err := s.st.TryLock(ctx, store.LockKey("devices-poll"))
 	if err != nil {
@@ -742,7 +742,7 @@ func (s *Service) Tick(ctx context.Context) {
 	s.housekeeping(ctx, set)
 }
 
-// cacheInventory refreshes the name, site and role cached from Inventory DB.
+// cacheInventory refreshes the name, site and role cached from Ledger.
 func (s *Service) cacheInventory(ctx context.Context, devs []store.NetworkDevice) {
 	snap := s.snapshot()
 	if snap == nil {
@@ -781,7 +781,7 @@ func (s *Service) housekeeping(ctx context.Context, set Settings) {
 	}
 }
 
-// ---------------- Umbrella events ----------------
+// ---------------- Beacon events ----------------
 
 // sinkConfigured reports whether the event sink can deliver (a Sender with
 // no ingest URL would only fill its outbox).
@@ -825,7 +825,7 @@ func (s *Service) reconcileEvents(ctx context.Context, devs []store.NetworkDevic
 	}
 	// A failed delivery stays in the sender's outbox and is retried.
 	if err := s.cfg.Events.Deliver(ctx, events); err != nil {
-		s.log.Warn("device events queued for Umbrella", "events", len(events), "err", err)
+		s.log.Warn("device events queued for Beacon", "events", len(events), "err", err)
 	}
 	for _, m := range marks {
 		if err := s.st.SetDeviceAlerted(ctx, m.id, m.since); err != nil {
@@ -840,7 +840,7 @@ func DeviceEventID(id int64, since time.Time) string {
 	return "flow-" + hex.EncodeToString(h[:10])
 }
 
-// event is the Umbrella event of the down episode of d that started at
+// event is the Beacon event of the down episode of d that started at
 // d.Alerted (else d.DownSince).
 func (s *Service) event(ctx context.Context, d store.NetworkDevice, name, status string) detector.Event {
 	since := s.cfg.Now()
