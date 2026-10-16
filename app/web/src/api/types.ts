@@ -99,6 +99,8 @@ export type Exporter = {
   flows_per_second: number
   sampling_rates: number[]
   interfaces: Interface[]
+  // The managed network device this exporter is (Network → Devices).
+  device?: { id: number; name: string; status: string; platform: string }
 }
 
 export type Summary = { flows_per_second: number; exporters: number; bps_in_external: number; bps_out_external: number }

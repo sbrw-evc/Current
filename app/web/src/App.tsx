@@ -18,6 +18,10 @@ const SetupPage = lazy(() => import('./pages/Setup'))
 const VisualizePage = lazy(() => import('./pages/visualize/VisualizePage'))
 const FlowsPage = lazy(() => import('./pages/Flows'))
 const ExportersPage = lazy(() => import('./pages/Exporters'))
+const DevicesPage = lazy(() => import('./pages/devices/DevicesPage'))
+const DevicePage = lazy(() => import('./pages/devices/DevicePage'))
+const ClientsPage = lazy(() => import('./pages/devices/ClientsPage'))
+const MapPage = lazy(() => import('./pages/devices/MapPage'))
 const DetectorRulesPage = lazy(() => import('./pages/detector/RulesPage'))
 const DetectorRulePage = lazy(() => import('./pages/detector/RuleEditPage'))
 const DetectorStatusPage = lazy(() => import('./pages/detector/StatusPage'))
@@ -76,6 +80,10 @@ const router = createBrowserRouter([
       { path: 'visualize', element: <Guard perm="visualize:view">{lazyPage(<VisualizePage />)}</Guard> },
       { path: 'flows', element: <Guard perm="flows:view">{lazyPage(<FlowsPage />)}</Guard> },
       { path: 'exporters', element: <Guard perm="exporters:view">{lazyPage(<ExportersPage />)}</Guard> },
+      { path: 'devices', element: <Guard perm="devices:view">{lazyPage(<DevicesPage />)}</Guard> },
+      { path: 'devices/:id', element: <Guard perm="devices:view">{lazyPage(<DevicePage />)}</Guard> },
+      { path: 'clients', element: <Guard perm="devices:view">{lazyPage(<ClientsPage />)}</Guard> },
+      { path: 'map', element: <Guard perm="devices:view">{lazyPage(<MapPage />)}</Guard> },
       { path: 'detector', element: <Navigate to="/detector/status" replace /> },
       { path: 'detector/rules', element: <Guard perm="detector:view">{lazyPage(<DetectorRulesPage />)}</Guard> },
       { path: 'detector/rules/:id', element: <Guard perm="detector:view">{lazyPage(<DetectorRulePage />)}</Guard> },

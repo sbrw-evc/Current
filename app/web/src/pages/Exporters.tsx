@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState } from 'react'
-import { ChevronRight, Gauge, LineChart, Network, Router, Search, ShieldAlert } from 'lucide-react'
+import { ChevronRight, Gauge, LineChart, Network, Router, Search, Server, ShieldAlert } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Link } from 'react-router-dom'
 import { useExporters } from '../api/queries'
@@ -43,6 +43,7 @@ const strings: Dict = {
     visualize: 'Visualize',
     'exp.inventory': 'In Inventory DB',
     'exp.noinventory': 'Not in Inventory DB',
+    'exp.device': 'Managed device',
     'boundary.external': 'external',
     'boundary.internal': 'internal',
     'boundary.': 'unknown',
@@ -80,6 +81,7 @@ const strings: Dict = {
     visualize: 'Визуализация',
     'exp.inventory': 'Есть в Inventory DB',
     'exp.noinventory': 'Нет в Inventory DB',
+    'exp.device': 'Управляемое устройство',
     'boundary.external': 'внешний',
     'boundary.internal': 'внутренний',
     'boundary.': 'не задана',
@@ -177,6 +179,11 @@ export default function ExportersPage() {
                           <div className="cell-sub">
                             <span className="mono">{e.address}</span>
                             {e.ref ? <Chip tone="ok">{t('exp.inventory')}</Chip> : <Chip tone="warn">{t('exp.noinventory')}</Chip>}
+                            {e.device && can('devices:view') && (
+                              <Link className="pill" to={`/devices/${e.device.id}`} title={t('exp.device')} onClick={(ev) => ev.stopPropagation()}>
+                                <Server size={12} /> {e.device.name}
+                              </Link>
+                            )}
                           </div>
                         </td>
                         <td data-label={t('col.site')}>{e.site || '—'}</td>

@@ -27,7 +27,7 @@ describe('roles', () => {
   })
   it('groups the catalogue pages and compares drafts', () => {
     const g = grouped(catalog)
-    expect(g.map((x) => x.group.id)).toEqual(['traffic', 'org', 'settings'])
+    expect(g.map((x) => x.group.id)).toEqual(['traffic', 'network', 'org', 'settings'])
     expect(g.flatMap((x) => x.pages).length).toBe(catalog.pages.length)
     const r: RoleRecord = { id: 5, ident: 'noc', name: 'NOC', description: 'x', builtin: false, permissions: ['flows:view', 'visualize:view'], users: 0 }
     expect(sameDraft(draftOf(r), { name: ' NOC ', description: 'x', permissions: ['visualize:view', 'flows:view'] })).toBe(true)

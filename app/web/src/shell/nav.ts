@@ -1,4 +1,4 @@
-import { ShieldCheck, UserCog, UsersRound, AtSign, CloudUpload, Cable, Waypoints, Route, Activity, Network, Umbrella, BarChart3, KeyRound, BellRing, Cpu, Database, Home, Layers, Plug, LineChart, ListChecks, ListTree, LockKeyhole, Radar, Router, Settings, ShieldAlert, Tags, type LucideIcon } from 'lucide-react'
+import { MonitorSmartphone, Server, Share2, ShieldCheck, UserCog, UsersRound, AtSign, CloudUpload, Cable, Waypoints, Route, Activity, Network, Umbrella, BarChart3, KeyRound, BellRing, Cpu, Database, Home, Layers, Plug, LineChart, ListChecks, ListTree, LockKeyhole, Radar, Router, Settings, ShieldAlert, Tags, type LucideIcon } from 'lucide-react'
 
 // The menu: groups of pages in Umbrella's sidebar style. A page the role can't see is hidden
 // (the API enforces the permissions anyway).
@@ -22,6 +22,16 @@ export const NAV: NavGroup[] = [
     pages: [
       { id: 'detector-status', path: '/detector/status', icon: BellRing, perm: 'detector:view' },
       { id: 'detector-rules', path: '/detector/rules', icon: ListChecks, perm: 'detector:view' },
+    ],
+  },
+  // The managed network: devices Flow polls and configures, their clients and the map.
+  {
+    id: 'network',
+    icon: Server,
+    pages: [
+      { id: 'devices', path: '/devices', icon: Server, perm: 'devices:view' },
+      { id: 'clients', path: '/clients', icon: MonitorSmartphone, perm: 'devices:view' },
+      { id: 'map', path: '/map', icon: Share2, perm: 'devices:view' },
     ],
   },
   // Where the data comes from: flows, routes and interface data of the devices.

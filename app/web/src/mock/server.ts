@@ -16,6 +16,7 @@ import { columns } from './schema'
 import { detectorMock } from './detector'
 import { extensionsMock } from './extensions'
 import { routingMock } from './routing'
+import { deviceExporterLink, devicesMock } from './devices'
 
 // An in-browser stand-in for the backend (VITE_MOCK=1): every endpoint of docs/api.md answers
 // with synthetic data, so the console can be developed and screenshot-tested without ClickHouse.
@@ -62,6 +63,10 @@ const ALL_PERMISSIONS = [
   'roles:edit',
   'dependencies:view',
   'dependencies:run',
+  'devices:view',
+  'devices:edit',
+  'devices:operate',
+  'devices:admin',
 ]
 
 const user: User = { id: 'u1', username: 'admin', name: 'Анна Смирнова', role: 'admin', permissions: ALL_PERMISSIONS }
@@ -423,7 +428,7 @@ export async function handle(method: string, path: string, body: unknown): Promi
     state.savedViews = state.savedViews.filter((v) => v.id !== p.split('/').pop())
     return { status: 204 }
   }
-  if (p === '/api/exporters') return ok({ results: mockExporters })
+  if (p === '/api/exporters') return ok({ results: mockExporters.map((e) => ({ ...e, device: deviceExporterLink(e.address) })) })
   if (p === '/api/widgets/summary') {
     const ext = mockExporters.flatMap((e) => e.interfaces).filter((i) => i.boundary === 'external')
     return ok({
@@ -518,5 +523,7 @@ export async function handle(method: string, path: string, body: unknown): Promi
   if (ext) return ext
   const rt = routingMock(method, p, body, url.searchParams)
   if (rt) return rt
+  const dv = devicesMock(method, p, body, url.searchParams)
+  if (dv) return dv
   return fail(404, 'not_found', `${method} ${p}`)
 }

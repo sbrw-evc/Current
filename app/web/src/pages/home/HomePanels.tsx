@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { BellRing, CheckCircle2, ChevronRight, Circle, Database, Router, X } from 'lucide-react'
+import { BellRing, CheckCircle2, ChevronRight, Circle, Database, Router, ServerCrash, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { get, type ApiError } from '../../api/client'
 import { useExporters } from '../../api/queries'
@@ -9,6 +9,7 @@ import { useLocale, useT, type Dict } from '../../i18n'
 import { num } from '../../lib/format'
 import { useSession } from '../../shell/session'
 import { useDetectorStatus, useRules } from '../detector/api'
+import { useDevices } from '../devices/api'
 import type { BmpView } from '../settings/BmpModel'
 import { useInventoryIntegration } from '../settings/InventoryDbIntegration'
 import { attention, steps, stepsDone, type Attention, type Step } from './model'
@@ -22,6 +23,8 @@ const strings: Dict = {
     'att.alerts.sub': 'Traffic anomalies the detector is reporting now',
     'att.silent': 'Exporters without flows for over 5 minutes: {n}',
     'att.silent.sub': 'Check the device, its flow export or the path to the collector',
+    'att.devicesdown': 'Unreachable network devices: {n}',
+    'att.devicesdown.sub': 'Two polls in a row failed; an incident is open in Umbrella when it is connected',
     'att.noinventory': 'Exporters missing from Inventory DB: {n}',
     'att.noinventory.sub': 'Their flows get no site, role or interface names',
     'att.open': 'Open',
@@ -43,6 +46,9 @@ const strings: Dict = {
     'ob.step.umbrella': 'Connect Umbrella Monitoring',
     'ob.step.umbrella.text': 'Detector alerts become incidents, and discovered dependencies go to the CMDB.',
     'ob.step.umbrella.go': 'Connect',
+    'ob.step.devices': 'Add network devices',
+    'ob.step.devices.text': 'Flow polls them: interface load, neighbours, clients, and an incident in Umbrella when one goes down.',
+    'ob.step.devices.go': 'Devices',
     'ob.step.bmp': 'Receive BGP routes over BMP',
     'ob.step.bmp.text': 'AS paths and communities for each flow.',
     'ob.step.bmp.go': 'Set up',
@@ -55,6 +61,8 @@ const strings: Dict = {
     'att.alerts.sub': 'Аномалии трафика, о которых детектор сообщает сейчас',
     'att.silent': 'Экспортёры без потоков дольше 5 минут: {n}',
     'att.silent.sub': 'Проверьте устройство, экспорт потоков или путь до коллектора',
+    'att.devicesdown': 'Недоступные сетевые устройства: {n}',
+    'att.devicesdown.sub': 'Два опроса подряд не удались; если Umbrella подключена, в ней открыт инцидент',
     'att.noinventory': 'Экспортёры, которых нет в Inventory DB: {n}',
     'att.noinventory.sub': 'Их потоки остаются без площадки, роли и имён интерфейсов',
     'att.open': 'Открыть',
@@ -76,25 +84,30 @@ const strings: Dict = {
     'ob.step.umbrella': 'Подключите Umbrella Monitoring',
     'ob.step.umbrella.text': 'Оповещения детектора станут инцидентами, а найденные зависимости попадут в CMDB.',
     'ob.step.umbrella.go': 'Подключить',
+    'ob.step.devices': 'Добавьте сетевые устройства',
+    'ob.step.devices.text': 'Flow будет их опрашивать: загрузка интерфейсов, соседи, клиенты и инцидент в Umbrella, если устройство упадёт.',
+    'ob.step.devices.go': 'Устройства',
     'ob.step.bmp': 'Принимайте BGP-маршруты по BMP',
     'ob.step.bmp.text': 'AS-пути и community для каждого потока.',
     'ob.step.bmp.go': 'Настроить',
   },
 }
 
-const ICONS = { alerts: BellRing, silent: Router, noinventory: Database }
+const ICONS = { alerts: BellRing, devicesdown: ServerCrash, silent: Router, noinventory: Database }
 
 // useAttention reads the alerts and exporters the role may see.
 function useAttention() {
   const { can } = useSession()
   const seeAlerts = can('detector:view')
   const seeExporters = can('exporters:view')
+  const seeDevices = can('devices:view')
   const det = useDetectorStatus(30e3, seeAlerts)
   const exp = useExporters(seeExporters)
+  const devs = useDevices(seeDevices)
   const alerts = seeAlerts ? det.data?.alerts : []
   const exporters = seeExporters ? exp.data?.results : []
   const ready = (!seeAlerts || det.data !== undefined || det.isError) && (!seeExporters || exp.data !== undefined || exp.isError)
-  return { items: attention(alerts, exporters), ready, any: seeAlerts || seeExporters }
+  return { items: attention(alerts, exporters, Date.now(), seeDevices ? devs.data?.results : undefined), ready, any: seeAlerts || seeExporters }
 }
 
 // HealthChip is the Overview's one-line verdict: «All is well» or how many things need a look.
@@ -175,6 +188,7 @@ export function FirstSteps() {
   const opt = { retry: false, staleTime: 60e3 } as const
   const ingest = useQuery({ queryKey: ['settings', 'umbrella'], queryFn: ({ signal }) => get<UmbrellaIngest>('/api/settings/umbrella', signal), enabled: can('settings.umbrella:view') && !hidden, ...opt })
   const api = useQuery({ queryKey: ['settings', 'umbrella', 'api'], queryFn: ({ signal }) => get<UmbrellaAPI>('/api/settings/umbrella/api', signal), enabled: can('settings.umbrella:view') && !hidden, ...opt })
+  const devs = useDevices(can('devices:view') && !hidden)
   const bmp = useQuery<BmpView, ApiError>({ queryKey: ['bmp'], queryFn: ({ signal }) => get<BmpView>('/api/settings/bmp', signal), enabled: can('settings.bmp:view') && !hidden, ...opt })
   if (hidden) return null
   const list = steps({
@@ -183,6 +197,7 @@ export function FirstSteps() {
     inventory: can('settings.inventory:view') ? inv.data : undefined,
     umbrella: { ingest: ingest.data, api: api.data },
     bmp: bmp.data,
+    devices: can('devices:view') ? devs.data?.results : undefined,
   })
   if (list.length === 0 || stepsDone(list)) return null
   const required = list.filter((s) => !s.optional)

@@ -149,8 +149,8 @@ var pages = []Page{
 	}},
 	{"devices", GroupNetwork, Text{"Network devices", "Сетевые устройства"}, []Feature{
 		{View, Text{"See managed devices, their clients and the network map", "Управляемые устройства, их клиенты и карта сети"}},
-		{"edit", Text{"Add, change and delete devices and their credentials, test connections, run discovery", "Добавление, изменение и удаление устройств и их учётных данных, проверка подключения, поиск устройств"}},
-		{"operate", Text{"Poll now, change names, interfaces, DNS, NTP and flow export, block clients, arrange the map", "Опрос, изменение имени, интерфейсов, DNS, NTP и экспорта потоков, блокировка клиентов, раскладка карты"}},
+		{"edit", Text{"Add, change and delete devices and their credentials, test connections, run discovery, name clients, arrange the map", "Добавление, изменение и удаление устройств и их учётных данных, проверка подключения, поиск устройств, имена клиентов, раскладка карты"}},
+		{"operate", Text{"Poll now, change the device name, interfaces, DNS, NTP and flow export, block clients", "Опрос, изменение имени устройства, интерфейсов, DNS, NTP и экспорта потоков, блокировка клиентов"}},
 		{"admin", Text{"Reboot devices, run CLI commands and download configuration backups", "Перезагрузка, произвольные команды CLI и выгрузка резервных копий конфигурации"}},
 	}},
 	{"users", GroupOrg, Text{"Users", "Пользователи"}, []Feature{
