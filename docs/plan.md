@@ -18,7 +18,7 @@ DCIM / IPAM). Working name: **Umbrella Flow** ("Flow" below).
 | Storage | PostgreSQL is required; configuration is a snapshot in `umbrella_state`, high-frequency data lives in separate day-partitioned tables | Flow keeps its configuration in PostgreSQL, relational from the start; flows do not go to PostgreSQL (see ClickHouse) |
 | Secrets | OpenBao only (KV v2, AppRole), the app keeps `openbao://…` references, 30 s cache | Flow does the same: mount `flow/`, AppRole `flow` |
 | Event intake | `POST /api/ingest/{slug}` → connector (node graph, CEL) → event `{ci, signal, severity, status, title, labels}` → deduplication by CI + signal | **The main integration point**: Flow sends traffic events to an Umbrella connector built from the `network-flow` preset |
-| Severity | P1 `critical` … P5 `info`, RED / USE methods | Flow signals: `use.link.utilization`, `red.traffic.anomaly`, `red.ddos.*`, `use.exporter.silent` |
+| Severity | P1 `critical` … P5 `info`, RED / USE methods | Flow signals: `use.link.utilization`, `red.traffic.anomaly`, `red.ddos.*`, `use.exporter.silent`, `use.device.down` |
 | CIs | Matched by ID, name, short name, IP, DNS name, aliases; `source_refs` such as `inventory-db:dcim.device:100` | Flow puts the Inventory DB device `source_ref` into each event, so the CI is found unambiguously |
 | Rule Engine | PromQL against a Prometheus-compatible source, `for`, threshold | Flow can expose per-interface series in Prometheus format, so USE rules on traffic can be written in Umbrella as usual |
 | Grafana | `/go/incidents/{id}/grafana` with `var-ci`, `var-signal`… and a ±10 min window | A matching "Traffic" link from the incident card into Flow, filtered by CI and time window |
@@ -189,6 +189,7 @@ A new Inventory DB integration kind `kind: flow` (modelled on `umbrella`):
   | `red.traffic.anomaly` | RED | deviation from the weekly baseline per interface / network / service | device / CI |
   | `red.traffic.drop` | RED | a service's traffic drops to zero (inverse anomaly) | the service's CI |
   | `use.exporter.silent` | USE | no flows from an exporter for N minutes | exporter |
+  | `use.device.down` | USE | a managed network device failed two polls in a row ([devices.md](devices.md)) | the device |
   | `sec.threat.contact` | RED | contact with an IP from threat lists (stage 6) | internal host |
 
 - The CI is identified by the Inventory DB `source_ref` (`inventory-db:dcim.device:100`) plus name / IP; Umbrella

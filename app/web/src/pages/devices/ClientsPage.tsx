@@ -29,7 +29,7 @@ export default function ClientsPage() {
   const online = list.filter((c) => c.online).length
   return (
     <Page id="clients" wide subtitle={t('cl.sub')}>
-      <section className="card toolbar-card row wrap">
+      <section className="card toolbar-card dev-toolbar">
         <label className="search-field">
           <Search size={16} />
           <input className="input" value={search} placeholder={t('cl.search')} onChange={(e) => setSearch(e.target.value)} />

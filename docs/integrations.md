@@ -93,6 +93,25 @@ inventory sync (debounced).
 
 Flow's detector posts to Umbrella's `network-flow` connector (see Umbrella `app/docs/flow.md`).
 
+The device manager ([devices.md](devices.md)) posts to the same connector through the same sender. Flow has no alert
+table or notification channel of its own for devices. A managed network device that fails two polls in a row raises
+one event:
+
+| Field | Value |
+|---|---|
+| `signal` | `use.device.down` |
+| `method`, `severity` | `USE`, `critical` |
+| `ci` | the device name (from Inventory DB when the device is bound) |
+| `source_ref` | `inventory-db:dcim.device:<id>` for a device bound to Inventory DB, absent for a standalone one |
+| `ip` | the device address |
+| `id` | `flow-` + 20 hex characters, one per down episode, so the next outage opens a new incident |
+| `status` | `firing` while the device is down; `resolved` when a poll succeeds again, or the device is disabled or deleted |
+| `labels` | `source: umbrella-flow`, `device_id`, `platform`, `host`, `site`, `role`, `error` (last poll error) |
+| `links.flow` | `<public URL>/devices/<id>` |
+
+The event has the same shape as the detector's events, so the connector treats it the same way: it finds the CI by
+`source_ref` (else by name and IP) and keeps the method and severity as sent.
+
 ### 3.2 Flow → Umbrella: visibility scopes
 
 Flow holds an Umbrella service-account token (Umbrella permission `integrations.flow:read`) in OpenBao.

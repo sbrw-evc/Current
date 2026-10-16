@@ -50,6 +50,11 @@ deployed with Docker Compose (one command) or a Helm chart, and configured in a 
   them when traffic is back to normal.
 - **Traffic where engineers already look.** Traffic chips, sparklines and circuit 95th percentile in Inventory DB, a
   "Traffic" link from Umbrella incidents, per-interface metrics on `/metrics` and a "CI traffic" dashboard.
+- **The network devices themselves.** 28 platform families (MikroTik, Cisco, Juniper, Aruba, Huawei, FortiGate,
+  Keenetic, OpenWrt, UniFi, Omada, Meraki, Redfish, SNMP and others) plus gNMI. Each is polled on a schedule for
+  interfaces, LLDP / CDP neighbours and clients merged by MAC, and drawn on a network map. Name, interfaces, DNS, NTP
+  and flow export are set from the console. Devices come from Inventory DB, credentials stay in OpenBao, and an
+  unreachable device becomes an Umbrella incident ([docs/devices.md](docs/devices.md)).
 - **CMDB from real traffic.** Steady CI-to-CI flows become dependency proposals on Umbrella's CMDB map.
 - **Fast storage, long history.** Raw flows plus 1 min / 5 min / 1 h aggregates in ClickHouse, with the resolution
   picked for the requested period and separate retention for each level.
@@ -191,7 +196,7 @@ Single-host and split-role walkthroughs: [app/README.md](app/README.md#run).
 |---|---|---|
 | Inventory DB → Flow | exporters, interfaces, circuits, prefixes and CIs enrich every flow; a signed hook triggers an early sync on changes | wizard step or Integrations → Inventory DB |
 | Flow → Inventory DB | traffic chips, 24 h sparklines and circuit 95th percentile on device, interface and circuit pages; live addresses missing from IPAM | Inventory DB integration `kind: flow` with a Flow API token |
-| Flow → Umbrella | detector events become incidents on the right CI, with a "Traffic" link back to Flow | Umbrella quick connect `network-flow`, then wizard step or Integrations → Umbrella Monitoring |
+| Flow → Umbrella | detector events and unreachable network devices (`use.device.down`) become incidents on the right CI, with a link back to Flow | Umbrella quick connect `network-flow`, then wizard step or Integrations → Umbrella Monitoring |
 | Umbrella → Flow | users see only the flows of their Umbrella services; steady CI ↔ CI traffic becomes CMDB relation proposals | Umbrella service-account token under Integrations → Umbrella Monitoring |
 | Grafana | "CI traffic" dashboard with the same `var-ci` variables as Umbrella's Grafana links | `--profile grafana`, or import into an existing Grafana |
 
@@ -300,6 +305,7 @@ deploy/
 docs/
   plan.md           goals, architecture, stack and stages
   api.md            REST API contract
+  devices.md        network device management
   integrations.md   contracts with Umbrella Monitoring and Inventory DB
 ```
 
@@ -313,6 +319,7 @@ docs/
 | [deploy/grafana/README.md](deploy/grafana/README.md) | the "CI traffic" dashboard |
 | [docs/plan.md](docs/plan.md) | plan, architecture, data model, stack |
 | [docs/api.md](docs/api.md) | REST API |
+| [docs/devices.md](docs/devices.md) | network devices: platforms, Inventory DB binding, polling, actions, clients, map, events |
 | [docs/integrations.md](docs/integrations.md) | cross-application contracts |
 
 ## Troubleshooting

@@ -131,3 +131,19 @@
 .map-dot-neighbor {
   opacity: 0.7;
 }
+
+/* A one-line toolbar: search on the left, filters and switches after it. */
+.toolbar-card.dev-toolbar {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+}
+
+.dev-toolbar .search-field {
+  flex: 1 1 260px;
+}
+
+.dev-toolbar .map-stats {
+  margin-left: auto;
+}

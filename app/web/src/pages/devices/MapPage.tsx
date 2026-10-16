@@ -51,7 +51,7 @@ export default function MapPage() {
         )
       }
     >
-      <section className="card toolbar-card row wrap">
+      <section className="card toolbar-card dev-toolbar">
         <Switch checked={clients} onChange={setClients} label={t('map.clients')} />
         <Switch checked={offline} onChange={setOffline} label={t('map.offline')} disabled={!clients} />
         <Switch checked={labels} onChange={setLabels} label={t('map.labels')} />
