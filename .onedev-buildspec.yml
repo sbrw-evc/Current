@@ -80,7 +80,7 @@ jobs:
       - registryUrl: '@server_url@'
         userName: '@job_token@'
         passwordSecret: onedev-token
-    platforms: linux/amd64,linux/arm64
+    platforms: linux/amd64
     moreOptions: --build-arg VERSION=@file:.ci/version@ --build-arg COMMIT=@commit_hash@ --build-arg BUILT_AT=@file:.ci/built@
     condition: SUCCESSFUL
     optional: false
