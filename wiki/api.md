@@ -1,0 +1,690 @@
+# Current: REST API (contract between the backend and the web UI)
+
+All paths are under `/api`. Responses are JSON; errors are `{"error": "<code>", "message": "<text>"}` with an HTTP
+4xx/5xx status. The session is the HttpOnly cookie `flow_session`; mutating requests carry `X-CSRF-Token` (the `csrf`
+value from `/api/auth/me`), as in Beacon. Machine clients send an API token instead:
+`Authorization: Bearer flow_…` (see [API tokens](#api-tokens)); token requests need no CSRF header. Times are RFC 3339
+UTC.
+
+## Service
+
+| Method | Path | Response |
+|---|---|---|
+| GET | `/healthz` | `200 ok` |
+| GET | `/metrics` | Prometheus |
+| GET | `/api/version` | `{version, commit, built_at}` |
+
+## Sign-in (Keystone)
+
+People sign in through [Keystone](https://github.com/sbrw-evc/keystone), sign-in and access for the Umbrella family
+([protocol](https://github.com/sbrw-evc/keystone/blob/main/docs/protocol.md), [identity-federation.md](identity-federation.md)). Current has no
+password sign-in.
+
+| Method | Path | Body / response |
+|---|---|---|
+| GET | `/api/auth/spa` | no session needed: `{connected, issuer?, application?, methods?}`; `{connected: false, error: "invalid_key"}` when the key is not a Keystone key |
+| GET | `/api/auth/spa/start?return=<path>[&login_hint=…][&idp_hint=…][&prompt=login]` | browser navigation: 302 to Keystone's `/oauth2/authorize` (`response_type=code`, `scope=openid profile email groups roles`, PKCE S256, `nonce`, signed single-use `state`); the verifier and nonce go to the HttpOnly cookie `flow_spa` (`SameSite=Lax`, path `/api/auth/spa/`, 10 minutes, `Secure` on https) |
+| GET | `/api/auth/spa/callback` | the redirect address: checks `state` against the cookie, redeems the code with the verifier, verifies the ID token (RS256 against the JWKS, `iss`, `aud`, `exp`, `nonce`), finds or creates the user bound to `sub`, sets `flow_session` and redirects to the return path; on failure redirects to `/login?sso_error=<code>[&sso_error_description=…]` (`access_denied` and other errors of Keystone, `state`, `invalid_token`, `no_role`, `account_conflict`, `spa_unavailable`, `not_connected`) |
+| POST | `/api/auth/logout` | → `{ok, redirect}`: the session ends; the console goes to `redirect`, Keystone's sign-out (`post_logout_redirect_uri=<address>/`, `client_id`) |
+| GET | `/api/auth/me` | `{user: {id, username, name, email, source: "spa" \| "legacy", role, role_ident, permissions: ["visualize:view", …]}, csrf, account_url}` or 401; `account_url` is Keystone's "Account and security" page |
+
+## Users and roles
+
+| Method | Path | Permission | |
+|---|---|---|---|
+| GET | `/api/users` | `users:view` | `{results: [{id, username, name, email, source, spa_id, role_id, role, role_ident, disabled, last_login_at}]}` — read-only: people are managed in Keystone |
+| GET | `/api/roles` | `roles:view` or `users:view` | `{results: [{id, ident, name, description, builtin, permissions, users}]}` |
+| POST / PUT / DELETE | `/api/roles[/{id}]` | `roles:edit` | custom roles `{name, description, permissions}`; `ident` (the ID in Keystone) is made from the name on creation and never changes; built-in roles cannot be changed; each change republishes the role catalogue to Keystone |
+| GET | `/api/settings/spa` | `users:view` | `{connected, key_source: "env" \| "file" \| "openbao", key_error?, issuer, client_id, application: {id, name, type}, redirect_uri, post_logout_redirect_uri, account_url, sign_out_url, methods, last_sync, ok, error?, users, created, bound, updated, disabled, conflicts, no_role, counts: {enabled, disabled, legacy}, catalogue: {at, roles, error?}, roles: [{id, name, description}], interval}` |
+| POST | `/api/settings/spa/sync` | `users:edit` | synchronizes now → the view (409 `spa_not_connected`, 409 `sync_running`) |
+
+## First-run setup wizard
+
+Opens on first start, while `FLOW_DATA_DIR` has no `flow.json`. The setup code is written to the server log and to
+`FLOW_DATA_DIR/setup-token` (or taken from `FLOW_SETUP_TOKEN`); once setup completes the file is deleted, the wizard
+never opens again and every `/api/setup*` answers 404. In the Docker stack the fields are prefilled from the
+container's environment (`FLOW_SETUP_DEFAULTS_*`: PostgreSQL, ClickHouse, NATS and OpenBao addresses and the AppRole
+files), so after `docker compose up -d` only the setup code (and the Keystone connection key, unless `SPA_CONNECTION_KEY` is set) has to be entered.
+
+| Method | Path | Body / response |
+|---|---|---|
+| GET | `/api/setup` | `{required: bool, defaults: {language, theme, timezone, public_url, openbao: {...}, postgres: {...}, clickhouse: {...}, nats: {...}, collector: {...}}}` — passwords and secrets are never returned in `defaults`, only a `*_set` flag |
+| POST | `/api/setup/check-code` | `{setup_code}` → `{ok}` (401 `setup_code_invalid`) |
+| POST | `/api/setup/test/{step}` | `step` = `openbao` \| `postgres` \| `clickhouse` \| `nats` \| `inventory` \| `umbrella` \| `geoip` \| `spa`; body is the step's fields, flat, + `setup_code` → `{ok, error?, details?}` (`details`: server version, `has_state` for PostgreSQL, Ledger device count, etc.) |
+| POST | `/api/setup` | everything (below) → `{ok}`; the server re-runs every check, writes secrets to OpenBao, creates the PostgreSQL and ClickHouse schemas, saves `flow.json` and switches to normal mode without a restart |
+
+Steps (screens) and the fields of `POST /api/setup`:
+
+1. **Setup code** — `setup_code`.
+2. **General** — `language` (`ru`/`en`), `theme` (`light`/`dark`/`system`), `timezone`, `public_url` (Current's address for
+   links from Beacon and Ledger; prefilled with the browser's address).
+3. **OpenBao** — `openbao: {addr, mount (flow), auth: "token"|"approle", token? | role_id?, secret_id?}`.
+4. **PostgreSQL** — `postgres: {host, port, database, username, password, sslmode, attach_existing}`; the password goes
+   to OpenBao. If the database already holds Current state (the check answers `details.has_state: true`), the wizard
+   offers to attach to it (`attach_existing: true`).
+5. **ClickHouse** — `clickhouse: {addr, database (flow), username, password, secure}` + retention
+   `retention: {raw_days 15, d1m 30, d5m 90, d1h 730}` (top level, as the console sends it, or
+   `clickhouse.retention`, which wins).
+6. **Bus** — `nats: {url}` (empty = in-process queue).
+7. **Flow collection** — `collector: {netflow_addr ":2055", sflow_addr ":6343", default_sampling_rate 1}`; shows which
+   addresses to configure on the routers.
+8. **Ledger (optional)** — `inventory: {enabled, url, token, interval "15m"}` with a check showing the device count.
+9. **Beacon (optional)** — `umbrella: {enabled, ingest_url, token}`: the ingest URL and token from Beacon's
+   "Connect source → Current" dialog; the check sends a test event.
+10. **GeoIP (optional)** — `geoip: {databases: ["/geoip/GeoLite2-City.mmdb", …]}`; the check opens the files.
+11. **Keystone (optional)** — `spa: {connection_key}`: the connection key `spa1.…` Keystone shows in Applications → Connect an
+    application; the check (`spa` step, `{connection_key, public_url}`) asks Keystone whether it accepts the key and returns
+    the application and the redirect address. The key goes to OpenBao (`spa#connection_key`). Skipped when the
+    deployment gives `SPA_CONNECTION_KEY` (`defaults.spa.from_env`). There is no first administrator: whoever Keystone gives
+    Current's `admin` role administers Current.
+12. **Review** — summary of every step with its check result, "Finish" button.
+
+Optional steps can be skipped and configured later under Settings.
+
+## Column schema
+
+`GET /api/schema` → `{columns: [{name, kind, dimension, rollup, reverse, metric}]}` — from `internal/schema`.
+
+## Visualize
+
+`POST /api/visualize` (permission `visualize:view`)
+
+```json
+{
+  "start": "2026-10-12T09:00:00Z",
+  "end": "2026-10-12T10:00:00Z",
+  "points": 200,
+  "dimensions": ["SrcAS", "ExporterName"],
+  "limit": 10,
+  "filter": "InIfBoundary = 'external' AND Proto = 6",
+  "units": "l3bps",
+  "bidirectional": false,
+  "graph": "stacked"
+}
+```
+
+- `units`: `l3bps` (L3 bits/s), `l2bps` (+ 18 bytes of Ethernet header per packet), `pps`, `inl2%` / `outl2%`
+  (percent of the input / output interface speed).
+- `graph`: `stacked`, `lines`, `grid` — time series; `sankey` — no time axis.
+- `limit`: 1–50; remaining values are folded into the row `["Other", …]`.
+- Empty `dimensions` — a single "Total" row.
+
+Time-series response:
+
+```json
+{
+  "t": ["2026-10-12T09:00:00Z", "…"],
+  "rows": [["AS65000 Example", "edge-01"], ["Other", "Other"]],
+  "points": [[123.0, 456.0], [1.0, 2.0]],
+  "axis": [1, 1],
+  "average": [289.5, 1.5],
+  "min": [123.0, 1.0],
+  "max": [456.0, 2.0],
+  "p95": [440.0, 1.9],
+  "resolution": "1m",
+  "sql": "SELECT …"
+}
+```
+
+`axis`: 1 — direct direction, 2 — reverse (only with `bidirectional`; axis-2 rows have positive values and the web UI
+draws them below zero). `resolution`: the table the result was computed from (`raw`, `1m`, `5m`, `1h`). `sql` is for
+debugging (shown in the UI behind a button).
+
+AS labels (`AS65000 Example`) are named, in order, from the GeoIP lookups of the enricher in the same process, from
+the ClickHouse table `asn_names` (written by every enricher from its GeoIP lookups, `ReplacingMergeTree` keeping the
+latest name; read by any process, the `api` role included, cached and refreshed every 5 minutes), then from a built-in
+list of well-known ASes.
+
+`sankey` response:
+
+```json
+{
+  "rows": [["AS65000", "edge-01"]],
+  "xps": [123456.0],
+  "nodes": ["SrcAS: AS65000", "ExporterName: edge-01"],
+  "links": [{"source": "SrcAS: AS65000", "target": "ExporterName: edge-01", "xps": 123456.0}]
+}
+```
+
+## Filter
+
+| Method | Path | Body / response |
+|---|---|---|
+| POST | `/api/filter/validate` | `{filter}` → `{valid: bool, errors: [{line, column, offset, message}], parsed: "<normalized text>"}` |
+| POST | `/api/filter/complete` | `{what: "column"\|"operator"\|"value", column?, prefix}` → `{completions: [{label, detail, quoted}]}` |
+
+Filter language: `Column op value`, `AND`, `OR`, `NOT`, parentheses; strings in `'…'` or `"…"`; string operators `=`,
+`!=`, `IN (…)`, `NOTIN (…)`, `LIKE`, `UNLIKE`, `ILIKE`, `IUNLIKE`; IP operators `=`, `!=`, `<<` (in prefix,
+`SrcAddr << 10.0.0.0/8`), `IN`; numeric operators `=`, `!=`, `<`, `<=`, `>`, `>=`, `IN`; special values
+`SrcAS = AS65000`, `Proto = tcp`; array columns (`DstASPath`, `DstCommunities`, `DstLargeCommunities`, see
+"BMP") take `=` / `!=` (contains / does not contain) and `IN` / `NOTIN` (any / none). Comments `-- …` and `/* … */`.
+
+## Saved views
+
+| Method | Path | |
+|---|---|---|
+| GET | `/api/saved-views` | `{results: [{id, name, owner, shared, request}]}` |
+| POST | `/api/saved-views` | `{name, shared, request}` |
+| DELETE | `/api/saved-views/{id}` | |
+
+## Exporters
+
+`GET /api/exporters` → `{results: [{address, name, ref, site, role, last_seen, flows_per_second, sampling_rates: [..], interfaces: [{index, name, description, speed, boundary, provider, in_bps, out_bps}], device?: {id, name, status, platform}}]}`
+
+`device` is the managed network device this exporter is (its flow exporter address, host or an interface address;
+see [Network devices](#network-devices)).
+
+From the raw flows of the last 5 minutes; in role `all` merged with the collector's registry (exporters silent in
+ClickHouse, sampling rates, last seen, flows/s, interface names and speeds learned from option data / sFlow
+counters).
+
+### Sampling overrides
+
+| Method | Path | Body / answer |
+|---|---|---|
+| GET | `/api/sampling-overrides` (`exporters:view`) | `{results: [{exporter, if_index, rate, comment}]}` — `exporter` is a prefix (a single address is a `/32` or `/128`), `if_index` 0 = every interface of the exporter |
+| PUT | `/api/sampling-overrides` (`exporters:edit`) | `{results: [...]}` replaces the whole list → as GET; 400 `invalid_exporter` (not an address or CIDR), `invalid_rate` (0 or above 2³¹) |
+
+The collector forces the sampling rate of the matching flows: a per-interface override (`if_index` ≠ 0) applies to
+the flows whose input interface (else output interface) is that one and wins over an exporter-wide override; among
+exporter-wide overrides the longest prefix wins. A collector in the same process applies changes at once, a standalone
+`collector` role re-reads them every minute (PostgreSQL from the shared `flow.json`). `FLOW_SAMPLING_OVERRIDES`
+(`CIDR[@ifindex|@ifname]=rate`, e.g. `192.0.2.0/24=1000, 192.0.2.1@17=4000`) adds overrides from the environment that
+win over stored ones with the same exporter and interface. The Exporters page edits the list (per exporter and per
+interface).
+
+## Home (widgets)
+
+`GET /api/widgets/summary` → `{flows_per_second, exporters, bps_in_external, bps_out_external}`  
+`GET /api/widgets/top/{what}` (`src-as`, `dst-as`, `src-country`, `dst-country`, `app`, `exporter`, `src-port`, `dst-port`) → `{top: [{name, percent}]}`  
+`GET /api/widgets/graph?points=200` → `{t: [], gbps: []}` — external traffic over 24 h  
+`GET /api/widgets/last-flow` → the latest flow as an object `{Column: value}`
+
+## Raw flows
+
+`POST /api/flows/search` `{start, end, filter, limit (≤1000), order: "time"|"bytes"}` → `{columns: [..], rows: [[..]]}`
+
+## Ledger
+
+| Method | Path | |
+|---|---|---|
+| GET | `/api/inventory-db` | `{enabled, url, token_set, interval, last_sync: {at, ok, error, devices, interfaces, prefixes, circuits}}`; `interval` is a duration string (`"15m"`, `"1h"`) |
+| PUT | `/api/inventory-db` | `{enabled, url, token?, interval}` — the token goes to OpenBao; `interval` is a duration (`"15m"`) or seconds (`900`), 1 minute to 7 days |
+| POST | `/api/inventory-db/test` | `{ok, error?}` |
+| POST | `/api/inventory-db/sync` | `{ok, stats}` |
+| GET | `/api/inventory-db/unknown` | `{exporters: [{address, last_seen, flows}], addresses: [{address, bytes}]}` — from the enricher of the same process (role `all`); empty lists in the `api` role |
+
+Synchronization runs in the enricher and detector processes (every `interval`, at once when the settings change). In
+role `all` `POST /api/inventory-db/sync` refreshes the snapshot the enricher uses; in the `api` role it fetches to
+check and count, and the enricher / detector processes follow within a minute.
+
+| Method | Path | |
+|---|---|---|
+| GET | `/api/inventory-db/integration` (`settings.inventory:view`) | `{hook_secret_set, write_token_set, hook_url, inventory_url}` — `hook_url` is `<public_url>/api/integrations/inventory-db/hook` |
+| PUT | `/api/inventory-db/integration` (`settings.inventory:edit`) | `{hook_secret?, write_token?}` (omitted = keep, `""` = remove) → as GET; both go to OpenBao (`inventory-db-hook#secret`, `inventory-db-write#token`) |
+| POST | `/api/inventory-db/unknown/create` (`settings.inventory:edit`) | `{address}` → 201 `{ok, address, object: {id, address, display, url?, display_url?}}`: creates `<address>/32` (`/128`) in Ledger (`POST /api/v1/ipam/ip-addresses/`, `status: active`, `description: "Discovered by Current"`) with the editor token; 409 `write_token_required` without it, 409 `inventory_rejected` when Ledger refuses (duplicate…), 502 otherwise. Schedules an early sync |
+
+## Ledger integration (called by Ledger)
+
+The Current side of [integrations.md §2](integrations.md#2-current--ledger). Ledger calls these server-side with
+a Current API token (`Authorization: Bearer flow_…`) of a role with `integrations.inventory:read`.
+
+`GET /api/integrations/inventory-db/status?object_type=<type>&ids=1,2,3[&window=24h]`
+
+- `object_type`: `dcim.device`, `dcim.interface`, `circuits.circuit`; `ids`: 1–1000 ids; `window`: `15m` to `31d`
+  (Go duration or `<n>d`), default `24h`. Response exactly as in the contract:
+  `{window, results: {"<id>": {in_bps, out_bps, speed_bps, utilization_in, utilization_out, [p95_month_bps,
+  commit_bps, over_commit,] sparkline: {t, in, out}, flow_url, last_seen}}}`.
+- `in_bps` / `out_bps`: the last 5 complete minutes (`flows_1m`). Devices: flows of `ExporterRef =
+  inventory-db:dcim.device:<id>` with a known input (in) or output (out) interface; interfaces: the device's flows with
+  `InIfName` (in) or `OutIfName` (out) equal to the interface name (case-insensitive); circuits: `InIfCircuit` (in) /
+  `OutIfCircuit` (out) equal to the circuit cid.
+- `speed_bps`: the Ledger interface speed (circuits: the fastest interface terminating the circuit), else the
+  speed the flows carried; `null` for devices and when unknown, and then `utilization_*` are `null`.
+- `sparkline`: 48 complete buckets ending at the last bucket boundary (`window / 48`, from the coarsest table that fits);
+  `t` are bucket starts.
+- `p95_month_bps` (circuits and interfaces with a circuit only): the 95th percentile of the 5-minute rates
+  (`flows_5m`) since the start of the month (UTC), counting 5-minute periods without traffic as 0, the larger of the
+  two directions. `commit_bps`: the circuit commit rate from the Ledger snapshot (Kbps × 1000), `null` when not
+  set; `over_commit`: `p95_month_bps > commit_bps` (`null` without a commit).
+- `last_seen`: the latest minute with flows within the window, `null` when none. `flow_url`: `<public_url>/visualize?q=…`
+  (the console's link format) for the object over the window.
+- Ids missing from the Ledger snapshot are omitted (devices are taken as is while the snapshot is empty). One
+  ClickHouse query per part (current, sparkline, p95) covers all ids of the request. In the `api` role the snapshot is
+  loaded on demand with the stored connection and refreshed in the background.
+
+`GET /api/integrations/inventory-db/prefix-addresses?prefix=10.0.0.0/24[&vrf=<name>][&window=24h]` →
+`{prefix, results: [{address, bytes, flows, last_seen, in_ipam}]}`: addresses inside the prefix seen as source or
+destination in the raw flows of the window (at most the raw retention), ordered by bytes, at most 1024. `vrf` keeps
+only the flow ends enriched with that IPAM VRF. `in_ipam`: the address exists in the Ledger snapshot (in that VRF
+when `vrf` is given).
+
+`POST /api/integrations/inventory-db/hook` (no session or token): the change notification of §2.2. Verified with the
+hook secret from OpenBao: `x-inventory-timestamp` (unix seconds, at most 5 minutes off) and `x-inventory-signature:
+v1=<hex HMAC-SHA256(secret, "<timestamp>.<raw body>")>`, several comma-separated signatures accepted during a rotation.
+401 `unauthorized` for any failure (no secret configured, missing headers, old timestamp, mismatch), 400 when a signed
+body is not JSON, else 202 `{accepted: <events>}`. The sync is debounced (5 s, at most one per 30 s): it records the
+settings key `inventory_sync_request`, which the Inventory loops of every process follow (at once in this process,
+within a minute in the others).
+
+## Classifiers
+
+`GET|PUT /api/classifiers` → `{exporter: [CEL…], interface: [CEL…]}` (PUT answers 400 `invalid_rule` naming the rule
+that does not compile).
+
+`POST /api/classifiers/preview` `{kind: "exporter"|"interface", rules: [CEL…], sample}` →
+
+```json
+{
+  "valid": true,
+  "errors": [],
+  "steps": [{"index": 0, "output": {"boundary": "external", "provider": "rostelecom"}}],
+  "interface": {"index": 500, "name": "Hu0/0/0/1", "description": "Transit: Rostelecom", "speed": 100000000000,
+                "boundary": "external", "connectivity": "", "provider": "rostelecom", "circuit": "", "vlan": 0}
+}
+```
+
+`sample` is the object the rules see: for `exporter` rules `{name, address, site, region, role, group, tenant, tags}`;
+for `interface` rules `{index, name, description, speed, boundary, connectivity, provider, circuit, vlan}` with an
+optional `exporter` member (the full form `{exporter: {…}, interface: {…}}` is accepted too). `errors` lists compile
+errors `{kind, index, line, column, offset, message}` (then `valid` is false); `steps` has one entry per rule with
+what it set (`output`) or its runtime `error`; `exporter` / `interface` is the classified object.
+
+## Detector
+
+| Method | Path | |
+|---|---|---|
+| GET | `/api/detector/rules` (`detector:view`) | `{rules: [Rule…], default: bool, updated_at?, new_defaults: [Rule…]}` — `default: true` while the rules were never saved (the built-in set is returned); `new_defaults`: built-in rules added by a later Current version that the saved set lacks (never merged silently; see below) |
+| GET | `/api/detector/rules/defaults` (`detector:view`) | `{rules: [Rule…], default: true}` — the built-in set (the console's "restore defaults" for one rule or all) |
+| PUT | `/api/detector/rules` (`detector:edit`) | `{rules: [Rule…]}` → as GET; each rule is checked (400 `invalid_rule` / `duplicate_rule`); the detector applies them at once (same process) or within a minute |
+| POST | `/api/detector/rules/add-defaults` (`detector:edit`) | `{ids?: [id…], dismiss?: [id…]}` → as GET: appends the named `new_defaults` (all of them when the body is empty) to the saved set, `dismiss` stops offering them; saved rules are never changed; 400 `unknown_default` for an id that is not offered |
+
+New built-in rules (for example `threat-contact`) reach installations that saved their rules only through this merge:
+the console shows "new default rules available" from `new_defaults`. A built-in rule deleted from the saved set (or
+dismissed) is remembered in the settings key `detector_defaults_dismissed` and not offered again; an installation
+that deleted a built-in rule before this mechanism existed sees it offered once.
+| GET | `/api/detector/status` (`detector:view`) | `{rules: [{rule, last_eval, next_eval, duration_ms, error, groups, pending, firing}], alerts: [{rule_id, key, state, since, value, group, event…}], queued, sender: {url, outbox, sent, dropped, last_success, last_error, configured}}`; in the `api` role (detector in another process) the alerts and queue come from the state the detector saves in PostgreSQL and `remote: true` is added |
+
+A rule (`internal/detector.Rule`):
+
+```json
+{"id": "e2e-ext-bps", "name": "External traffic per exporter", "enabled": true, "kind": "custom",
+ "filter": "InIfBoundary = 'external'", "dimensions": ["ExporterName"], "metric": "bps", "operator": ">",
+ "thresholds": {"bps": 1000000}, "window": "1m", "for": "0s", "interval": "15s", "severity": "info",
+ "signal": "red.traffic.custom"}
+```
+
+`kind`: `link_utilization`, `link_commit`, `ddos_volumetric`, `ddos_syn`, `traffic_anomaly`, `traffic_drop`,
+`exporter_silent`, `custom`, `threat_contact` (see "Threat intelligence"); `thresholds: {bps, pps, percent, ratio, silence}`; durations as `"5m"`, `"7d"`;
+`baseline: {weeks, min_samples, window, k, ratio, min_volume, direction}`. Events go to the Beacon ingest URL of the
+settings key `umbrella` with the Bearer token read from OpenBao on each send.
+
+## Settings: Beacon, OpenBao
+
+| Method | Path | |
+|---|---|---|
+| GET | `/api/settings/umbrella` | `{enabled, ingest_url, token_set}` |
+| PUT | `/api/settings/umbrella` | `{enabled, ingest_url, token?}` — the token goes to OpenBao; the detector switches to the new target |
+| POST | `/api/settings/umbrella/test` | `{enabled, ingest_url, token?}` (stored token when omitted) → `{ok, error?, details: {event}}`; sends the detector's test event (`labels.umbrella_test = "true"`) |
+| GET | `/api/settings/openbao` | `{addr, mount, auth, role_id?, status: {ok, version, token_expires, renewable, policies, error, reachable, sealed, token_ok, mount_ok, …}}` |
+| POST | `/api/settings/openbao/test` | `{}` or no body checks the current connection (read, write and delete probe); `{addr, mount, auth, token | role_id + secret_id}` checks another server → `{ok, error?, details?}` |
+
+## Beacon: API connection, visibility scope, dependencies
+
+Current's side of [integrations.md §3.2–3.3](integrations.md). The Beacon API connection is Beacon's address and a
+service-account token (Beacon permissions `integrations.flow:read` and `cmdb:propose`); the token goes to OpenBao
+(`flow/umbrella-api#token`), PostgreSQL keeps the reference (settings key `umbrella_api`).
+
+| Method | Path | Permission | |
+|---|---|---|---|
+| GET | `/api/settings/umbrella/api` | `settings.umbrella:view` | `{url, token_set}` |
+| PUT | `/api/settings/umbrella/api` | `settings.umbrella:edit` | `{url?, token?}` (`token: ""` removes it; a trailing `/api` is dropped) → as GET; drops the scope cache |
+| POST | `/api/settings/umbrella/api/test` | `settings.umbrella:edit` | `{url?, token?}` (stored values when omitted) → `{ok, error?, details: {restricted, known, mode, cis, services, refs, addresses}}`: asks Beacon for the scope of the signed-in user |
+| GET | `/api/umbrella/scope` | signed in | the caller's scope: `{restricted, ok, error?, configured, known, mode, cis, services, refs, addresses, checked_at}`; `restricted: false` for roles without `scope:umbrella` |
+| GET | `/api/dependencies` | `dependencies:view` | `{settings, configured, available, running, next_run, last_run, runs: [Run…], proposals: [Proposal…]}` — `proposals` are those of the last finished run (the preview) |
+| PUT | `/api/dependencies/settings` | `settings.umbrella:edit` | `{enabled, hour, min_flows, min_days, max_proposals}` → as GET |
+| POST | `/api/dependencies/run` | `dependencies:run` | `{dry_run?}` → `{run: Run, proposals: [Proposal…]}`; 409 `already_running`; `dry_run` builds the proposals without sending them |
+
+**Visibility scope.** For a user whose role has `scope:umbrella` (never the built-in Administrator), every ClickHouse
+query made for the request — visualize (time series, bidirectional, sankey), flow search, home widgets, exporters,
+filter value completion, the Ledger integration endpoints — reads the flow tables through
+`(SrcCI IN refs OR DstCI IN refs OR SrcAddr IN ips OR DstAddr IN ips)` with the refs and addresses of the CIs Beacon
+returns for the user's login (`GET {url}/api/integrations/flow/scope?username=`; cached 60 s per user). Mode `all` is
+unrestricted; an unknown user sees nothing. The aggregated tables have no addresses, so there only the CI part
+applies; a scope with addresses makes Visualize prefer the raw table while it still covers the range. If Beacon
+cannot be asked (not configured, unreachable, 401…), these endpoints answer **503 `scope_unavailable`** — never
+unrestricted data — and `/api/umbrella/scope` reports `ok: false` for the console's banner. The exporters list does not
+merge the collector registry for such users. Implemented once in `query.ScopedConn`, which wraps the ClickHouse
+connection of the API.
+
+**Dependency discovery.** Reads 7 days of raw flows (the aggregates have no ports): flows whose both ends have an
+Ledger reference (`SrcCI`, `DstCI`, different), TCP / UDP / SCTP; the server is the side with the lower port
+(equal ports: the destination); grouped by client CI, server CI, protocol and server port (requests and responses of
+a connection count together); kept when there are at least
+`min_flows` flow records on at least `min_days` distinct days; largest `max_proposals` by bytes. Each pair becomes a
+proposal `client depends_on server` with the key `flow:<from ref>-><to ref>:<proto>/<port>`, evidence (bytes, flows,
+days seen, first / last seen, top application) and `flow_url` (Visualize of the pair over the period, from the public
+URL of the general settings), posted to `POST {url}/api/cmdb/proposals` in batches of 200. Daily runs start after
+`hour` (UTC) while `enabled` and the Beacon API is configured; with several `api` processes the day is claimed once
+(PostgreSQL). Defaults: `{enabled: false, hour: 3, min_flows: 100, min_days: 3, max_proposals: 500}`.
+
+A run (`Run`): `{id, trigger: "schedule"|"manual", actor, dry_run, started_at, finished_at, ok, error, pairs, sent,
+accepted, updated, ignored, params: {days, min_flows, min_days, limit}}`; the last 50 are kept; a run without a result after 30 minutes is shown as
+`ok: false, error: "interrupted"`. A `Proposal` is the object of integrations.md §3.3.
+
+## Settings: moving the secrets to another OpenBao
+
+Permission `settings.openbao:migrate`. The target body is `{addr, mount, namespace?, auth: "approle" | "token", token? |
+role_id + secret_id?, ca_cert?, skip_verify?}`; without credentials, a target on the current server reuses the current
+ones (also AppRole files).
+
+| Method | Path | |
+|---|---|---|
+| POST | `/api/settings/openbao/probe` | target → `{ok, error?, status: {version, …}, write_ok, kv2_error?, secrets: <already in the target mount>, same?}`: reachable, token works, the mount is KV v2 and writable |
+| POST | `/api/settings/openbao/migrate` | `{target, overwrite?}` → `{addr, mount, copied, refs}`; 409 `openbao_target_not_empty` when the target mount has secrets and `overwrite` is not set, 400 `openbao_same_store`, 502 `openbao_migration_failed` |
+
+The move copies every secret of the current mount (same paths and keys), rewrites `openbao://<old mount>/…` references
+in every PostgreSQL text / jsonb column and in `flow.json` (when the mount name changes), writes `flow.json` with the new
+connection and switches the running OpenBao client in place: the API, the pipeline and the detector of the process use
+the new OpenBao at once. Nothing is deleted from the source. On failure nothing is switched, references are restored,
+and secrets copied to an empty target are removed. Audit: `settings.openbao.migrate` / `settings.openbao.migrate_failed`.
+
+`GET /api/settings/openbao` → `status.renewal`: `{mode: "renew" | "login" | "none", logged_in_at, logins, renewed_at,
+renewals, next_at, last_error?, last_error_at?}` — how the client keeps its token alive (renewed once two thirds of the
+lease have passed; a non-renewable AppRole token is replaced by a new sign-in).
+
+## API tokens
+
+Machine access ([integrations §1](integrations.md#1-api-tokens-all-three-apps)). A **service account** has a role; its
+tokens carry exactly that role's permissions. Tokens are `flow_` + 32 random bytes (base64url, 48 characters); only
+HMAC-SHA256 with the key `keys#tokens` in OpenBao is stored, the plaintext is returned once by `POST /api/tokens`.
+Requests: `Authorization: Bearer flow_…`, no CSRF header; an unknown, expired or revoked token, a token of a disabled
+account, or a token issued by a person Keystone disabled, gets 401 `invalid_token`. Permissions `tokens:view` / `tokens:edit`; a role can be given to a service account
+only by a user who has all its permissions (403 `role_not_grantable`; `scope:umbrella` excepted). Audit:
+`service_account.create`, `service_account.delete`, `token.create`, `token.revoke`, `token.use_new_address` (first use
+and use from another client address than the last one). `last_used_at` is updated at most once a minute.
+
+| Method | Path | |
+|---|---|---|
+| GET | `/api/service-accounts` | `{results: [{id, name, description, role_id, role, disabled, tokens: <active>, created_by, created_at, updated_at}]}` |
+| POST | `/api/service-accounts` | `{name (1-64, no spaces or /), description?, role_id}` → 201 the account; 409 `conflict` for a taken name |
+| DELETE | `/api/service-accounts/{id}` | `{ok}`; its tokens are deleted |
+| GET | `/api/tokens` | `?service_account_id=` optional → `{results: [{id, service_account_id, service_account, name, display: "flow_AbCd…", expires_at, last_used_at, last_used_from, created_by, created_at, revoked_at, revoked_by, active}]}`, newest first |
+| POST | `/api/tokens` | `{service_account_id, name, expires_at?: "2027-01-31" \| RFC 3339 (future, ≤ 5 years; empty = no expiry)}` → 201 the token view + `token` (the plaintext, shown once) |
+| DELETE | `/api/tokens/{id}` | revokes (kept for the audit) → the token view |
+
+Permissions used by integrations: `integrations.inventory:read` (Ledger's calls to
+`/api/integrations/inventory-db/*`), `scope:umbrella` (a restriction: traffic limited to the user's Beacon scope; not
+part of Administrator).
+
+## Reverse DNS
+
+ElastiFlow-like PTR enrichment in the enricher (`internal/rdns`): a lookup never blocks the pipeline — it answers from a
+positive / negative cache and queues a miss for a bounded worker pool that queries the configured servers in turn under
+a rate limit. The first flows of an address get an empty name, later ones the cached name (an expired name is served
+while it is refreshed). Only addresses without a Ledger host name are resolved; the result goes to the
+`SrcHostPTR` / `DstHostPTR` columns. Settings key `rdns` (permissions `settings.rdns:view` / `settings.rdns:edit`);
+the enricher applies changes at once (same process) or within a minute. Metrics: `flow_rdns_lookups_total{result}`,
+`flow_rdns_cache_hits_total`, `flow_rdns_cache_misses_total`, `flow_rdns_dropped_total`, `flow_rdns_cache_entries`,
+`flow_rdns_queue_length`, `flow_rdns_query_duration_seconds`; status component `rdns`.
+
+| Method | Path | |
+|---|---|---|
+| GET | `/api/settings/rdns` | `{settings: {enabled, servers: ["192.0.2.53", "dns.example:5353"] (empty = system resolver), scope: all \| private \| public, workers (8), rate_limit (200 queries/s), positive_ttl (3600 s), negative_ttl (600 s), timeout_ms (2000), cache_size (100000), queue_size (10000)}, stats?}` — `stats` (cache, queue, hits, misses, found, not_found, errors, dropped) when the enricher runs in this process |
+| PUT | `/api/settings/rdns` | the `settings` object → as GET; 400 `rdns_invalid` |
+
+## Threat intelligence
+
+The enricher (`internal/threat`) downloads public IP blocklists at run time — FireHOL level1, Spamhaus DROP (v4 / v6;
+EDROP, merged into DROP since 2024, is listed disabled) and abuse.ch Feodo Tracker by default, any `http(s)` list can
+be added — into a longest-prefix-match trie and fills `SrcThreat` / `DstThreat` with the list name (`""` when none).
+List contents are never part of Current (repository or image): each installation fetches them under the lists' terms of
+use, with `If-None-Match` / `If-Modified-Since`, not more often than every 60 minutes (default 360). Formats: one
+address or prefix per line with `#` / `;` comments (FireHOL netset, Spamhaus `.txt`, abuse.ch), or JSON lines with a
+`cidr` field (Spamhaus `drop_v4.json`). Special-purpose ranges (RFC 1918, CGNAT, loopback, link-local, multicast,
+ULA, documentation, reserved — FireHOL level1 includes the bogons) and the `exclude` prefixes are never flagged. A list
+that fails keeps its previous content. Settings key `threat`, last status in `threat_status` (written by the
+downloading process); permissions `settings.threat:view` / `settings.threat:edit`. Metrics:
+`flow_threat_matches_total{list}`, `flow_threat_list_prefixes{list}`, `flow_threat_list_updated_timestamp_seconds{list}`,
+`flow_threat_list_error{list}`, `flow_threat_lookups_total`, `flow_threat_prefixes`.
+
+| Method | Path | |
+|---|---|---|
+| GET | `/api/settings/threat` | `{settings: {enabled, lists: [{name, url, enabled, terms?}], refresh_minutes, exclude: [prefix…], refresh_requested_at?}, status: {updated_at?, prefixes, lists: [{name, url, enabled, prefixes, skipped, updated_at?, checked_at?, error?}]}, default_lists}` — the defaults (enabled, public lists) until saved |
+| PUT | `/api/settings/threat` | `{enabled, lists, refresh_minutes, exclude}` → as GET; 400 `threat_invalid`; disabled lists and exclusions apply at once, new lists are downloaded right away |
+| POST | `/api/settings/threat/refresh` | 202 `{requested_at}`: the downloading process refreshes at once (same process) or within a minute |
+
+Detector rule kind `threat_contact` → signal `sec.threat.contact`, method RED. Per internal host (the side of the flow
+that is not listed; flows with both sides listed are ignored) over `window` (default 5m, raw table), `bps ≥
+thresholds.bps` (default 0: any contact). CI: the host's Ledger name and `source_ref`, else its PTR name, else
+the address; labels `host_ip`, `host`, `host_ci`, `host_ptr`, `threat_list`, `threat_lists`, `threat_ip`, `threat_ips`,
+`direction` (`outbound` / `inbound` / `both`), `bps`, `pps`, `flows`, `exporter`. Built-in rule `threat-contact`:
+enabled, severity `error`, interval 1m, hysteresis 30m (installations that saved their rules before get it offered in
+`new_defaults` and add it with `POST /api/detector/rules/add-defaults`).
+
+## Cloud flow logs
+
+`POST /api/ingest/flowlogs/{aws|azure|gcp}` turns cloud flow logs into flow records and puts them on the pipeline bus
+(the bus of role `all`, or NATS JetStream in the `api` role when a bus URL is configured; 501 otherwise). No session:
+each provider has its own ingest token in OpenBao (`flowlogs#aws`, `#azure`, `#gcp`), presented as
+`Authorization: Bearer <token>`, as `X-Amz-Firehose-Access-Key` (AWS), or as `?token=` (for Pub/Sub push
+subscriptions, which cannot send a static header). Answers: 200 `{accepted, skipped}`, 401 `unauthorized`, 403
+`flowlogs_disabled`, 400 `invalid_flowlogs`, 413 `too_large` (64 MiB after `Content-Encoding: gzip`), 503
+`bus_unavailable` (retry). Records are sampled 1:1; `TimeReceived` is the flow end when within the last day.
+`ForwardingStatus` 64 = accepted, 128 = rejected / denied. Metrics `flow_flowlogs_records_total{provider,result}`,
+`flow_flowlogs_requests_total{provider,code}`.
+
+Exporter: cloud logs have none, so each source gets a synthetic address in `fd75:666c::/32` (an AWS ENI or VPC id and
+an Azure MAC are encoded in it and named back in any process; GCP VMs / subnets use a hash, named in the receiving
+process only), `0.0.0.0` when the record names no source. `ExporterName`: `vpc-…/eni-…` (AWS), `<NSG or VNet>/<MAC>`
+(Azure), `<project>/<vm>` or `<project>/<vpc>/<subnet>` (GCP). Such exporters are not listed as unknown in Ledger.
+
+| Provider | `FlowType` | Body |
+|---|---|---|
+| `aws` | `aws-vpc` | VPC Flow Logs text lines: default version 2 format, or a custom format given by a header line (`version vpc-id … srcaddr …`, as in S3 files) or by `?fields=${version} ${srcaddr} …`; CloudWatch Logs subscription JSON (`logEvents[].message`, gzip accepted); Kinesis Data Firehose HTTP endpoint delivery (`{requestId, timestamp, records: [{data: base64}]}` with `X-Amz-Firehose-Request-Id`, answered `{requestId, timestamp, errorMessage?}`). `NODATA` / `SKIPDATA` records are skipped |
+| `azure` | `azure-vnet` | `{records: [...]}` or an array of records: NSG flow logs (`properties.flows[].flows[].flowTuples`, version 2 counts; version 1 tuples and flow-begin tuples carry no volume and are skipped) and VNet flow logs (`flowLogVersion` 4, `flowRecords.flows[].flowGroups[].flowTuples`, state `D` = denied); both directions of a tuple become two flows |
+| `gcp` | `gcp-vpc` | Pub/Sub push `{message: {data: base64(LogEntry)}, subscription}`, a LogEntry or an array of LogEntries; `jsonPayload.connection`, `bytes_sent`, `packets_sent`, `start_time`, `end_time`, `reporter` (`SRC` / `DEST`, `SRC_GATEWAY` / `DEST_GATEWAY`: the reporting side is the exporter), `src_instance` / `dest_instance`, `src_vpc` / `dest_vpc`. GCP samples packets but reports `bytes_sent` / `packets_sent` as totals estimated from the sampled packets and has no sampling-rate field, so they are stored as is (`SamplingRate` 1); `bytes_sent` is payload bytes. A flow between two logged VMs is reported by both ends: filter on one `ExporterName` side when summing |
+
+| Method | Path | |
+|---|---|---|
+| GET | `/api/settings/flowlogs` (`settings.flowlogs:view`) | `{available, public_url, aws: {enabled, token_set, endpoint, url}, azure: {…}, gcp: {…}}` — `available`: this process can accept flow logs; `url`: `<public_url><endpoint>` (`""` without a public URL in the general settings). Console: Settings → Cloud flow logs (write-only tokens, ingest URLs and setup snippets for AWS Firehose, Azure and GCP Pub/Sub push) |
+| PUT | `/api/settings/flowlogs` (`settings.flowlogs:edit`) | `{aws?: {enabled, token?}, azure?: …, gcp?: …}` — `token` (≥ 16 characters) goes to OpenBao, `""` removes it, omitted keeps it; enabling needs a token (400 `flowlogs_invalid`) |
+
+## gNMI
+
+Interface data read over gNMI (OpenConfig) for exporters that Ledger does not describe, or whose interfaces have
+no name or speed there (`internal/gnmi`, runs with the enricher). Order of the enricher's interface sources: Ledger, then the collector's option templates / sFlow counters, then gNMI, then SNMP — when gNMI and SNMP both answer for a
+device, the gNMI name wins and SNMP only fills a missing description or speed (a Ledger device whose interface
+lacks an `snmp_index` is matched by the gNMI / SNMP name). Each poll is a series of gNMI `Get` requests (one path each,
+`name=*` / `index=*` wildcards) over gRPC: `/interfaces/interface/state/ifindex` (required: a device that refuses it
+fails the poll), `/interfaces/interface/state/description`, `/interfaces/interface/ethernet/state/port-speed` and
+`negotiated-port-speed`, `/interfaces/interface/aggregation/state/lag-speed`, and the subinterface
+`/interfaces/interface/subinterfaces/subinterface/state/{ifindex,description}` (the others are optional). Values may
+come as typed scalars or as JSON / JSON_IETF (leaves or whole containers, module prefixes stripped). Name = the
+interface key (`<name>.<index>` for a subinterface, which takes its interface's speed; a subinterface sharing the
+ifindex of its interface is ignored), description = `state/description`, speed = the negotiated, else the configured
+port speed (OpenConfig `SPEED_10MB` … `SPEED_800GB` identities mapped to bits/s, `SPEED_UNKNOWN` = 0), else
+`lag-speed` × 10⁶. Requests use JSON_IETF (a device answering `InvalidArgument` / `Unimplemented` is asked again with
+JSON) or JSON per profile. Credentials: optional `username` / `password` sent as the `username` / `password` gRPC
+metadata of every request (the gNMI convention), TLS on / off (TLS 1.2+; without TLS the password travels in clear
+text), `skip_verify`, an optional `server_name` the device certificate must carry (default: the address), an
+optional PEM CA bundle (default: the system roots) and, for devices that require mutual TLS, a PEM client certificate
+and its private key (PKCS #1, PKCS #8 or SEC 1; both or neither). Polled devices, profiles by prefix, interval / TTL and
+retries after a failure work as for SNMP below (`timeout_seconds` default 10, per request).
+
+Profile `mode`: `get` (default) polls as above every refresh period; `subscribe` keeps one gNMI `Subscribe` stream per
+device open instead (`STREAM` list, one `TARGET_DEFINED` subscription per path above, the profile's encoding with the
+same JSON fallback). The device's initial state (up to `sync_response`, or after 3 × `timeout_seconds` without one)
+replaces its interface table, then each batch of updates and deletes (a whole interface with its subinterfaces, a
+subinterface, or leaves) is applied as it arrives; the data of an open stream never expires. A stream that fails is
+opened again after max(interval / 4, 1 min) and its data is kept for the TTL meanwhile; a device answering
+`Unimplemented` (or `InvalidArgument` with both encodings) before any data is polled with `Get` until its profile
+changes. Streams do not count against `concurrency`. With several enricher replicas, each replica opens its own
+stream.
+
+Secrets live in OpenBao at `gnmi/<profile id>/{password,ca,cert,key}` (key `value`); the settings hold only
+references. Settings key `gnmi`, permissions `settings.gnmi:view` / `settings.gnmi:edit`. Metrics
+`flow_gnmi_polls_total{result}` (a stream counts once when it delivers its initial state, and on each failure),
+`flow_gnmi_devices`, `flow_gnmi_streams`; status component `gnmi`.
+
+| Method | Path | |
+|---|---|---|
+| GET | `/api/settings/gnmi` | `{enabled, poll_exporters, devices: [addr], interval_minutes, ttl_minutes, timeout_seconds (10), concurrency (8), profiles: [{id, name, prefixes, port (57400), username?, tls, skip_verify?, server_name?, encoding: "json_ietf"\|"json", mode: "get"\|"subscribe", password_set, ca_set, cert_set}], encodings, modes, status?: {enabled, devices: [{address, profile, interfaces, polled?, error?, configured, mode, streaming}], failing}}` — `status` when the poller runs in this process |
+| PUT | `/api/settings/gnmi` | the same fields; per profile the write-only `password`, `ca_pem`, `cert_pem` and `key_pem` (omitted = keep, `""` = remove; a password is required with a `username`, the CA must be PEM, the client certificate and key are sent together and must match). A profile without a user name drops its password, one without TLS its CA and client certificate. A profile without a known `id` gets a new one; removed profiles' secrets are deleted. → as GET; 400 `gnmi_invalid` |
+| POST | `/api/settings/gnmi/test` | `{address, profile}` (a profile as in PUT; secrets not given are taken from the saved profile of the same `id`) → `{ok, error?, details?: {interfaces, sample: [{index, name, descr, speed}]}}` |
+
+## SNMP
+
+Fallback interface data for exporters that Ledger does not describe, or whose interfaces have no name or speed
+there (`internal/snmp`, runs with the enricher). It is the last interface source of the enricher: Ledger, then
+the collector's option templates / sFlow counters, then gNMI, then SNMP (a missing description or speed is filled from
+the next source; a Ledger device whose interface lacks an `snmp_index` is matched by the SNMP `ifName`). SNMPv2c and
+SNMPv3 (USM: MD5 / SHA / SHA-224 / -256 / -384 / -512, DES / AES / AES-192 / AES-256 / AES-192C / AES-256C) with
+GETBULK walks of `ifName`, `ifDescr`, `ifAlias`, `ifHighSpeed` and `ifSpeed`: name = `ifName` (else `ifDescr`),
+description = `ifAlias`, speed = `ifHighSpeed` × 10⁶ (else `ifSpeed`). Polled devices: the exporters seen in flows
+(`poll_exporters`; an unknown exporter is queued on its first lookup, and with a collector in the same process its
+exporter list is polled too) and the `devices` list, each with the first credential profile whose `prefixes` contain
+it (a profile without prefixes matches every device; addresses no profile covers are never polled). Results are
+refreshed every `interval_minutes` (default 30), retried after a failure, and kept for `ttl_minutes` (default 360)
+when a device stops answering. Credentials live in OpenBao at `snmp/<profile id>/{community,auth,priv}` (key
+`value`); the settings hold only references. Settings key `snmp`, permissions `settings.snmp:view` /
+`settings.snmp:edit`. Metrics `flow_snmp_polls_total{result}`, `flow_snmp_devices`; status component `snmp`.
+
+| Method | Path | |
+|---|---|---|
+| GET | `/api/settings/snmp` | `{enabled, poll_exporters, devices: [addr], interval_minutes, ttl_minutes, timeout_seconds (3), retries (1), concurrency (8), profiles: [{id, name, prefixes, version: "2c"\|"3", port (161), username?, security_level?: noAuthNoPriv\|authNoPriv\|authPriv, auth_protocol?, priv_protocol?, context_name?, community_set, auth_password_set, priv_password_set}], auth_protocols, priv_protocols, status?: {enabled, devices: [{address, profile, interfaces, polled?, error?, configured}], failing}}` — `status` when the poller runs in this process |
+| PUT | `/api/settings/snmp` | the same fields; per profile the write-only `community`, `auth_password`, `priv_password` (omitted = keep, `""` = remove; required for a new profile / level). A profile without a known `id` gets a new one; removed profiles' secrets are deleted. → as GET; 400 `snmp_invalid` |
+| POST | `/api/settings/snmp/test` | `{address, profile}` (a profile as in PUT; secrets not given are taken from the saved profile of the same `id`) → `{ok, error?, details?: {interfaces, sample: [{index, name, descr, speed}]}}` |
+
+## BMP
+
+BGP Monitoring Protocol receiver (RFC 7854, `internal/bmp`, runs with the enricher): routers connect to TCP 10179
+(`FLOW_BMP_ADDR`; listened to only while enabled) and stream the Adj-RIB-In of their BGP peers. Route monitoring
+UPDATEs (IPv4 NLRI, MP_REACH / MP_UNREACH for IPv6 unicast, 4-byte AS numbers, AS4_PATH merging for 2-byte
+sessions, ADD-PATH when both OPENs of the Peer Up negotiate it, COMMUNITIES, LARGE_COMMUNITY, NEXT_HOP) feed a
+per-peer RIB held in a compact longest-prefix-match table with interned attribute sets. Withdrawals remove the
+peer's path; Peer Down removes the peer's routes; a closed session removes every route of that router. Loc-RIB
+(RFC 9069) counts as post-policy. Lookups prefer post-policy paths (`policy: prefer-post`, or only `post` / `pre`),
+then the shorter AS path. Adj-RIB-Out (RFC 8671, O flag) is skipped: it describes what the router advertises, not
+where traffic goes. Labeled unicast (SAFI 4, RFC 8277) goes to the unicast tables, the label stack skipped. EVPN
+(AFI 25 / SAFI 70) contributes its IP routes to the table of their route distinguisher: IP prefix routes (type 5,
+RFC 9136) and MAC/IP advertisements carrying an IP address (type 2, as /32 or /128 host routes; their RD is the
+MAC-VRF's, so they match a Ledger VRF only when it uses the same RD). Other address families and EVPN route
+types (flowspec, multicast, Ethernet segments...) are ignored.
+
+L3VPN: VPNv4 / VPNv6 routes (SAFI 128, RFC 4364 / RFC 4659: label stack, route distinguisher, next hop with an RD)
+go to one table per route distinguisher, apart from the global table. Unicast routes of an RD instance peer (peer
+type 1) or a VRF Loc-RIB (peer type 3) go to the table of their peer distinguisher. The enricher looks a flow up
+in the VRF of its input interface (else its output interface): the interface's own `vrf` (NetBox) or, in
+Ledger, the VRF of an IP address assigned to it, whose `rd` (`65000:1`, `192.0.2.1:1`, `4200000000:1`)
+selects the table. When no route with that RD is known the global table is used; a known RD without a covering
+route gives no route.
+
+The enricher fills, from the route of `DstAddr`, the raw-table columns `DstASPath` (`Array(UInt32)`),
+`DstCommunities` (`Array(UInt32)`, `as << 16 | value`) and `DstLargeCommunities` (`Array(String)`, `"a:b:c"`), and
+`NextHop` when the exporter reported none. While BMP is enabled the AS provider order is `as_providers` (default
+`routing, flow, geoip`): `routing` is the origin AS (last AS of the path) of the route of `SrcAddr` / `DstAddr`; a
+local route (empty path) gives none, so the next provider applies. Array columns are not dimensions; in filters `=` /
+`!=` test membership (`DstASPath = 15169`, `DstCommunities = 65000:100`, `DstLargeCommunities = '65000:1:2'`) and
+`IN` / `NOTIN` any / none of the values (ClickHouse `has` / `hasAny`). Raw flow search returns them as JSON arrays.
+
+Settings key `bmp`, permissions `settings.bmp:view` / `settings.bmp:edit`. Metrics `flow_bmp_messages_total{type}`,
+`flow_bmp_errors_total{kind}` (`framing`, `decode`, `rejected`), `flow_bmp_skipped_total{reason}` (`adj_rib_out`,
+`policy`), `flow_bmp_sessions`, `flow_bmp_prefixes_v4`, `flow_bmp_prefixes_v6` (global table),
+`flow_bmp_vpn_prefixes`, `flow_bmp_vrfs`, `flow_bmp_routes`, `flow_bmp_peers`, `flow_bmp_attribute_sets`, `flow_bmp_rib_bytes`
+(estimate), `flow_bmp_replication_records_total{direction}` (`out`, `in`); status component `bmp`.
+
+Several enricher processes (NATS bus): each process publishes the raw BMP messages of its sessions to the JetStream
+stream `FLOW_BMP` (subject `flow.bmp.<router>.<session>`, file storage, 4 GiB) and replays the sessions of the
+others into its own RIB, so every replica enriches with the routes of every router whatever process holds the
+session. A session publishes a start, its messages (batched), a heartbeat every 30 s and an end. When its history
+outgrows its state, it publishes a snapshot (Initiation and Peer Up messages, then synthesized Route Monitoring per
+peer, table and attribute set) and purges its older records, so a process started later replays a bounded history;
+after lost records (NATS unreachable) the next snapshot makes every replica rebuild the router. A router without
+records for 150 s (its process died) is dropped and its subject purged. A router's local session takes precedence
+over replicated ones: send BMP from a router to one station (or one load-balanced address). With the in-process bus
+(single process) there is no replication.
+
+| Method | Path | |
+|---|---|---|
+| GET | `/api/settings/bmp` | `{enabled, policy: prefer-post\|post\|pre, routers: [addr or prefix] (allowed sources, empty = any), as_providers, status?: {enabled, listen, error?, replication: {enabled, caught_up?, error?, routers?: [{router, peers_up, last_record}]}, rib: {prefixes_v4, prefixes_v6, vpn_prefixes, vrfs, routes, attribute_sets, peers, bytes}, sessions: [{router, sys_name?, sys_descr?, since, peers_up, messages, errors, last_error?}], peers: [{router, address, as, distinguisher?, rd?, post_policy, routes, since, last_update}]}}` — `status` when the receiver runs in this process |
+| PUT | `/api/settings/bmp` | `{enabled, policy, routers, as_providers}` → as GET; 400 `bmp_invalid`; applied at once (same process) or within a minute |
+| GET | `/api/bmp/lookup?address=&rd=` (`settings.bmp:view`) | `rd` (optional) selects a VPN table, as for flows; → `{prefix, rd (table found in, empty = global), origin_as, as_path, communities: ["a:b"], large_communities, next_hop, peer: {router, address, as, post_policy}}`; 400 `invalid_rd`; 404 `no_route`; 501 when the receiver runs in another process |
+
+## Network devices
+
+Management of network equipment (`internal/devices`, runs in the API process; see [devices.md](devices.md)): the
+registry, scheduled polling, settings applied on devices, clients merged by MAC and the network map. Permissions
+`devices:view` (read), `devices:edit` (add, change, delete, test, discover, clients' names, map positions,
+settings), `devices:operate` (poll, actions, client blocking) and `devices:admin` (the actions `reboot`, `command`,
+`backup` and the configuration download; it also allows every `devices:operate` route). Every change goes to the
+audit log (`device.*`, `endpoint.*`; secrets never). Without the device manager in the process every route answers
+501 `not_implemented`.
+
+**Ledger is the source of truth.** When it is connected (`/api/inventory-db` enabled), a device is created by
+picking a Ledger device that is not managed yet (`inventory_id`); its `name`, `site` and `role` come from
+Ledger and are read-only (400 `invalid_device` on a change), `source_ref` is `inventory-db:dcim.device:<id>`,
+and unbinding is refused. Without Ledger a device is a standalone record with its own name, site and role
+(`router`, `switch`, `firewall`, `ap`, `controller`, `server`, `other`). One record per Ledger device and per
+address (+ controller site): a duplicate is 409 `duplicate_device`.
+
+**Credentials** live only in OpenBao (mount `flow`, path `devices/<id>`). Plain fields (`username`, `snmp_version`,
+`snmp_user`, `snmp_auth_protocol`, `snmp_priv_protocol`) are returned; secret fields (`password`, `api_key`,
+`api_secret`, `private_key`, `enable_password`, `snmp_community`, `snmp_auth_password`, `snmp_priv_password`) are
+write-only: the view tells only `credentials.set.<field>`. In `credentials`, a secret `""` or `null` keeps the stored
+value; `clear_credentials: [field]` removes it. `snmp_source: "profile"` uses the Current SNMP profile that covers the
+address (Settings → SNMP) instead of own SNMP credentials; the `gnmi` platform uses the gNMI profile that covers it.
+A device's own SNMPv2c / v3 credentials also serve the SNMP interface-name fallback for its exporter addresses.
+
+Device view (`View`): `{id, name, platform, platform_title, vendor, kind, host, port, transport, verify_tls,
+controller_site, inventory_id, source_ref, bound, inventory_missing, site, role, tags, note, enabled, poll_seconds
+(60–86400, default 300), flow_exporter_ip, ssh_host_key (SHA-256 fingerprint of the pinned key), status
+(unknown|up|error|down), failures, last_poll_at, last_ok_at, last_error, down_since, alerted, facts: {hostname,
+vendor, model, os, version, serial, mac, uptime_seconds, cpu_percent, memory_percent}, capabilities: [action],
+counts: {interfaces, interfaces_up, neighbors, children, endpoints}, credentials: {username, snmp_version, snmp_user,
+snmp_auth_protocol, snmp_priv_protocol, snmp_source, set: {field: bool}}, exporter_ips, created_by, created_at,
+updated_at}`.
+
+| Method | Path | |
+|---|---|---|
+| GET | `/api/devices/platforms` | `{platforms: [{key, vendor, title, segment, kind, transports: [{name, port}], credentials: [field], hint, aliases, capabilities: {transport: [action]}}], actions, action_titles, admin_actions, secret_fields, roles, flow_protocols, snmp_auth_protocols, snmp_priv_protocols}` |
+| GET | `/api/devices` | `{results: [View]}` |
+| POST | `/api/devices` | `{platform, host, port? (0 = default), transport?, verify_tls?, controller_site?, inventory_id?, name?, site?, role?, tags?, note?, enabled?, poll_seconds?, flow_exporter_ip?, snmp_source?: own\|profile, credentials?: {field: value}}` → 201 View; the first poll starts at once. 400 `invalid_device`, 409 `duplicate_device` |
+| GET | `/api/devices/inventory-candidates?q=` | `{connected, loaded, devices: [{id, name, ref, site, role, status, manufacturer, model, platform, host, platform_guess}]}` — Ledger devices not managed yet |
+| POST | `/api/devices/test` | the body of POST (or `{id, …}` to test a saved device with its stored secrets and pinned key) → `{ok, facts, interfaces, neighbors, endpoints, children, host_key}`; 422 `device_error` with what the device said |
+| POST | `/api/devices/discover` | `{target: address\|host name\|subnet up to /22, community?: "public"}` → `{results: [{host, reachable, ports, evidence, snmp, platforms: [key], name, known, device_id?}]}` |
+| GET | `/api/devices/{id}` | View + `{interfaces: [{…, rx_bps, tx_bps, utilization}], neighbors, children, endpoints: [Client], collector: {address, ip, netflow_port, sflow_port, source}, platform_info, inventory?, snmp_profile?: {id, name}}` |
+| PATCH | `/api/devices/{id}` | fields of POST (omitted = kept; `clear_credentials`) → View. A new host, port or controller site forgets the pinned SSH key |
+| DELETE | `/api/devices/{id}` | 204; the OpenBao path is deleted, an open Beacon event is resolved |
+| POST | `/api/devices/{id}/poll` | → `{ok, status, failures, error}`; 409 `poll_running` |
+| POST | `/api/devices/{id}/actions` | `{action, params}` → `{ok, output}`. Actions: `hostname {name}`, `interface {name, enabled?, description?}`, `dns {servers}`, `ntp {servers}`, `flow_export {enabled?, collector?, port?, protocol: netflow5\|netflow9\|ipfix\|sflow, interfaces?}` (collector / port default to this installation's collector), `reboot {mac?}`, `endpoint_block {mac, blocked?}`, `command {command}`, `backup`. 400 `invalid_params`, `unsupported_action`, `unknown_action`, `collector_unknown`; 403 for an admin action without `devices:admin`; 422 `device_error` |
+| GET | `/api/devices/{id}/backup` (`devices:admin`) | the configuration as `text/plain` (attachment) |
+| POST | `/api/devices/{id}/reset-host-key` | forgets the pinned SSH host key (trusted again on the next connection) → View |
+| GET | `/api/endpoints?q=&online=true\|false&device_id=&limit=` | `{results: [Client]}` — Client: `{mac, ip, hostname, alias, note, vendor, device_id, device_name, interface, source: wifi\|controller\|bridge\|dhcp\|arp, attached_to, port, ssid, signal, vlan, blocked, first_seen, last_seen, name (alias, else hostname), online}`; the MACs of network equipment are left out |
+| GET | `/api/endpoints/{mac}` | Client + `{sightings: [{mac, device_id, source, ip, hostname, interface, ssid, signal, vlan, attached_to, port, blocked, seen_at}]}` |
+| PATCH | `/api/endpoints/{mac}` | `{alias?, note?}` → Client; 400 `invalid_mac` |
+| DELETE | `/api/endpoints/{mac}` | 204 (the client and its sightings) |
+| POST | `/api/endpoints/{mac}/block` (`devices:operate`) | `{blocked?: true}` → `{ok, output, device_id, device_name}` — on the first device that saw it and can block clients |
+| GET | `/api/topology?offline=false&endpoints=true` | `{nodes: [{id (dev:<id>\|mac:<mac>\|nb:<key>\|ep:<mac>\|internet), type: device\|child\|neighbor\|endpoint\|internet, label, role, status, vendor, model, ip, mac, device_id, platform, site, x, y, clients, interfaces, error, controller, platform_guess, …}], edges: [{source, target, kind: link\|managed\|wired\|wifi\|wan, source_port, target_port, protocol, label, bps, utilization, speed_mbps}], stats: {devices, children, neighbors, endpoints, online, down}, generated_at}` |
+| PUT | `/api/topology/positions` | `{"dev:<id>": [x, y] \| null}` → 204 (null = automatic layout) |
+| GET | `/api/settings/devices` | `{settings: {collector_address, netflow_port, sflow_port, endpoint_offline_minutes (15), endpoint_retention_days (90), concurrency (6)}, collector}` |
+| PUT | `/api/settings/devices` | `settings` → as GET; 400 `invalid_device` |
+
+Merging clients: each poll replaces the sightings of the device; a client's attachment point is its freshest
+(30 min) sighting with the most specific source (Wi-Fi 5 > controller 4 > bridge 3 > DHCP 2 > ARP 1), its address
+the first one by that order, its name the first known host name. Multicast and broadcast MACs are skipped.
+
+Down / up events: two failed polls in a row make a device `down`; the scheduler then sends one firing event to
+Beacon (same connector as the detector, signal `use.device.down`, method USE, severity critical, `ci` = the device
+name, `source_ref` = its Ledger reference, `ip` = its address, `links.flow` = `/devices/<id>`), and the
+resolved event with the same `id` when it answers again, is disabled or deleted. Nothing is sent while the Beacon
+connector is not configured.
+
+## Incident link
+
+`/go/incident?ci=&ip=&ref=&from=&to=` (web route, the "Traffic" link of Beacon incidents and CIs) opens Visualize
+filtered on the CI as an end of the traffic or as the exporter that carried it (a router whose link is overloaded):
+`ip` → `SrcAddr = ip OR DstAddr = ip OR ExporterAddress = ip` (`<<` for a prefix), `ref` (Ledger `source_ref`) →
+`SrcCI = ref OR DstCI = ref OR ExporterRef = ref` (both joined with `OR` when both are given; dimensions `SrcAddr`,
+`DstAddr`, `Proto` with an address, else `SrcCI`, `DstCI`, `App`); `ci` alone → `SrcCI`, `DstCI` or `ExporterName` =
+`ci`; from 15 minutes before `from` to 15 minutes after `to` (or now).
