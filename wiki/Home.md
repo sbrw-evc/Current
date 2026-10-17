@@ -3,17 +3,17 @@
 *Formerly **Umbrella Flow**. Current, part of the Umbrella family, shows what the network is doing and manages the
 network devices: traffic (NetFlow / IPFIX / sFlow, cloud flow logs), routing (BMP), device state and settings.*
 
-The other members of the family: [Keystone](https://github.com/sbrw-evc/keystone) (sign-in and access; formerly SPA),
-[Beacon](https://github.com/sbrw-evc/beacon) (incidents; formerly Umbrella Monitoring),
-[Ledger](https://github.com/sbrw-evc/ledger) (inventory; formerly Inventory DB) and Network Control, whose device
+The other members of the family: [Keystone](https://onedev.evcsbrw.ru/Monitoring/Keystone) (sign-in and access; formerly SPA),
+[Beacon](https://onedev.evcsbrw.ru/Monitoring/Beacon) (incidents; formerly Umbrella Monitoring),
+[Ledger](https://onedev.evcsbrw.ru/Monitoring/Ledger) (inventory; formerly Inventory DB) and Network Control, whose device
 management Current took over. Who owns what between them: [docs/family.md](family.md).
 
 Network traffic analysis for NetFlow v5 / v9, IPFIX and sFlow and management of the network devices, built into the
 Umbrella family:
 
-- **[Beacon](https://github.com/sbrw-evc/beacon)** gets traffic incidents (link overload,
+- **[Beacon](https://onedev.evcsbrw.ru/Monitoring/Beacon)** gets traffic incidents (link overload,
   DDoS, anomalies, silent exporters, threat contacts) on the right CI, and a "Traffic" link from every incident.
-- **[Ledger](https://github.com/sbrw-evc/ledger)** (DCIM / IPAM) is the enrichment source: exporter
+- **[Ledger](https://onedev.evcsbrw.ru/Monitoring/Ledger)** (DCIM / IPAM) is the enrichment source: exporter
   names, sites, roles, interfaces, boundaries, providers and networks come from it with no hand-written mapping, and
   its device, interface and circuit pages show traffic from Current.
 
@@ -68,7 +68,7 @@ deployed with Docker Compose (one command) or a Helm chart, and configured in a 
 - **CMDB from real traffic.** Steady CI-to-CI flows become dependency proposals on Beacon's CMDB map.
 - **Fast storage, long history.** Raw flows plus 1 min / 5 min / 1 h aggregates in ClickHouse, with the resolution
   picked for the requested period and separate retention for each level.
-- **Sign-in and access are managed in [Keystone](https://github.com/sbrw-evc/keystone).** People sign in through
+- **Sign-in and access are managed in [Keystone](https://onedev.evcsbrw.ru/Monitoring/Keystone).** People sign in through
   Keystone, the sign-in service of the Umbrella family (passwords, passkeys, LDAP / AD, Entra ID, Google, Apple and
   OpenID Connect live there); Current reads its people and their roles from Keystone and publishes its own roles to it
   ([docs/identity-federation.md](identity-federation.md)).
@@ -121,7 +121,7 @@ You need Docker with Compose v2 (Docker Engine on Linux, or Docker Desktop on ma
 for the containers (ClickHouse alone is limited to 4 GB) and a few GB of disk.
 
 ```sh
-git clone https://github.com/sbrw-evc/current.git
+git clone https://onedev.evcsbrw.ru/Monitoring/Current
 cd current/deploy/current
 cp .env.example .env
 # Edit .env: set POSTGRES_PASSWORD, CLICKHOUSE_PASSWORD, NATS_TOKEN and CLICKHOUSE_GRAFANA_PASSWORD
@@ -216,7 +216,7 @@ Contracts between the three applications: [docs/integrations.md](integrations.md
 ## Sign-in and access
 
 Sign-in and access are managed in **Keystone**, the sign-in service of the Umbrella family
-([repository](https://github.com/sbrw-evc/keystone), contract: [docs/protocol.md](https://github.com/sbrw-evc/keystone/blob/main/docs/protocol.md)). Current keeps no
+([repository](https://onedev.evcsbrw.ru/Monitoring/Keystone), contract: [docs/protocol.md](https://onedev.evcsbrw.ru/Monitoring/Keystone/~files/main/docs/protocol.md)). Current keeps no
 passwords, password policy, passkeys or directory settings; it has no sign-in form and no first administrator of its
 own.
 

@@ -1,0 +1,39 @@
+version: 56
+jobs:
+- name: Wiki
+  steps:
+  - !CheckoutStep
+    name: checkout
+    cloneCredential: !HttpCredential
+      accessTokenSecret: wiki-push-token
+    withLfs: false
+    withSubmodules: false
+    condition: SUCCESSFUL
+    optional: false
+  - !CommandStep
+    name: publish the wiki
+    runInContainer: true
+    image: buildpack-deps:bookworm-scm
+    interpreter: !PosixInterpreter
+      shell: sh
+      commands: |
+        set -eu
+        DOCS=docs sh .onedev/wiki.sh "@server_url@/@project_path@" "@branch@"
+        git add -A wiki
+        if git diff --cached --quiet; then
+          echo "The wiki is up to date."
+          exit 0
+        fi
+        git -c user.name="OneDev" -c user.email="onedev@evcsbrw.ru" commit -q -m "Wiki from @commit_hash@"
+        git push -q origin HEAD:@branch@
+    useTTY: true
+    condition: SUCCESSFUL
+    optional: false
+  triggers:
+  - !BranchUpdateTrigger
+    branches: main
+    paths: 'docs/** README.md README.ru.md .onedev/wiki.sh'
+  retryCondition: never
+  maxAttempts: 3
+  retryDelay: 30
+  timeout: 3600

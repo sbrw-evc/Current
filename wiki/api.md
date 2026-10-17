@@ -16,8 +16,8 @@ UTC.
 
 ## Sign-in (Keystone)
 
-People sign in through [Keystone](https://github.com/sbrw-evc/keystone), sign-in and access for the Umbrella family
-([protocol](https://github.com/sbrw-evc/keystone/blob/main/docs/protocol.md), [identity-federation.md](identity-federation.md)). Current has no
+People sign in through [Keystone](https://onedev.evcsbrw.ru/Monitoring/Keystone), sign-in and access for the Umbrella family
+([protocol](https://onedev.evcsbrw.ru/Monitoring/Keystone/~files/main/docs/protocol.md), [identity-federation.md](identity-federation.md)). Current has no
 password sign-in.
 
 | Method | Path | Body / response |
@@ -139,7 +139,7 @@ list of well-known ASes.
 
 ```json
 {
-  "rows": [["AS65000", "edge-01"]],
+  "rows": ["AS65000", "edge-01"](https://onedev.evcsbrw.ru/Monitoring/Current/~files/main/docs/"AS65000", "edge-01"),
   "xps": [123456.0],
   "nodes": ["SrcAS: AS65000", "ExporterName: edge-01"],
   "links": [{"source": "SrcAS: AS65000", "target": "ExporterName: edge-01", "xps": 123456.0}]
@@ -202,7 +202,7 @@ interface).
 
 ## Raw flows
 
-`POST /api/flows/search` `{start, end, filter, limit (≤1000), order: "time"|"bytes"}` → `{columns: [..], rows: [[..]]}`
+`POST /api/flows/search` `{start, end, filter, limit (≤1000), order: "time"|"bytes"}` → `{columns: [..], rows: [..](https://onedev.evcsbrw.ru/Monitoring/Current/~files/main/)}`
 
 ## Ledger
 

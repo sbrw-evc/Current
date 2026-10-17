@@ -1,9 +1,9 @@
 # Sign-in and access through Keystone
 
 **Sign-in and access to Current are managed in Keystone**
-([sbrw-evc/keystone](https://github.com/sbrw-evc/keystone)), the
+([sbrw-evc/keystone](https://onedev.evcsbrw.ru/Monitoring/Keystone)), the
 one place where people of the Umbrella family authenticate and where their access is decided. The contract is Keystone's
-[docs/protocol.md](https://github.com/sbrw-evc/keystone/blob/main/docs/protocol.md); this
+[docs/protocol.md](https://onedev.evcsbrw.ru/Monitoring/Keystone/~files/main/docs/protocol.md); this
 document describes Current's side of it.
 
 Current keeps **no passwords, no password policy, no passkeys and no directory or provider settings** (LDAP / AD,
