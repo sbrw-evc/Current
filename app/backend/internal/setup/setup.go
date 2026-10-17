@@ -632,6 +632,23 @@ func checkGeneral(in Input, d Defaults) (General, error) {
 	return g, nil
 }
 
+// keepGeneral: the stored general settings with the fields the request names explicitly (not the defaults).
+func keepGeneral(old, next General, in Input) General {
+	if in.Language != "" {
+		old.Language = next.Language
+	}
+	if in.Theme != "" {
+		old.Theme = next.Theme
+	}
+	if in.Timezone != "" {
+		old.Timezone = next.Timezone
+	}
+	if in.PublicURL != "" {
+		old.PublicURL = next.PublicURL
+	}
+	return old
+}
+
 func (m *Module) apply(ctx context.Context, in Input, remote string) (Result, error) {
 	var res Result
 	d := m.opt.Defaults
@@ -815,6 +832,19 @@ func (m *Module) apply(ctx context.Context, in Input, remote string) (Result, er
 			return fail(http.StatusBadGateway, "postgres_write_failed", err)
 		}
 		return nil
+	}
+	if attach {
+		// Attaching to an existing installation keeps its settings: only what this request names changes them.
+		var old General
+		if found, _ := st.Setting(ctx, SettingGeneral, &old); found {
+			general = keepGeneral(old, general, in)
+		}
+		if in.Collector == nil {
+			var oldCol Collector
+			if found, _ := st.Setting(ctx, SettingCollector, &oldCol); found {
+				col = oldCol
+			}
+		}
 	}
 	if err := pgWrite(st.PutSetting(ctx, SettingGeneral, general)); err != nil {
 		return res, err
