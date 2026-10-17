@@ -5,7 +5,7 @@ jobs:
   - !CheckoutStep
     name: checkout
     cloneCredential: !HttpCredential
-      accessTokenSecret: wiki-push-token
+      accessTokenSecret: onedev-token
     withLfs: false
     withSubmodules: false
     condition: SUCCESSFUL
@@ -24,15 +24,176 @@ jobs:
           echo "The wiki is up to date."
           exit 0
         fi
-        git -c user.name="OneDev" -c user.email="onedev@evcsbrw.ru" commit -q -m "Wiki from @commit_hash@"
+        git -c user.name="OneDev" -c user.email="onedev@@evcsbrw.ru" commit -q -m "Wiki from @commit_hash@"
         git push -q origin HEAD:@branch@
+    runAs: 0:0
     useTTY: true
     condition: SUCCESSFUL
     optional: false
   triggers:
   - !BranchUpdateTrigger
     branches: main
-    paths: 'docs/** README.md README.ru.md .onedev/wiki.sh'
+    paths: docs/** README.md README.ru.md .onedev/wiki.sh
+    userMatch: anyone
+  retryCondition: never
+  maxAttempts: 3
+  retryDelay: 30
+  timeout: 3600
+- name: Release
+  steps:
+  - !CheckoutStep
+    name: checkout
+    cloneCredential: !DefaultCredential {}
+    withLfs: false
+    withSubmodules: false
+    condition: SUCCESSFUL
+    optional: false
+  - !CommandStep
+    name: version
+    runInContainer: true
+    image: busybox:1.36
+    interpreter: !PosixInterpreter
+      shell: sh
+      commands: |
+        set -eu
+        v=@tag@
+        v=${v#v}
+        mkdir -p .ci
+        printf %s "$v" > .ci/version
+        printf %s "${v%.*}" > .ci/minor
+        date -u +%Y-%m-%dT%H:%M:%SZ | tr -d '\n' > .ci/built
+    runAs: 0:0
+    useTTY: true
+    condition: SUCCESSFUL
+    optional: false
+  - !SetBuildVersionStep
+    name: build version
+    buildVersion: '@tag@'
+    condition: SUCCESSFUL
+    optional: false
+  - !BuildImageStep
+    name: image current
+    buildPath: app
+    output: !RegistryOutput
+      tags: '@server_host@/monitoring/current/current:@file:.ci/version@ @server_host@/monitoring/current/current:@file:.ci/minor@ @server_host@/monitoring/current/current:latest'
+    registryLogins:
+      - registryUrl: '@server_url@'
+        userName: '@job_token@'
+        passwordSecret: onedev-token
+    platforms: linux/amd64,linux/arm64
+    moreOptions: --build-arg VERSION=@file:.ci/version@ --build-arg COMMIT=@commit_hash@ --build-arg BUILT_AT=@file:.ci/built@
+    condition: SUCCESSFUL
+    optional: false
+  - !CommandStep
+    name: deploy bundle
+    runInContainer: true
+    image: mikefarah/yq:4
+    interpreter: !PosixInterpreter
+      shell: sh
+      commands: |
+        set -eu
+        V=$(cat .ci/version)
+        sh .onedev/bundle.sh "@server_host@/monitoring/current/current" "$V" "@server_url@/@project_path@/~builds/@build_number@/artifacts"
+    runAs: 0:0
+    useTTY: true
+    condition: SUCCESSFUL
+    optional: false
+  - !PublishArtifactStep
+    name: publish the bundle
+    sourcePath: dist
+    artifacts: '*.tar.gz SHA256SUMS notes.md'
+    condition: SUCCESSFUL
+    optional: false
+  - !SetBuildDescriptionStep
+    name: build description
+    buildDescription: 'Current @tag@: images @server_host@/monitoring/current/... (@tag@, latest), the deploy bundle and its notes are in the artifacts.'
+    condition: SUCCESSFUL
+    optional: false
+  - !RunImagetoolsStep
+    name: 'GitHub: copy image current'
+    arguments: create --tag ghcr.io/sbrw-evc/current:@file:.ci/version@ --tag ghcr.io/sbrw-evc/current:@file:.ci/minor@ --tag ghcr.io/sbrw-evc/current:latest @server_host@/monitoring/current/current:@file:.ci/version@
+    registryLogins:
+      - registryUrl: '@server_url@'
+        userName: '@job_token@'
+        passwordSecret: onedev-token
+      - registryUrl: ghcr.io
+        userName: sbrw-evc
+        passwordSecret: github-token
+    condition: SUCCESSFUL
+    optional: true
+  - !CommandStep
+    name: 'GitHub: release bundle'
+    runInContainer: true
+    image: mikefarah/yq:4
+    interpreter: !PosixInterpreter
+      shell: sh
+      commands: |
+        set -eu
+        V=$(cat .ci/version)
+        sh .onedev/bundle.sh "ghcr.io/sbrw-evc/current" "$V" "https://github.com/sbrw-evc/Current/releases/download/@tag@/current-$V-deploy.tar.gz" dist-github
+    runAs: 0:0
+    useTTY: true
+    condition: SUCCESSFUL
+    optional: true
+  - !CommandStep
+    name: 'GitHub: release'
+    runInContainer: true
+    image: buildpack-deps:bookworm-scm
+    interpreter: !PosixInterpreter
+      shell: sh
+      commands: |
+        set -eu
+        GITHUB_TOKEN='@secret:github-token@' COMMIT=@commit_hash@ \
+          sh .onedev/github.sh release sbrw-evc/Current "@tag@" "Current @tag@" dist-github
+    runAs: 0:0
+    useTTY: true
+    condition: SUCCESSFUL
+    optional: true
+  triggers:
+  - !TagCreateTrigger
+    tags: v*.*.*
+  retryCondition: never
+  maxAttempts: 3
+  retryDelay: 30
+  timeout: 7200
+- name: GitHub sync
+  steps:
+  - !PushRepository
+    name: push to GitHub
+    remoteUrl: https://github.com/sbrw-evc/Current
+    userName: x-access-token
+    passwordSecret: github-token
+    force: false
+    condition: SUCCESSFUL
+    optional: false
+  - !CheckoutStep
+    name: checkout
+    cloneCredential: !DefaultCredential {}
+    withLfs: false
+    withSubmodules: false
+    condition: SUCCESSFUL
+    optional: false
+  - !CommandStep
+    name: GitHub wiki
+    runInContainer: true
+    image: buildpack-deps:bookworm-scm
+    interpreter: !PosixInterpreter
+      shell: sh
+      commands: |
+        set -eu
+        if [ "@branch@" != main ] || [ ! -d wiki ]; then
+          echo "The wiki is published from main only."
+          exit 0
+        fi
+        GITHUB_TOKEN='@secret:github-token@' COMMIT=@commit_hash@ sh .onedev/github.sh wiki sbrw-evc/Current
+    runAs: 0:0
+    useTTY: true
+    condition: SUCCESSFUL
+    optional: false
+  triggers:
+  - !BranchUpdateTrigger
+    userMatch: anyone
+  - !TagCreateTrigger {}
   retryCondition: never
   maxAttempts: 3
   retryDelay: 30
