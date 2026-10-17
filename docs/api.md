@@ -16,8 +16,8 @@ UTC.
 
 ## Sign-in (Keystone)
 
-People sign in through [Keystone](https://github.com/sbrw-evc/keystone), sign-in and access for the Umbrella family
-([protocol](https://github.com/sbrw-evc/keystone/blob/main/docs/protocol.md), [identity-federation.md](identity-federation.md)). Current has no
+People sign in through [Keystone](https://onedev.evcsbrw.ru/Monitoring/Keystone), sign-in and access for the Umbrella family
+([protocol](https://onedev.evcsbrw.ru/Monitoring/Keystone/~files/main/docs/protocol.md), [identity-federation.md](identity-federation.md)). Current has no
 password sign-in.
 
 | Method | Path | Body / response |

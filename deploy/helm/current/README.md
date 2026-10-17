@@ -42,7 +42,7 @@ helm install current deploy/helm/current \
   --set spa.connectionKeySecret=current-keystone
 ```
 
-People sign in through [Keystone](https://github.com/sbrw-evc/keystone); whoever Keystone gives
+People sign in through [Keystone](https://onedev.evcsbrw.ru/Monitoring/Keystone); whoever Keystone gives
 Current's `admin` role administers Current. Without `spa.connectionKeySecret` the key can be pasted in the setup wizard.
 
 Then open the console (`kubectl port-forward svc/current 8080:8080` or the ingress) and finish the setup

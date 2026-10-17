@@ -27,7 +27,7 @@ docker compose logs current | grep setup_code
 ```
 
 Open `http://<host>:8080`, enter the setup code and the Keystone connection key (or set `SPA_CONNECTION_KEY` in `.env`;
-sign-in and access are managed in [Keystone](https://github.com/sbrw-evc/keystone)). Every other wizard field
+sign-in and access are managed in [Keystone](https://onedev.evcsbrw.ru/Monitoring/Keystone)). Every other wizard field
 (OpenBao, PostgreSQL, ClickHouse, NATS) is prefilled for the bundled services, so you can click through. The
 wizard writes `flow.json` into the `flow-data` volume and switches to the console without a restart.
 
