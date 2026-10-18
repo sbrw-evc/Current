@@ -11,6 +11,7 @@ cp -r deploy/current/. "$DIR/"
 # The application runs from the published image of this version: no build section.
 yq -i '(.services[] | select(has("build"))) |= (del(.build) | .pull_policy = "missing")' "$DIR/docker-compose.yml"
 sed -i -e "s#^FLOW_IMAGE=.*#FLOW_IMAGE=$IMAGE:$VERSION#" -e "s#^FLOW_VERSION=.*#FLOW_VERSION=$VERSION#" "$DIR/.env.example"
+sed -i 's#${FLOW_IMAGE:-[^}]*}#${FLOW_IMAGE:-'"$IMAGE:$VERSION"'}#g' "$DIR/docker-compose.yml"
 tar -C "$OUT" -czf "$OUT/$APP-$VERSION-deploy.tar.gz" "$APP-$VERSION"
 rm -rf "$DIR"
 ( cd "$OUT" && sha256sum "$APP-$VERSION-deploy.tar.gz" > SHA256SUMS )

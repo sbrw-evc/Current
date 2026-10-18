@@ -19,7 +19,7 @@ x-logging: &logging
 
 services:
   current:
-    image: ${FLOW_IMAGE:-current:latest}
+    image: ${FLOW_IMAGE:-onedev.evcsbrw.ru/monitoring/current/current:latest}
     pull_policy: ${FLOW_PULL_POLICY:-build}
     build:
       context: ../../app
@@ -221,7 +221,7 @@ services:
 
   # --profile demo: synthetic NetFlow v9 / IPFIX / sFlow traffic into the collector.
   current-demo:
-    image: ${FLOW_IMAGE:-current:latest}
+    image: ${FLOW_IMAGE:-onedev.evcsbrw.ru/monitoring/current/current:latest}
     pull_policy: never
     profiles: [demo]
     restart: unless-stopped
