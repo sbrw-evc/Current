@@ -43,7 +43,8 @@ jobs:
   steps:
   - !CheckoutStep
     name: checkout
-    cloneCredential: !DefaultCredential {}
+    cloneCredential: !HttpCredential
+      accessTokenSecret: onedev-token
     withLfs: false
     withSubmodules: false
     condition: SUCCESSFUL
@@ -66,6 +67,21 @@ jobs:
     useTTY: true
     condition: SUCCESSFUL
     optional: false
+  - !CommandStep
+    name: SonarQube quality gate
+    runInContainer: true
+    image: sonarsource/sonar-scanner-cli:12.1.0.3233_8.0.1
+    interpreter: !PosixInterpreter
+      shell: sh
+      commands: |
+        set -eu
+        sonar-scanner -Dsonar.token='@secret:sonar-token@' -Dsonar.projectVersion="$(cat .ci/version)" \
+          -Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=900
+    runAs: 0:0
+    useTTY: true
+    condition: SUCCESSFUL
+    optional: false
+
   - !SetBuildVersionStep
     name: build version
     buildVersion: '@tag@'
@@ -108,6 +124,19 @@ jobs:
     buildDescription: 'Current @tag@: images @server@/monitoring/current/... (@tag@, latest), the deploy bundle and its notes are in the artifacts.'
     condition: SUCCESSFUL
     optional: false
+  - !CommandStep
+    name: SonarQube wiki page
+    runInContainer: true
+    image: buildpack-deps:bookworm-scm
+    interpreter: !PosixInterpreter
+      shell: sh
+      commands: |
+        set -eu
+        SONAR_TOKEN='@secret:sonar-token@' sh .onedev/sonar-wiki.sh "@tag@" "@commit_hash@" main
+    runAs: 0:0
+    useTTY: true
+    condition: SUCCESSFUL
+    optional: true
   - !CommandStep
     name: 'GitHub: copy images'
     runInContainer: true
@@ -162,6 +191,32 @@ jobs:
   maxAttempts: 3
   retryDelay: 30
   timeout: 7200
+- name: SonarQube
+  steps:
+  - !CheckoutStep
+    name: checkout
+    cloneCredential: !DefaultCredential {}
+    withLfs: false
+    withSubmodules: false
+    condition: SUCCESSFUL
+    optional: false
+  - !CommandStep
+    name: SonarQube analysis
+    runInContainer: true
+    image: sonarsource/sonar-scanner-cli:12.1.0.3233_8.0.1
+    interpreter: !PosixInterpreter
+      shell: sh
+      commands: |
+        set -eu
+        sonar-scanner -Dsonar.token='@secret:sonar-token@' -Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=900
+    runAs: 0:0
+    useTTY: true
+    condition: SUCCESSFUL
+    optional: false
+  retryCondition: never
+  maxAttempts: 3
+  retryDelay: 30
+  timeout: 3600
 - name: GitHub sync
   steps:
   - !PushRepository

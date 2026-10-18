@@ -12,8 +12,9 @@ DOCS=${DOCS:-docs}
 OUT=wiki
 export DOCS BASE REV
 
-rm -rf "$OUT"
-mkdir "$OUT"
+# The pages of SonarQube results are written by .onedev/sonar-wiki.sh, not made from the documentation: keep them.
+mkdir -p "$OUT"
+find "$OUT" -mindepth 1 -maxdepth 1 ! -name "SonarQube*.md" -exec rm -rf {} +
 
 # Rewrites the relative links of a page read from $FROM; wiki links of the GitHub wiki are kept as wiki links.
 fix() {
@@ -64,7 +65,7 @@ else
     echo
     for f in "$OUT"/*.md; do
       n=$(basename "$f" .md)
-      case "$n" in Home|Home-ru|_Sidebar|_Footer) continue ;; esac
+      case "$n" in Home|Home-ru|_Sidebar|_Footer|SonarQube-*) continue ;; esac
       echo "- [$n]($n.md)"
     done
   } > "$OUT/_Sidebar.md"
